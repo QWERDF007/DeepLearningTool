@@ -210,8 +210,8 @@ public:
      * @brief Publish labels accumulated with defer_model_update to QML in one reset.
      */
     void refreshModelFromMemory();
+    bool reloadFromDatabase();
 
-    // NEW: Access to unfiltered data for statistics
     const std::map<int64_t, LabelInstance *> &getAllLabelInstances() const
     {
         return full_label_instances_;

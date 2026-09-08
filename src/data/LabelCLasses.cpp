@@ -23,6 +23,7 @@ QString normalizedColorName(const QString &color)
     const QColor parsed(color.trimmed());
     return parsed.isValid() ? parsed.name(QColor::HexRgb).toLower() : QString();
 }
+} // namespace
 
 std::vector<uint8_t> extraDataForGroup(const QString &group)
 {
@@ -56,8 +57,6 @@ QString groupFromExtraData(const std::vector<uint8_t> &blob)
 
     return normalizeLabelClassGroup(document.object().value(QString(kGroupKey)).toString());
 }
-
-} // namespace
 
 QString normalizeLabelClassGroup(const QString &group)
 {

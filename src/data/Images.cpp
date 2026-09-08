@@ -1,5 +1,6 @@
 #include "data/Images.h"
 
+#include "common/Utils.h"
 #include "data/DataViewModels.h"
 #include "data/Datasets.h"
 #include "data/LabelClasses.h"
@@ -54,6 +55,20 @@ std::vector<uint8_t> makeImageLabelClassExtraData(const int64_t label_class_id)
 }
 
 } // namespace
+
+QString normalizedImagePath(const QString &path)
+{
+    QFileInfo file_info(path);
+    QString   normalized = file_info.exists() ? file_info.canonicalFilePath() : file_info.absoluteFilePath();
+    if (normalized.isEmpty())
+        normalized = path;
+
+    normalized = dltool::common::cleanPath(normalized);
+#ifdef Q_OS_WIN
+    normalized = normalized.toCaseFolded();
+#endif
+    return normalized;
+}
 
 ImageInstance::ImageInstance(const int64_t dataset_id, const int64_t image_id, const QString &path,
                              const int64_t image_label_class_id, QObject *parent)
@@ -160,10 +175,15 @@ QHash<int64_t, QSize> ImageInstancesListModel::cachedImageSizes() const
 
 void ImageInstancesListModel::init()
 {
+    reloadFromDatabase();
+}
+
+bool ImageInstancesListModel::reloadFromDatabase()
+{
     if (database_ == nullptr)
     {
-        spdlog::error("初始化图像失败: 数据库未初始化");
-        return;
+        spdlog::error("重新加载图像失败: 数据库未初始化");
+        return false;
     }
 
     QString err_msg;
@@ -173,9 +193,17 @@ void ImageInstancesListModel::init()
     std::vector<std::vector<uint8_t>> extra_data;
     if (!database_->getAllImages(dataset_ids, image_ids, paths, extra_data, err_msg))
     {
-        spdlog::error("初始化图像失败: {}", err_msg.toUtf8().constData());
-        return;
+        spdlog::error("重新加载图像失败: {}", err_msg.toUtf8().constData());
+        return false;
     }
+
+    beginResetModel();
+    for (auto &[_, instance] : full_image_instances_)
+    {
+        delete instance;
+    }
+    full_image_instances_.clear();
+    image_ids_.clear();
 
     const size_t count = std::min({dataset_ids.size(), image_ids.size(), paths.size()});
     for (size_t index = 0; index < count; ++index)
@@ -186,8 +214,10 @@ void ImageInstancesListModel::init()
                               index < extra_data.size() ? readImageLabelClassId(extra_data[index]) : -1, this));
     }
     rebuildImageIds();
+    endResetModel();
     // 打开项目后立即在后台预取全部图像尺寸,供评估等线程复用,避免重复读文件。
     startSizePrefetch();
+    return true;
 }
 
 int ImageInstancesListModel::rowCount(const QModelIndex &parent) const

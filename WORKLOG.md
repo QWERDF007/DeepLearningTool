@@ -43,6 +43,32 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
+## 2026-09-08 — 让导入后台事务覆盖全部修改
+
+**目标**
+- 导入失败恢复全部修改，写库不阻塞界面。
+- worker 自有 SQLite 连接执行单事务，GUI 线程只在提交后应用已提交结果，消除 `BlockingQueuedConnection` 导致的界面卡顿。
+- 取消或失败时，通过 SQLite 事务引擎级回滚完整恢复已有类别属性（如分组更改）与新增图片、标签、标注；成功时精确核对固定夹具。
+- 遵循 TDD，先增加失败/约束集成测试用例，再实现并删除旧的脆弱逐项补偿与分批代码；确保 Release 构建与 CTest 全部通过。
+
+**当前状态**
+- 已完成：在 `tests/project/test_DataImport.cpp` 中新增 `cancelledImportRollsBackCompletedBatches` 和 `cancelledImportRestoresModifiedExistingClassAttributes` 用例，通过真实项目库与夹具复现取消时对已有类别属性修改的补偿遗漏，并建立约束。
+- 已完成：设计并实现 `ImportDatabaseWriter`（采用 PIMPL 模式完全隔离 SQLite/sqlpp 依赖），直接在 worker 线程以 `Qt::DirectConnection` 接收导入批次，使用 worker 独立 SQLite 连接与 `sqlpp::transaction_t` 在单事务内完成图片、标注、类别及图像级 extra_data 写入。
+- 已完成：重构 `DataManager`，移除脆弱的 `writeImportBatch`、`rollbackPendingImport`、`finishBatchedImport` 及 `PendingImportTask`，GUI 线程在导入过程中不碰模型数据；在 worker 发送 `finished` 信号后，GUI 仅在提交成功时统一调用 `reloadFromDatabase()` 刷新。
+- 已完成：修复 `DataManager::addDataset` / `updateDataset` 异步完成回调中的时序问题，保证内存模型更新完成后才置 `dataOperationRunning = false`。
+- 已完成：清理无用的长短期双轨逻辑，确保 Release 构建与 CTest 通过。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_data dltool_model_data_creation_test dltool_model_data_import_test dltool_data_data_io_tests dltool_model_data_export_test dltool_model_data_roundtrip_test` → 构建全部成功，0 错误 0 警告。
+- `ctest --test-dir build -C Release -R "^dltool_model_data_import_test$" -V` → 5 个测试用例全部通过（100% passed, 0 failed）。
+- `ctest --test-dir build -C Release -R "^dltool_model_data_creation_test$" -V` → 全部通过（100% passed, 0 failed）。
+- `ctest --test-dir build -C Release -R "^dltool_data_data_io_tests$" -V` → 全部通过（100% passed, 0 failed）。
+- `ctest --test-dir build -C Release -R "^dltool_model_data_export_test$" -V` → 全部通过（100% passed, 0 failed）。
+- `ctest --test-dir build -C Release -R "^dltool_model_data_roundtrip_test$" -V` → 全部通过（100% passed, 0 failed）。
+
+**下一步**
+- 继续推进 Ticket 10 (`docs/refactor-tickets/10-safe-export.md`：规范导出目录暂存与覆盖防护)。
+
 ## 2026-09-08 — 校验数据库完整 schema 契约与迁移回滚
 
 **目标**

@@ -1,6 +1,7 @@
 #include "PersistentProjectFixture.h"
 
 #include "data/DataFormat.h"
+#include "data/DataIO.h"
 #include "data/DataManager.h"
 #include "database/DataBase.h"
 #include "ui/ProgressManager.h"
@@ -8,6 +9,8 @@
 #include <QCoreApplication>
 #include <QDirIterator>
 #include <QImage>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMap>
 #include <QSet>
 #include <QDir>
@@ -230,7 +233,7 @@ private slots:
         QVERIFY(input_dir.isValid());
         const QString class_dir = QDir(input_dir.path()).filePath(QStringLiteral("rollback-class"));
         QVERIFY(QDir().mkpath(class_dir));
-        for (int index = 0; index < 257; ++index)
+        for (int index = 0; index < 600; ++index)
         {
             QImage image(QSize(16, 16), QImage::Format_RGB32);
             image.fill(Qt::white);
@@ -255,25 +258,25 @@ private slots:
                              loop.quit();
                          });
 
-        const QMetaObject::Connection progress_connection
-            = QObject::connect(dltool::ui::ProgressManager::getInstance(),
-                               &dltool::ui::ProgressManager::progressChanged, &loop,
-                               [&]
-                               {
-                                   if (!cancel_requested && fixture.dataManager()->importRunning()
-                                       && dltool::ui::ProgressManager::getInstance()->getProgress() >= 80)
-                                   {
-                                       cancel_requested = true;
-                                       fixture.dataManager()->cancelDataOperation();
-                                   }
-                               });
-
         timeout.start(120000);
         fixture.dataManager()->importDataWithLabelClassGroups(
             dataset_id, dltool::data::DataFormat::Folder, input_dir.path(), {},
             {{QStringLiteral("rollback-class"), QStringLiteral("anomaly")}});
+        auto *importer = fixture.dataManager()->findChild<dltool::data::DataIO *>();
+        QVERIFY2(importer != nullptr, "导入器未创建");
+        const QMetaObject::Connection batch_connection = QObject::connect(
+            importer, &dltool::data::DataIO::dataBatchReady, &loop,
+            [&]
+            {
+                if (!cancel_requested)
+                {
+                    cancel_requested = true;
+                    fixture.dataManager()->cancelDataOperation();
+                }
+            },
+            Qt::QueuedConnection);
         loop.exec();
-        QObject::disconnect(progress_connection);
+        QObject::disconnect(batch_connection);
 
         QVERIFY2(completed, "等待取消导入完成超时");
         QVERIFY2(cancel_requested, "取消没有发生在首个批次完成之后");
@@ -296,6 +299,117 @@ private slots:
                                              database_error),
                  qPrintable(database_error));
         QVERIFY(std::find(names.begin(), names.end(), QStringLiteral("rollback-class")) == names.end());
+    }
+
+    void cancelledImportRestoresModifiedExistingClassAttributes()
+    {
+        PersistentProjectFixture fixture;
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        const QString dataset_name
+            = QStringLiteral("restore-class-import-%1").arg(QCoreApplication::applicationPid());
+        QString dataset_error;
+        const qint64 dataset_id = fixture.ensureDataset(dataset_name, &dataset_error);
+        QVERIFY2(dataset_id >= 0, qPrintable(dataset_error));
+
+        const QString existing_class_name
+            = QStringLiteral("existing-good-%1").arg(QCoreApplication::applicationPid());
+        fixture.dataManager()->addLabelClassWithGroup(existing_class_name, QStringLiteral("#123456"),
+                                                     QStringLiteral(""), QStringLiteral("good"));
+
+        dltool::database::ProjectDataBase database(PersistentProjectFixture::projectDatabasePath());
+        std::vector<int64_t>              label_class_ids;
+        std::vector<QString>              names;
+        std::vector<QString>              colors;
+        std::vector<QString>              shortcuts;
+        std::vector<int64_t>              ordinal_indices;
+        std::vector<std::vector<uint8_t>> extra_data;
+        QString                           database_error;
+        QVERIFY2(database.getAllLabelClasses(label_class_ids, names, colors, shortcuts, ordinal_indices, extra_data,
+                                             database_error),
+                 qPrintable(database_error));
+        auto it = std::find(names.begin(), names.end(), existing_class_name);
+        QVERIFY2(it != names.end(), "已有类别未成功创建");
+        const size_t class_index = std::distance(names.begin(), it);
+        const int64_t class_id   = label_class_ids[class_index];
+        QCOMPARE(fixture.dataManager()->labelClassGroup(class_id), QStringLiteral("good"));
+
+        QTemporaryDir input_dir;
+        QVERIFY(input_dir.isValid());
+        const QString class_dir = QDir(input_dir.path()).filePath(existing_class_name);
+        QVERIFY(QDir().mkpath(class_dir));
+        for (int index = 0; index < 600; ++index)
+        {
+            QImage image(QSize(16, 16), QImage::Format_RGB32);
+            image.fill(Qt::white);
+            const QString image_path = QDir(class_dir).filePath(QStringLiteral("image_%1.png").arg(index));
+            QVERIFY(image.save(image_path));
+        }
+
+        bool    cancel_requested = false;
+        bool    completed        = false;
+        bool    success          = false;
+        QString message;
+        QEventLoop loop;
+        QTimer     timeout;
+        timeout.setSingleShot(true);
+        QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+        QObject::connect(fixture.dataManager(), &dltool::data::DataManager::dataImportFinished, &loop,
+                         [&](const bool import_success, const QString &import_message)
+                         {
+                             completed = true;
+                             success   = import_success;
+                             message   = import_message;
+                             loop.quit();
+                         });
+
+        timeout.start(120000);
+        fixture.dataManager()->importDataWithLabelClassGroups(
+            dataset_id, dltool::data::DataFormat::Folder, input_dir.path(), {},
+            {{existing_class_name, QStringLiteral("anomaly")}});
+        auto *importer = fixture.dataManager()->findChild<dltool::data::DataIO *>();
+        QVERIFY2(importer != nullptr, "导入器未创建");
+        const QMetaObject::Connection batch_connection = QObject::connect(
+            importer, &dltool::data::DataIO::dataBatchReady, &loop,
+            [&]
+            {
+                if (!cancel_requested)
+                {
+                    cancel_requested = true;
+                    fixture.dataManager()->cancelDataOperation();
+                }
+            },
+            Qt::QueuedConnection);
+        loop.exec();
+        QObject::disconnect(batch_connection);
+
+        QVERIFY2(completed, "等待取消导入完成超时");
+        QVERIFY2(cancel_requested, "取消没有发生在首个批次完成之后");
+        QVERIFY2(!success, qPrintable(message));
+
+        // 验证内存模型和数据库中该已有类别的 group 均恢复为原始的 good
+        QCOMPARE(fixture.dataManager()->labelClassGroup(class_id), QStringLiteral("good"));
+
+        QVERIFY2(database.getAllLabelClasses(label_class_ids, names, colors, shortcuts, ordinal_indices, extra_data,
+                                             database_error),
+                 qPrintable(database_error));
+        auto restored_it = std::find(label_class_ids.begin(), label_class_ids.end(), class_id);
+        QVERIFY(restored_it != label_class_ids.end());
+        const size_t restored_index = std::distance(label_class_ids.begin(), restored_it);
+        const QJsonDocument doc = QJsonDocument::fromJson(
+            QByteArray(reinterpret_cast<const char *>(extra_data[restored_index].data()),
+                       static_cast<int>(extra_data[restored_index].size())));
+        const QString group_in_db = doc.object().value(QStringLiteral("group")).toString().trimmed().toLower();
+        QCOMPARE(group_in_db, QStringLiteral("good"));
+
+        int image_count = 0;
+        int label_count = 0;
+        QVERIFY2(fixture.datasetCounts(dataset_id, &image_count, &label_count, &dataset_error),
+                 qPrintable(dataset_error));
+        QCOMPARE(image_count, 0);
+        QCOMPARE(label_count, 0);
+
+        fixture.dataManager()->deleteLabelClass(class_id);
     }
 
     void importsFolderAndSeparateMaskFixtures()

@@ -13,13 +13,14 @@
 #include "LabelClasses.h"
 #include "Labels.h"
 #include "ShortcutManager.h"
+#include "ImportDatabaseWriter.h"
 #include "dltool/data/Export.h"
 
+#include <QElapsedTimer>
 #include <QMetaObject>
 #include <QObject>
 #include <QPointer>
 #include <QVariantList>
-#include <QVariantMap>
 #include <QtQml>
 #include <functional>
 #include <memory>
@@ -399,8 +400,6 @@ signals:
     void datasetSplitFinished(bool success, const QString &message);
 
 private:
-    struct PendingImportTask;
-
     void init(const int method);
     void startAsyncLabelLoading();
     DataOperationWorkflow::HandlePtr trackOperation(DataOperationWorkflow::HandlePtr handle);
@@ -424,24 +423,14 @@ private:
                             const DataOperationWorkflow::Result &operation);
     void rebuildLabelRelations(bool notify_image_model = true);
 
-    /**
-     * @brief 处理导入器解析出的单个数据批次
-     */
-    void handleDataBatchReady(int64_t dataset_id, std::vector<QString> image_paths, std::vector<int64_t> image_widths,
-                              std::vector<int64_t> image_heights, std::map<QString, QString> label_class_info,
-                              std::vector<ImportedLabel> labels, int64_t processed_images, int64_t total_images);
-    void handleImportFinished(bool success, std::vector<int64_t> image_ids, std::vector<int64_t> label_class_ids);
-    bool rollbackPendingImport(QString &err_msg);
     void requestDataOperationCancel();
     void startImportData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                          const QString &data_dir, const std::map<QString, QString> &label_class_groups);
+    void handleImportSessionFinished(bool success, const QString &message,
+                                     const dltool::data::ImportDatabaseWriter::Stats &stats);
     bool addLabelsInternal(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                            const std::vector<QVariantMap> &data, QString *err_msg = nullptr,
                            bool refresh_dependent_models = true, std::vector<int64_t> *added_label_ids = nullptr);
-    bool writeImportBatch(int64_t dataset_id, const std::vector<QString> &image_paths,
-                          const std::map<QString, QString> &label_class_info, const std::vector<ImportedLabel> &labels,
-                          QString &err_msg);
-    void finishBatchedImport(bool success, const QString &message);
 
     bool isDataOperationRunning() const
     {
@@ -494,8 +483,9 @@ private:
 
     int method_{0}; // 标签数据类型
 
-    bool                               import_running_{false};
-    std::unique_ptr<PendingImportTask> pending_import_task_;
+    bool          import_running_{false};
+    QString       current_import_task_id_;
+    QElapsedTimer import_elapsed_timer_;
 
     bool labels_loading_{false};
     bool labels_changed_during_loading_{false};

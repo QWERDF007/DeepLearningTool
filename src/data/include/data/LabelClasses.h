@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dltool/data/Export.h"
+
 #include <QAbstractListModel>
 #include <QtQml>
 #include <map>
@@ -19,6 +21,8 @@ QString defaultLabelClassGroup();
 QString unlabeledLabelClassGroup();
 QString anomalyLabelClassGroup();
 QString goodLabelClassGroup();
+DATA_API std::vector<uint8_t> extraDataForGroup(const QString &group);
+DATA_API QString groupFromExtraData(const std::vector<uint8_t> &blob);
 
 class LabelClass : public QObject
 {

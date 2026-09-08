@@ -12,7 +12,7 @@ DeepLearningTool 是一个由 Qt 6/QML 驱动界面、C++ 驱动业务、SQLite 
 
 ```text
 common -> core -> database -> ui -> parameter -> settings
-       -> model -> feature -> data -> project -> tool
+       -> data -> model -> feature -> project -> tool
 ```
 
 这表示构建和依赖的主方向，不表示所有模块之间都是线性依赖。边界如下：
@@ -89,7 +89,7 @@ test.txt + task.db + project .dlpro + pred/*.tiff
 
 ## QML 边界
 
-QML 模块通过 Qt 的 QML 类型注册暴露对象。应用级单例包括 `ProjectManager`、`GlobalSettings`、`TaskManager` 以及 UI 服务；项目对象拥有数据和模型 manager。页面负责布局、绑定和轻量交互，协议、持久化、任务状态和评估计算留在 C++。
+QML 模块通过 Qt 的 QML 类型注册暴露对象。应用级入口包括 `ProjectManager`、`GlobalSettings` 以及 UI 服务；`TaskManager` 与数据、模型 manager 由项目对象持有。页面负责布局、绑定和轻量交互，协议、持久化、任务状态和评估计算留在 C++。
 
 顶层页面由 [`src/tool/qml/Content.qml`](../src/tool/qml/Content.qml) 装配，领域页面分别位于 `src/project/qml/`、`src/data/qml/` 和 `src/model/qml/`。模块 URI、公开类型和目录入口见 [模块索引](MODULES.md)。
 
@@ -101,6 +101,6 @@ QML 模块通过 Qt 的 QML 类型注册暴露对象。应用级单例包括 `Pr
 - 取消必须沿任务控制器和取消令牌传递，完成、失败和停止后的迟到事件不能重新打开终态任务。
 - 需要跨线程更新 UI 服务时，复用现有服务 API 或 `Qt::QueuedConnection`。
 
-项目关闭时由 `ModelTaskController::shutdown()`、`ModelTestTaskManager::shutdown()` 和 `ModelManager::shutdown()` 依次收敛模型任务、评估线程池及 TensorBoard 外部进程；随后才关闭数据和任务基础设施，项目对象释放前不会遗留访问项目数据的后台执行者。具体实现见 [`src/project/Projects.cpp`](../src/project/Projects.cpp)、[`src/model/ModelTaskController.cpp`](../src/model/ModelTaskController.cpp)、[`src/model/ModelTestTaskManager.cpp`](../src/model/ModelTestTaskManager.cpp) 和 [`src/model/ModelManager.cpp`](../src/model/ModelManager.cpp)。
+项目关闭顺序由 [`Project::shutdown()`](../src/project/Projects.cpp) 统一组织，各领域控制器负责自己的执行者与外部进程。关闭入口、完成回调和共享线程池的收敛要求及待补边界见 [架构改进方案](../final_plan.md)，具体步骤与验收见 [实施规格](REFACTOR_SPEC.md)；统一关闭入口的存在不代表所有关闭场景已验证。
 
 这些规则的具体实现位于 `src/model/ModelTaskController.*`、`src/model/ModelTaskPreparation.*`、`src/model/ExternalModelTaskRunner.*` 和对应评估引擎文件。

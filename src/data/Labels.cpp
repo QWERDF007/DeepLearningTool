@@ -52,8 +52,14 @@ void LabelInstancesListModel::init(bool load_from_database)
 {
     if (load_from_database)
     {
-        loadLabelsFromDatabase();
+        reloadFromDatabase();
     }
+}
+
+bool LabelInstancesListModel::reloadFromDatabase()
+{
+    loadLabelsFromDatabase();
+    return true;
 }
 
 void LabelInstancesListModel::loadLabelsFromDatabase()

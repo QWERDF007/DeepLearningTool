@@ -1,4 +1,6 @@
-﻿#pragma once
+#pragma once
+
+#include "dltool/data/Export.h"
 
 #include <QAbstractListModel>
 #include <QHash>
@@ -23,6 +25,8 @@ class DatasetsListModel;
 class LabelClassesListModel;
 class LabelInstancesListModel;
 class ImageInstancesViewModel;
+
+DATA_API QString normalizedImagePath(const QString &path);
 
 /**
  * @brief 已写入数据库、等待发布到图像源模型的图像实体。
@@ -218,6 +222,8 @@ public:
     bool addImages(const std::vector<int64_t> &dataset_ids, const std::vector<QString> &paths,
                    std::vector<int64_t> &image_ids, bool defer_model_update = false);
     bool addImages(const int64_t dataset_id, const QString &image_idr, std::vector<int64_t> &image_ids);
+
+    bool reloadFromDatabase();
 
     /**
      * @brief 将已经写入数据库的图像发布到内存模型。
