@@ -43,6 +43,30 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
+## 2026-09-08 — 校验数据库完整 schema 契约与迁移回滚
+
+**目标**
+- 从 canonical DDL（SQL 资源正本）直接派生数据库契约，自动比对列、外键约束、唯一约束、必要索引和表类型（严格识别 table，拒绝 view 等非表对象）。
+- 确保空库及已支持版本（user_version == kCurrentSchemaVersion）正常可用，未知版本明确拒绝，不新增通用兼容平台。
+- 在模式升级/迁移事务中注入失败时，数据库结构、数据行以及 user_version 完整回滚，并通过真实数据库接口（ProjectDataBase / ModelDataBase）验证。
+
+**当前状态**
+- 已完成：在 `src/database/DatabaseSchema.cpp` 中重构 schema 契约生成机制，通过内存临时数据库加载 canonical DDL 资源（`resourcesFor` 及 settings 模板）并自动解析 `PRAGMA table_info`、`PRAGMA foreign_key_list`、`PRAGMA index_list`/`index_info` 和 `sqlite_master.type`，派生出完整的 `TableSpec`，彻底消除手动维护 C++ 表结构的脆弱性与不一致风险。
+- 已完成：在 `DatabaseSchema.cpp::validateTable` 中强化五维校验：严格要求 `type == 'table'`（拒绝视图）、列名与类型及主键/非空标志严格核对、外键约束匹配（源列、目标表、目标列）、唯一约束（`UNIQUE` 约束及唯一索引覆盖列集）与索引匹配。
+- 已完成：将 `DatabaseSchema.h` 导出至 `src/database/include/database/DatabaseSchema.h` 并暴露 `DATABASE_API void setMigrationHookForTest(MigrationHook hook)`，支持在迁移事务执行过程中注入测试故障。
+- 已完成：在 `DatabaseSchema.cpp::ensureSchema` 的事务内执行建表、升级与校验，若迁移 hook 失败或校验未通过，立即执行 `ROLLBACK`，确保结构变动、数据更新与 `PRAGMA user_version` 完整回滚。
+- 已完成：在 `tests/database/test_DatabaseSchema.cpp` 中通过 TDD 新增 6 个测试用例，覆盖：视图替代真实表拒绝、缺失外键约束拒绝、缺失唯一约束拒绝（包括普通表与动态 settings 表）、通过 `ProjectDataBase::openProject` 验证迁移失败后结构与数据和版本完整回滚、通过 `ModelDataBase::readTrainParams` 验证模型库迁移失败回滚。
+
+**验证证据**
+- `ctest --test-dir build -C Release -R "^dltool_database_database_schema_tests$" -V` → 18/18 全部 Passed (0.20 sec)，覆盖表类型、外键、唯一约束及 `ProjectDataBase`/`ModelDataBase` 真实回滚。
+- `ctest --test-dir build -C Release -R "^dltool_model_data_export_test$" --output-on-failure` → 4/4 全部 Passed (2.07 sec)，包含项目创建与全部模型/数据集成测试无回归。
+
+**下一步**
+- 提交本阶段代码：`refactor: 校验数据库完整 schema 契约与迁移回滚`。
+- 推进 Ticket 09：`09-atomic-import.md`。
+
+---
+
 ## 2026-09-08 — 规范批量导出取消作用域与产物清单校验
 
 **目标**

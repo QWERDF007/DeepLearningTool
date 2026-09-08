@@ -1,10 +1,14 @@
-#include "DatabaseSchema.h"
+#include "database/DatabaseSchema.h"
 
 #include <QFile>
 #include <QRegularExpression>
+#include <QStringList>
 #include <sqlite3.h>
 
+#include <algorithm>
 #include <initializer_list>
+#include <map>
+#include <mutex>
 #include <vector>
 
 namespace dltool::database::detail {
@@ -15,16 +19,45 @@ constexpr int kCurrentSchemaVersion = 1;
 
 struct ColumnSpec
 {
-    const char *name;
-    const char *type;
-    int         not_null;
-    int         primary_key;
+    QString name;
+    QString type;
+    int     not_null{0};
+    int     primary_key{0};
+};
+
+struct ForeignKeySpec
+{
+    QString from_column;
+    QString target_table;
+    QString target_column;
+};
+
+struct UniqueConstraintSpec
+{
+    std::vector<QString> columns;
+};
+
+struct IndexSpec
+{
+    QString              name;
+    bool                 unique{false};
+    std::vector<QString> columns;
 };
 
 struct TableSpec
 {
-    QString                   name;
-    std::vector<ColumnSpec>   columns;
+    QString                           name;
+    QString                           type{QStringLiteral("table")};
+    std::vector<ColumnSpec>           columns;
+    std::vector<ForeignKeySpec>       foreign_keys;
+    std::vector<UniqueConstraintSpec> unique_constraints;
+    std::vector<IndexSpec>            indexes;
+};
+
+struct ResourceSpec
+{
+    const char *resource_name;
+    const char *table_name;
 };
 
 bool setError(QString *err_msg, const QString &message)
@@ -133,86 +166,6 @@ bool executeSettingsTableResource(sqlite3 *db, const QString &table_name, QStrin
     return exec(db, sql.constData(), err_msg);
 }
 
-std::vector<TableSpec> tablesFor(SchemaKind kind)
-{
-    const auto column = [](const char *name, const char *type, int not_null, int primary_key)
-    { return ColumnSpec{name, type, not_null, primary_key}; };
-    const auto table = [](const char *name, std::initializer_list<ColumnSpec> columns)
-    { return TableSpec{QString::fromLatin1(name), std::vector<ColumnSpec>(columns)}; };
-
-    switch (kind)
-    {
-    case SchemaKind::Project:
-        return {
-            table("project", {column("id", "INTEGER", 1, 1), column("name", "TEXT", 0, 0),
-                               column("method", "INTEGER", 1, 0), column("description", "TEXT", 0, 0),
-                               column("path", "TEXT", 0, 0), column("image_base_path", "TEXT", 0, 0),
-                               column("ctime", "INTEGER", 1, 0), column("mtime", "INTEGER", 1, 0),
-                               column("version", "TEXT", 0, 0), column("extra_data", "BLOB", 0, 0)}),
-            table("datasets", {column("id", "INTEGER", 1, 1), column("name", "TEXT", 0, 0),
-                                column("extra_data", "BLOB", 0, 0)}),
-            table("images", {column("id", "INTEGER", 1, 1), column("dataset_id", "INTEGER", 1, 0),
-                              column("path", "TEXT", 0, 0), column("extra_data", "BLOB", 0, 0)}),
-            table("label_classes", {column("id", "INTEGER", 1, 1), column("name", "TEXT", 0, 0),
-                                     column("color", "TEXT", 0, 0), column("shortcut", "TEXT", 0, 0),
-                                     column("ordinal_index", "INTEGER", 0, 0), column("extra_data", "BLOB", 0, 0)}),
-            table("labels", {column("id", "INTEGER", 1, 1), column("image_id", "INTEGER", 1, 0),
-                              column("label_class_id", "INTEGER", 1, 0), column("region_type", "INTEGER", 1, 0),
-                              column("region", "BLOB", 0, 0), column("ordinal_index", "INTEGER", 0, 0),
-                              column("extra_data", "BLOB", 0, 0)}),
-            table("tag_classes", {column("id", "INTEGER", 1, 1), column("name", "TEXT", 0, 0),
-                                   column("extra_data", "BLOB", 0, 0)}),
-            table("tags", {column("id", "INTEGER", 1, 1), column("image_id", "INTEGER", 0, 0),
-                            column("label_id", "INTEGER", 0, 0), column("tag_ids", "BLOB", 1, 0),
-                            column("type", "INTEGER", 1, 0), column("extra_data", "BLOB", 0, 0)}),
-            table("models", {column("id", "INTEGER", 1, 1), column("uuid", "TEXT", 1, 0),
-                              column("name", "TEXT", 0, 0), column("framework_name", "TEXT", 0, 0),
-                              column("model_architecture", "TEXT", 0, 0), column("ctime", "INTEGER", 1, 0),
-                              column("mtime", "INTEGER", 1, 0), column("extra_data", "BLOB", 0, 0)}),
-        };
-    case SchemaKind::RecentProjects:
-        return {table("recent_projects", {column("id", "INTEGER", 1, 1), column("path", "TEXT", 0, 0),
-                                           column("extra_data", "BLOB", 0, 0)})};
-    case SchemaKind::Model:
-        return {
-            table("train_params", {column("group", "TEXT", 1, 1), column("name_en", "TEXT", 1, 2),
-                                    column("value", "TEXT", 1, 0), column("type", "TEXT", 1, 0)}),
-            table("datasets", {column("type", "TEXT", 1, 1), column("dataset_id", "INTEGER", 1, 2),
-                                column("class_ids", "TEXT", 1, 0)}),
-            table("test_tasks", {column("task_id", "TEXT", 1, 1), column("name", "TEXT", 1, 0),
-                                  column("ctime", "INTEGER", 1, 0), column("mtime", "INTEGER", 1, 0)}),
-        };
-    case SchemaKind::Task:
-        return {
-            table("task_info", {column("task_id", "TEXT", 1, 1), column("ctime", "INTEGER", 1, 0),
-                                 column("mtime", "INTEGER", 1, 0)}),
-            table("test_params", {column("group", "TEXT", 1, 1), column("name_en", "TEXT", 1, 2),
-                                   column("value", "TEXT", 1, 0), column("type", "TEXT", 1, 0)}),
-            table("datasets", {column("type", "TEXT", 1, 1), column("dataset_id", "INTEGER", 1, 2),
-                                column("class_ids", "TEXT", 1, 0)}),
-            table("prediction", {column("image_id", "INTEGER", 1, 1), column("data", "TEXT", 1, 0)}),
-        };
-    case SchemaKind::Settings:
-        return {};
-    }
-    return {};
-}
-
-TableSpec settingsTableSpec(const QString &table_name)
-{
-    const auto column = [](const char *name, const char *type, int not_null, int primary_key)
-    { return ColumnSpec{name, type, not_null, primary_key}; };
-    return TableSpec{table_name,
-                     {column("name_en", "TEXT", 1, 0), column("value", "TEXT", 1, 0),
-                      column("mtime", "INTEGER", 1, 0)}};
-}
-
-struct ResourceSpec
-{
-    const char *resource_name;
-    const char *table_name;
-};
-
 std::vector<ResourceSpec> resourcesFor(SchemaKind kind)
 {
     switch (kind)
@@ -236,10 +189,208 @@ std::vector<ResourceSpec> resourcesFor(SchemaKind kind)
     return {};
 }
 
+TableSpec deriveTableSpec(sqlite3 *db, const QString &table_name)
+{
+    TableSpec spec;
+    spec.name = table_name;
+    spec.type = QStringLiteral("table");
+
+    // Table type from sqlite_master
+    {
+        sqlite3_stmt *stmt = nullptr;
+        constexpr char type_query[] = "SELECT type FROM sqlite_master WHERE name = ?1 LIMIT 1";
+        if (sqlite3_prepare_v2(db, type_query, -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            sqlite3_bind_text(stmt, 1, table_name.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(stmt) == SQLITE_ROW)
+            {
+                const char *t = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+                if (t != nullptr)
+                    spec.type = QString::fromUtf8(t);
+            }
+            sqlite3_finalize(stmt);
+        }
+    }
+
+    // Columns from PRAGMA table_info
+    {
+        const QString query = QStringLiteral("PRAGMA table_info('%1')").arg(table_name);
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(db, query.toUtf8().constData(), -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            while (sqlite3_step(stmt) == SQLITE_ROW)
+            {
+                const char *col_name = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
+                const char *col_type = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2));
+                ColumnSpec col;
+                col.name = col_name != nullptr ? QString::fromUtf8(col_name) : QString();
+                col.type = col_type != nullptr ? QString::fromUtf8(col_type).trimmed().toUpper() : QString();
+                col.not_null = sqlite3_column_int(stmt, 3);
+                col.primary_key = sqlite3_column_int(stmt, 5);
+                spec.columns.push_back(std::move(col));
+            }
+            sqlite3_finalize(stmt);
+        }
+    }
+
+    // Foreign keys from PRAGMA foreign_key_list
+    {
+        const QString query = QStringLiteral("PRAGMA foreign_key_list('%1')").arg(table_name);
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(db, query.toUtf8().constData(), -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            while (sqlite3_step(stmt) == SQLITE_ROW)
+            {
+                const char *tgt_tbl = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2));
+                const char *from_c = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
+                const char *to_c = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 4));
+                ForeignKeySpec fk;
+                fk.target_table = tgt_tbl != nullptr ? QString::fromUtf8(tgt_tbl) : QString();
+                fk.from_column = from_c != nullptr ? QString::fromUtf8(from_c) : QString();
+                fk.target_column = to_c != nullptr ? QString::fromUtf8(to_c) : QString();
+                spec.foreign_keys.push_back(std::move(fk));
+            }
+            sqlite3_finalize(stmt);
+        }
+    }
+
+    // Unique constraints and indexes from PRAGMA index_list & PRAGMA index_info
+    {
+        const QString query = QStringLiteral("PRAGMA index_list('%1')").arg(table_name);
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(db, query.toUtf8().constData(), -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            struct IdxMeta { QString name; int unique; QString origin; };
+            std::vector<IdxMeta> idx_metas;
+            while (sqlite3_step(stmt) == SQLITE_ROW)
+            {
+                const char *idx_n = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
+                int is_uniq = sqlite3_column_int(stmt, 2);
+                const char *orig = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
+                idx_metas.push_back({
+                    idx_n != nullptr ? QString::fromUtf8(idx_n) : QString(),
+                    is_uniq,
+                    orig != nullptr ? QString::fromUtf8(orig) : QString()
+                });
+            }
+            sqlite3_finalize(stmt);
+
+            for (const auto &meta : idx_metas)
+            {
+                const QString info_query = QStringLiteral("PRAGMA index_info('%1')").arg(meta.name);
+                sqlite3_stmt *info_stmt = nullptr;
+                std::vector<QString> cols;
+                if (sqlite3_prepare_v2(db, info_query.toUtf8().constData(), -1, &info_stmt, nullptr) == SQLITE_OK)
+                {
+                    while (sqlite3_step(info_stmt) == SQLITE_ROW)
+                    {
+                        const char *cn = reinterpret_cast<const char *>(sqlite3_column_text(info_stmt, 2));
+                        if (cn != nullptr)
+                            cols.push_back(QString::fromUtf8(cn));
+                    }
+                    sqlite3_finalize(info_stmt);
+                }
+
+                if (meta.unique != 0 && meta.origin != QStringLiteral("pk"))
+                {
+                    spec.unique_constraints.push_back(UniqueConstraintSpec{cols});
+                }
+                if (meta.origin == QStringLiteral("c"))
+                {
+                    spec.indexes.push_back(IndexSpec{meta.name, meta.unique != 0, cols});
+                }
+            }
+        }
+    }
+
+    return spec;
+}
+
+std::vector<TableSpec> deriveCanonicalTablesFor(SchemaKind kind)
+{
+    if (kind == SchemaKind::Settings)
+        return {};
+
+    sqlite3 *mem_db = nullptr;
+    if (sqlite3_open_v2(":memory:", &mem_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) != SQLITE_OK)
+    {
+        if (mem_db != nullptr)
+            sqlite3_close(mem_db);
+        return {};
+    }
+
+    QString err;
+    for (const ResourceSpec &resource : resourcesFor(kind))
+    {
+        executeResource(mem_db, resource.resource_name, &err);
+    }
+
+    std::vector<TableSpec> specs;
+    for (const ResourceSpec &resource : resourcesFor(kind))
+    {
+        specs.push_back(deriveTableSpec(mem_db, QString::fromLatin1(resource.table_name)));
+    }
+
+    sqlite3_close(mem_db);
+    return specs;
+}
+
+const std::vector<TableSpec> &tablesFor(SchemaKind kind)
+{
+    static std::map<SchemaKind, std::vector<TableSpec>> s_cache;
+    static std::mutex s_mutex;
+    std::lock_guard<std::mutex> lock(s_mutex);
+    auto it = s_cache.find(kind);
+    if (it != s_cache.end())
+        return it->second;
+    s_cache[kind] = deriveCanonicalTablesFor(kind);
+    return s_cache[kind];
+}
+
+TableSpec settingsTableSpec(const QString &table_name)
+{
+    static TableSpec s_template_spec = []() {
+        sqlite3 *mem_db = nullptr;
+        if (sqlite3_open_v2(":memory:", &mem_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) != SQLITE_OK)
+            return TableSpec{};
+        QString err;
+        executeSettingsTableResource(mem_db, QStringLiteral("__template__"), &err);
+        TableSpec spec = deriveTableSpec(mem_db, QStringLiteral("__template__"));
+        sqlite3_close(mem_db);
+        return spec;
+    }();
+
+    TableSpec spec = s_template_spec;
+    spec.name = table_name;
+    return spec;
+}
+
 bool validateTable(sqlite3 *db, const TableSpec &spec, QString *err_msg)
 {
-    const QString query = QStringLiteral("PRAGMA table_info('%1')").arg(spec.name);
     sqlite3_stmt *statement = nullptr;
+    constexpr char type_query[] = "SELECT type FROM sqlite_master WHERE name = ?1 LIMIT 1";
+    if (sqlite3_prepare_v2(db, type_query, -1, &statement, nullptr) != SQLITE_OK)
+        return setError(err_msg, sqliteMessage(db, QStringLiteral("查询数据库表失败")));
+
+    const QByteArray name_utf8 = spec.name.toUtf8();
+    sqlite3_bind_text(statement, 1, name_utf8.constData(), -1, SQLITE_TRANSIENT);
+    const int step_result = sqlite3_step(statement);
+    if (step_result != SQLITE_ROW)
+    {
+        sqlite3_finalize(statement);
+        return setError(err_msg, QStringLiteral("schema 缺少表: %1").arg(spec.name));
+    }
+    const char *actual_type_str = reinterpret_cast<const char *>(sqlite3_column_text(statement, 0));
+    const QString actual_type = actual_type_str != nullptr ? QString::fromUtf8(actual_type_str) : QString();
+    sqlite3_finalize(statement);
+    if (actual_type != spec.type)
+    {
+        return setError(err_msg, QStringLiteral("schema 对象 %1 类型不匹配，期望 %2，实际为 %3")
+                                      .arg(spec.name, spec.type, actual_type));
+    }
+
+    const QString query = QStringLiteral("PRAGMA table_info('%1')").arg(spec.name);
+    statement = nullptr;
     if (sqlite3_prepare_v2(db, query.toUtf8().constData(), -1, &statement, nullptr) != SQLITE_OK)
         return setError(err_msg, sqliteMessage(db, QStringLiteral("读取表结构失败: %1").arg(spec.name)));
 
@@ -254,16 +405,16 @@ bool validateTable(sqlite3 *db, const TableSpec &spec, QString *err_msg)
 
         const ColumnSpec &expected = spec.columns[index];
         const char *actual_name = reinterpret_cast<const char *>(sqlite3_column_text(statement, 1));
-        const char *actual_type = reinterpret_cast<const char *>(sqlite3_column_text(statement, 2));
+        const char *actual_type_c = reinterpret_cast<const char *>(sqlite3_column_text(statement, 2));
         const QString name = actual_name != nullptr ? QString::fromUtf8(actual_name) : QString();
-        const QString type = actual_type != nullptr ? QString::fromUtf8(actual_type).trimmed().toUpper() : QString();
-        if (name != QString::fromLatin1(expected.name) || type != QString::fromLatin1(expected.type)
+        const QString type = actual_type_c != nullptr ? QString::fromUtf8(actual_type_c).trimmed().toUpper() : QString();
+        if (name != expected.name || type != expected.type
             || sqlite3_column_int(statement, 3) != expected.not_null
             || sqlite3_column_int(statement, 5) != expected.primary_key)
         {
             sqlite3_finalize(statement);
             return setError(err_msg, QStringLiteral("schema 表 %1 字段 %2 结构不匹配")
-                                          .arg(spec.name, QString::fromLatin1(expected.name)));
+                                          .arg(spec.name, expected.name));
         }
         ++index;
     }
@@ -272,7 +423,146 @@ bool validateTable(sqlite3 *db, const TableSpec &spec, QString *err_msg)
         return setError(err_msg, sqliteMessage(db, QStringLiteral("读取表结构失败: %1").arg(spec.name)));
     if (index != spec.columns.size())
         return setError(err_msg, QStringLiteral("schema 表 %1 缺少字段 %2")
-                                      .arg(spec.name, QString::fromLatin1(spec.columns[index].name)));
+                                      .arg(spec.name, spec.columns[index].name));
+
+    if (!spec.foreign_keys.empty())
+    {
+        const QString fk_query = QStringLiteral("PRAGMA foreign_key_list('%1')").arg(spec.name);
+        statement = nullptr;
+        if (sqlite3_prepare_v2(db, fk_query.toUtf8().constData(), -1, &statement, nullptr) != SQLITE_OK)
+            return setError(err_msg, sqliteMessage(db, QStringLiteral("读取表外键失败: %1").arg(spec.name)));
+
+        std::vector<ForeignKeySpec> actual_fks;
+        while (sqlite3_step(statement) == SQLITE_ROW)
+        {
+            const char *tgt_tbl = reinterpret_cast<const char *>(sqlite3_column_text(statement, 2));
+            const char *from_c = reinterpret_cast<const char *>(sqlite3_column_text(statement, 3));
+            const char *to_c = reinterpret_cast<const char *>(sqlite3_column_text(statement, 4));
+            ForeignKeySpec fk;
+            fk.target_table = tgt_tbl != nullptr ? QString::fromUtf8(tgt_tbl) : QString();
+            fk.from_column = from_c != nullptr ? QString::fromUtf8(from_c) : QString();
+            fk.target_column = to_c != nullptr ? QString::fromUtf8(to_c) : QString();
+            actual_fks.push_back(std::move(fk));
+        }
+        sqlite3_finalize(statement);
+
+        for (const ForeignKeySpec &expected_fk : spec.foreign_keys)
+        {
+            const auto it = std::find_if(actual_fks.begin(), actual_fks.end(), [&](const ForeignKeySpec &actual) {
+                if (actual.from_column != expected_fk.from_column)
+                    return false;
+                if (actual.target_table.compare(expected_fk.target_table, Qt::CaseInsensitive) != 0)
+                    return false;
+                if (expected_fk.target_column.isEmpty() || actual.target_column.isEmpty())
+                    return true;
+                return actual.target_column.compare(expected_fk.target_column, Qt::CaseInsensitive) == 0;
+            });
+            if (it == actual_fks.end())
+            {
+                return setError(err_msg, QStringLiteral("schema 表 %1 缺少外键约束: %2 -> %3")
+                                              .arg(spec.name, expected_fk.from_column, expected_fk.target_table));
+            }
+        }
+    }
+
+    if (!spec.unique_constraints.empty())
+    {
+        const QString idx_query = QStringLiteral("PRAGMA index_list('%1')").arg(spec.name);
+        statement = nullptr;
+        if (sqlite3_prepare_v2(db, idx_query.toUtf8().constData(), -1, &statement, nullptr) != SQLITE_OK)
+            return setError(err_msg, sqliteMessage(db, QStringLiteral("读取表索引失败: %1").arg(spec.name)));
+
+        struct IdxMeta { QString name; int unique; QString origin; };
+        std::vector<IdxMeta> idx_metas;
+        while (sqlite3_step(statement) == SQLITE_ROW)
+        {
+            const char *idx_n = reinterpret_cast<const char *>(sqlite3_column_text(statement, 1));
+            int is_uniq = sqlite3_column_int(statement, 2);
+            const char *orig = reinterpret_cast<const char *>(sqlite3_column_text(statement, 3));
+            idx_metas.push_back({
+                idx_n != nullptr ? QString::fromUtf8(idx_n) : QString(),
+                is_uniq,
+                orig != nullptr ? QString::fromUtf8(orig) : QString()
+            });
+        }
+        sqlite3_finalize(statement);
+
+        std::vector<std::vector<QString>> actual_unique_constraints;
+        for (const auto &meta : idx_metas)
+        {
+            if (meta.unique != 0 && meta.origin != QStringLiteral("pk"))
+            {
+                const QString info_query = QStringLiteral("PRAGMA index_info('%1')").arg(meta.name);
+                sqlite3_stmt *info_stmt = nullptr;
+                std::vector<QString> cols;
+                if (sqlite3_prepare_v2(db, info_query.toUtf8().constData(), -1, &info_stmt, nullptr) == SQLITE_OK)
+                {
+                    while (sqlite3_step(info_stmt) == SQLITE_ROW)
+                    {
+                        const char *cn = reinterpret_cast<const char *>(sqlite3_column_text(info_stmt, 2));
+                        if (cn != nullptr)
+                            cols.push_back(QString::fromUtf8(cn));
+                    }
+                    sqlite3_finalize(info_stmt);
+                }
+                actual_unique_constraints.push_back(std::move(cols));
+            }
+        }
+
+        for (const UniqueConstraintSpec &expected_uq : spec.unique_constraints)
+        {
+            const auto it = std::find_if(actual_unique_constraints.begin(), actual_unique_constraints.end(),
+                                         [&](const std::vector<QString> &actual_cols) {
+                                             if (actual_cols.size() != expected_uq.columns.size())
+                                                 return false;
+                                             for (std::size_t i = 0; i < expected_uq.columns.size(); ++i)
+                                             {
+                                                 if (actual_cols[i].compare(expected_uq.columns[i], Qt::CaseInsensitive) != 0)
+                                                     return false;
+                                             }
+                                             return true;
+                                         });
+            if (it == actual_unique_constraints.end())
+            {
+                QStringList col_list;
+                for (const auto &c : expected_uq.columns)
+                    col_list.append(c);
+                return setError(err_msg, QStringLiteral("schema 表 %1 缺少唯一约束: %2")
+                                              .arg(spec.name, col_list.join(QStringLiteral(", "))));
+            }
+        }
+    }
+
+    if (!spec.indexes.empty())
+    {
+        const QString idx_query = QStringLiteral("PRAGMA index_list('%1')").arg(spec.name);
+        statement = nullptr;
+        if (sqlite3_prepare_v2(db, idx_query.toUtf8().constData(), -1, &statement, nullptr) != SQLITE_OK)
+            return setError(err_msg, sqliteMessage(db, QStringLiteral("读取表索引失败: %1").arg(spec.name)));
+
+        std::vector<QString> actual_idx_names;
+        while (sqlite3_step(statement) == SQLITE_ROW)
+        {
+            const char *idx_n = reinterpret_cast<const char *>(sqlite3_column_text(statement, 1));
+            if (idx_n != nullptr)
+                actual_idx_names.push_back(QString::fromUtf8(idx_n));
+        }
+        sqlite3_finalize(statement);
+
+        for (const IndexSpec &expected_idx : spec.indexes)
+        {
+            const auto it = std::find_if(actual_idx_names.begin(), actual_idx_names.end(),
+                                         [&](const QString &n) {
+                                             return n.compare(expected_idx.name, Qt::CaseInsensitive) == 0;
+                                         });
+            if (it == actual_idx_names.end())
+            {
+                return setError(err_msg, QStringLiteral("schema 表 %1 缺少索引: %2")
+                                              .arg(spec.name, expected_idx.name));
+            }
+        }
+    }
+
     return true;
 }
 
@@ -280,11 +570,6 @@ bool validateSchema(sqlite3 *db, SchemaKind kind, QString *err_msg)
 {
     for (const TableSpec &table : tablesFor(kind))
     {
-        bool exists = false;
-        if (!tableExists(db, table.name, exists, err_msg))
-            return false;
-        if (!exists)
-            return setError(err_msg, QStringLiteral("schema 缺少表: %1").arg(table.name));
         if (!validateTable(db, table, err_msg))
             return false;
     }
@@ -298,6 +583,13 @@ bool setUserVersion(sqlite3 *db, int version, QString *err_msg)
 }
 
 } // namespace
+
+static MigrationHook s_migration_hook = nullptr;
+
+void setMigrationHookForTest(MigrationHook hook)
+{
+    s_migration_hook = std::move(hook);
+}
 
 bool ensureSchema(sqlite3 *native_db, SchemaKind kind, QString *err_msg)
 {
@@ -332,6 +624,15 @@ bool ensureSchema(sqlite3 *native_db, SchemaKind kind, QString *err_msg)
             return false;
         }
         if (!exists && !executeResource(native_db, resource.resource_name, err_msg))
+        {
+            rollback();
+            return false;
+        }
+    }
+
+    if (s_migration_hook != nullptr)
+    {
+        if (!s_migration_hook(native_db, kind, version, kCurrentSchemaVersion, err_msg))
         {
             rollback();
             return false;
