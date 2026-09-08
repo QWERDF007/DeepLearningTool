@@ -225,9 +225,20 @@ void ModelTestTaskManager::shutdownCachedEvaluations()
     for (ModelEvaluationViewModel *evaluation : evaluation_cache_)
     {
         if (evaluation != nullptr)
+            evaluation->beginShutdown();
+    }
+    if (current_evaluation_ != nullptr)
+        current_evaluation_->beginShutdown();
+
+    evaluation_pool_.waitForDone();
+
+    for (ModelEvaluationViewModel *evaluation : evaluation_cache_)
+    {
+        if (evaluation != nullptr)
             evaluation->shutdown();
     }
-    evaluation_pool_.waitForDone();
+    if (current_evaluation_ != nullptr)
+        current_evaluation_->shutdown();
 }
 
 int ModelTestTaskManager::rowCount(const QModelIndex &parent) const

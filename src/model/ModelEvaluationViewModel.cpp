@@ -184,7 +184,7 @@ ModelEvaluationViewModel::~ModelEvaluationViewModel()
     shutdown();
 }
 
-void ModelEvaluationViewModel::shutdown()
+void ModelEvaluationViewModel::beginShutdown()
 {
     if (shutting_down_)
         return;
@@ -192,6 +192,8 @@ void ModelEvaluationViewModel::shutdown()
 
     if (cancel_token_ != nullptr)
         cancel_token_->store(true, std::memory_order_relaxed);
+    if (aggregation_cancel_token_ != nullptr)
+        aggregation_cancel_token_->store(true, std::memory_order_relaxed);
     discard_active_result_          = true;
     pending_evaluation_             = false;
     pending_notify_when_finished_   = false;
@@ -200,8 +202,18 @@ void ModelEvaluationViewModel::shutdown()
     ++aggregation_schedule_token_;
     evaluation_worker_active_ = false;
     cancel_token_.reset();
+}
+
+void ModelEvaluationViewModel::shutdown()
+{
+    beginShutdown();
     if (evaluation_pool_ != nullptr)
         evaluation_pool_->waitForDone();
+}
+
+std::shared_ptr<std::atomic_bool> ModelEvaluationViewModel::activeAggregationCancelToken() const
+{
+    return aggregation_cancel_token_;
 }
 
 QThreadPool *ModelEvaluationViewModel::evaluationPool() const
@@ -570,6 +582,10 @@ void ModelEvaluationViewModel::invalidate(const evaluation::ViewState state)
         cancel_token_->store(true, std::memory_order_relaxed);
         discard_active_result_ = true;
     }
+    if (aggregation_cancel_token_ != nullptr)
+    {
+        aggregation_cancel_token_->store(true, std::memory_order_relaxed);
+    }
     clearEvaluation({}, state);
     if (!worker_active)
     {
@@ -937,6 +953,9 @@ void ModelEvaluationViewModel::scheduleRebuildFilteredAggregates()
     if (shutting_down_)
         return;
 
+    if (aggregation_cancel_token_ != nullptr)
+        aggregation_cancel_token_->store(true, std::memory_order_relaxed);
+
     if (suppress_aggregation_rebuild_ || !available_ || aggregation_rebuild_scheduled_)
         return;
 
@@ -985,8 +1004,14 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
     if (!available_)
         return;
 
+    if (aggregation_cancel_token_ != nullptr)
+        aggregation_cancel_token_->store(true, std::memory_order_relaxed);
+    aggregation_cancel_token_ = std::make_shared<std::atomic_bool>(false);
+    const auto active_cancel_token = aggregation_cancel_token_;
+
     const int revision = ++aggregation_revision_;
     EvaluationAggregateInput input;
+    input.cancel_token = active_cancel_token;
     input.class_catalog = class_catalog_;
     for (const EvaluationMetricRecord &metric : per_class_metrics_->records())
     {
@@ -1122,15 +1147,18 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
 
     const QPointer<ModelEvaluationViewModel> guard(this);
     evaluationPool()->start(
-        [guard, revision, input = std::move(input)]() mutable
+        [guard, revision, active_cancel_token, input = std::move(input)]() mutable
         {
-            if (guard.isNull())
+            if (guard.isNull() || (active_cancel_token && active_cancel_token->load(std::memory_order_relaxed)))
                 return;
-            EvaluationAggregateOutput output = aggregateEvaluation(input);
+            EvaluationAggregateOutput output = aggregateEvaluation(input, active_cancel_token);
+            if (active_cancel_token && active_cancel_token->load(std::memory_order_relaxed))
+                return;
             QMetaObject::invokeMethod(guard,
-                                      [guard, revision, output = std::move(output)]() mutable
+                                      [guard, revision, active_cancel_token, output = std::move(output)]() mutable
                                       {
                                           if (guard.isNull() || guard->shutting_down_
+                                              || (active_cancel_token && active_cancel_token->load(std::memory_order_relaxed))
                                               || guard->aggregation_revision_ != revision)
                                               return;
                                           for (auto &rec : output.per_class_metrics)

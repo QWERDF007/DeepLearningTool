@@ -92,7 +92,17 @@ public:
      *
      * 调用方应在项目关闭时调用本函数完成当前 ViewModel 的收尾。
      */
+    /**
+     * @brief 提前向评估和聚合执行者发送取消请求并关闭接收入口。
+     *
+     * 在共享线程池等待所有执行者收敛前调用，避免等待期间遗漏取消。
+     */
+    void beginShutdown();
+
     void shutdown();
+
+    /** @brief 获取当前活跃的聚合取消令牌（用于测试观测和生命周期验证）。 */
+    std::shared_ptr<std::atomic_bool> activeAggregationCancelToken() const;
 
     /** @brief 评估数据是否有效且可用。 */
     bool        available() const;
@@ -347,6 +357,7 @@ private:
     bool                              shutting_down_{false};
     bool                              discard_active_result_{false};
     std::shared_ptr<std::atomic_bool> cancel_token_;
+    std::shared_ptr<std::atomic_bool> aggregation_cancel_token_;
     bool                              notify_when_finished_{false};
     bool                              pending_evaluation_{false};
     bool                              pending_notify_when_finished_{false};

@@ -360,6 +360,54 @@ private slots:
             QVERIFY(col_key != QStringLiteral("0"));
         }
     }
+
+    void rapidFilterChangesCancelActiveAggregationWork()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 dog = fixture.addClass(QStringLiteral("Dog"), QStringLiteral("normal"));
+        const qint64 cat_img = fixture.addImage(QStringLiteral("cat_img"));
+        const qint64 dog_img = fixture.addImage(QStringLiteral("dog_img"));
+        QVERIFY(cat >= 0 && dog >= 0 && cat_img >= 0 && dog_img >= 0);
+        QVERIFY(fixture.addDetectionLabel(cat_img, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.addDetectionLabel(dog_img, dog, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({cat, dog}));
+        QVERIFY(fixture.writePrediction(
+            cat_img, detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10)));
+        QVERIFY(fixture.writePrediction(
+            dog_img, detectionPrediction(static_cast<int>(dog), QStringLiteral("Dog"), 0.9, 0, 0, 10, 10)));
+
+        DetectionEvaluationViewModel view_model;
+        view_model.setEvaluationOptions(optionsFor(fixture, evaluation::Method::Detection));
+        view_model.evaluate();
+        QTRY_COMPARE_WITH_TIMEOUT(view_model.stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QVERIFY(view_model.available());
+
+        // 切换类别筛选触发聚合计算
+        view_model.setClassFilter({cat});
+        QTRY_VERIFY_WITH_TIMEOUT(view_model.activeAggregationCancelToken() != nullptr, 2000);
+        auto token1 = view_model.activeAggregationCancelToken();
+        QVERIFY(token1 != nullptr);
+
+        // 快速再次切换筛选，旧的聚合令牌必须立刻收到取消，不能继续累积计算
+        view_model.setClassFilter({dog});
+        QVERIFY(token1->load(std::memory_order_relaxed));
+        QTRY_VERIFY_WITH_TIMEOUT(view_model.activeAggregationCancelToken() != token1, 2000);
+        auto token2 = view_model.activeAggregationCancelToken();
+        QVERIFY(token2 != nullptr);
+        QVERIFY(token2 != token1);
+
+        // 再次清空筛选，token2 必须立刻收到取消
+        view_model.clearFilters();
+        QVERIFY(token2->load(std::memory_order_relaxed));
+
+        // 关闭时收敛
+        view_model.shutdown();
+        if (auto token3 = view_model.activeAggregationCancelToken())
+            QVERIFY(token3->load(std::memory_order_relaxed));
+    }
 };
 
 REGISTER_TEST(ModelEvaluationViewModelTest)

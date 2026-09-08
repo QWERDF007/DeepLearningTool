@@ -140,9 +140,18 @@ double imageScore(const EvaluationImageRecord &record)
     return record.max_prediction_score;
 }
 
-EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &input)
+EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &input,
+                                              const std::shared_ptr<std::atomic_bool> &cancel_token)
 {
+    const auto &token = cancel_token != nullptr ? cancel_token : input.cancel_token;
+    const auto isCancelled = [&token]()
+    {
+        return token != nullptr && token->load(std::memory_order_relaxed);
+    };
+
     EvaluationAggregateOutput output;
+    if (isCancelled())
+        return output;
     const QString             matrix_fn = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
     const QString             matrix_fp = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
     const QString matrix_unmatched_fn   = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::UnmatchedGroundTruth);
@@ -154,6 +163,8 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
     AggregateCounts            overall;
     for (const EvaluationAggregateInput::InstanceEvent &record : input.instances)
     {
+        if (isCancelled())
+            return {};
         // 异常检测事件的预测类别是内部 Good/Anomaly 二元展示值，不能混入
         // 项目数据库提供的全局类别目录。
         if (!input.anomaly_detection)
@@ -201,6 +212,8 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         matrix.clear();
         for (const EvaluationImageRecord &image : input.images)
         {
+            if (isCancelled())
+                return {};
             const bool    ground_truth_anomaly = isAnomalyImage(image, input.confidence_threshold, false);
             const bool    predicted_anomaly    = isAnomalyImage(image, input.confidence_threshold, true);
             const QString row                  = predicted_anomaly ? QStringLiteral("1") : QStringLiteral("0");
@@ -217,6 +230,8 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         // 多个 FP/FN，使图像指标与二元混淆矩阵不一致。
         for (const EvaluationImageRecord &image : input.images)
         {
+            if (isCancelled())
+                return {};
             const bool ground_truth_anomaly = isAnomalyImage(image, input.confidence_threshold, false);
             const bool predicted_anomaly    = isAnomalyImage(image, input.confidence_threshold, true);
             if (ground_truth_anomaly && predicted_anomaly)
@@ -231,6 +246,8 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
     {
         for (const EvaluationImageRecord &image : input.images)
         {
+            if (isCancelled())
+                return {};
             QSet<int> gt_classes;
             QSet<int> pred_classes;
             for (const int class_id : gtClassIds(image))
@@ -424,14 +441,17 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         output.confusion = std::move(cells);
     }
 
+    if (isCancelled())
+        return {};
+
     EvaluationThresholdSearchResult filtered_threshold_search;
     if (input.threshold_search_is_complete)
         filtered_threshold_search = input.threshold_search;
     else if (input.anomaly_detection)
-        filtered_threshold_search = searchAnomalyThresholdForImages(input.images);
+        filtered_threshold_search = searchAnomalyThresholdForImages(input.images, token);
     else
         filtered_threshold_search = searchInstanceThresholdForImages(
-            input.images, input.iou_threshold, input.matching_strategy, input.class_ids);
+            input.images, input.iou_threshold, input.matching_strategy, input.class_ids, token);
     const EvaluationThresholdSearchResult *threshold_search = &filtered_threshold_search;
     QList<QVariantMap> primary_charts;
     QList<QVariantMap> secondary_charts;
@@ -443,6 +463,8 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
     // 异常分布图由当前过滤后的图像记录派生，因此跳过 Service 原始描述符。
     for (const QVariantMap &descriptor : input.chart_descriptors)
     {
+        if (isCancelled())
+            return {};
         const QString chart_id    = descriptor.value(evaluation::fieldName(evaluation::Field::ChartId)).toString();
         const QString filter_kind = descriptor.value(evaluation::fieldName(evaluation::Field::FilterKind)).toString();
         if (chart_id == evaluation::chartIdKey(evaluation::ChartId::AnomalyScoreDistribution))

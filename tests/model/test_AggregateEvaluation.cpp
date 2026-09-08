@@ -250,6 +250,36 @@ private slots:
                      pr_datasets.at(1).toMap().value(evaluation::fieldName(evaluation::Field::SeriesKind)).toString()),
                  evaluation::SeriesKind::BestThreshold);
     }
+
+    void cancellationAbortsAggregateEvaluationEarly()
+    {
+        EvaluationAggregateInput input;
+        input.has_instance_metrics = true;
+        input.has_image_metrics = true;
+        input.has_confusion_matrix = true;
+        input.class_catalog = {{1, QStringLiteral("Cat")}, {2, QStringLiteral("Dog")}};
+        input.instances = {{evaluation::Status::TruePositive, QStringLiteral("Cat"), QStringLiteral("Cat"), 1, 1},
+                           {evaluation::Status::FalsePositive, {}, QStringLiteral("Cat"), -1, 1}};
+
+        EvaluationImageRecord bad;
+        bad.id = 1;
+        bad.dataset_id = 10;
+        bad.gt.push_back(EvaluationGroundTruthData{1, 1, QStringLiteral("Cat"), {}, {}, {}, false});
+        bad.predictions.push_back(EvaluationPredictionData{QStringLiteral("p"), 1, 1,
+                                                             QStringLiteral("Cat"), 0.8, {}, {}, {}});
+        rebuildImageDerivedValues(bad);
+        input.images = {bad};
+
+        auto cancel_token = std::make_shared<std::atomic_bool>(true);
+        input.cancel_token = cancel_token;
+
+        const EvaluationAggregateOutput output = aggregateEvaluation(input, cancel_token);
+        QVERIFY(output.instance_metrics.empty());
+        QVERIFY(output.image_metrics.empty());
+        QVERIFY(output.per_class_metrics.empty());
+        QVERIFY(output.confusion.empty());
+        QVERIFY(output.charts.empty());
+    }
 };
 
 REGISTER_TEST(AggregateEvaluationTest)

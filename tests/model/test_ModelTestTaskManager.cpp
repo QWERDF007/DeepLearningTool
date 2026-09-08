@@ -31,6 +31,8 @@ public:
     inline static std::atomic_bool cancel_block{false};
     inline static std::atomic_bool cancel_observed{false};
     inline static std::atomic_int  active{0};
+    inline static std::atomic_int  entered_count{0};
+    inline static std::atomic_int  cancel_observed_count{0};
 
     static void reset()
     {
@@ -38,6 +40,8 @@ public:
         cancel_block.store(false, std::memory_order_relaxed);
         cancel_observed.store(false, std::memory_order_relaxed);
         active.store(0, std::memory_order_relaxed);
+        entered_count.store(0, std::memory_order_relaxed);
+        cancel_observed_count.store(0, std::memory_order_relaxed);
     }
 
 protected:
@@ -46,11 +50,14 @@ protected:
                                QString *err_msg) override
     {
         active.fetch_add(1, std::memory_order_relaxed);
+        entered_count.fetch_add(1, std::memory_order_release);
         first_entered.store(true, std::memory_order_release);
         while (!cancel_block.load(std::memory_order_acquire)
                || !cancelled(scratch_.cancel_token))
             QThread::msleep(1);
         cancel_observed.store(true, std::memory_order_release);
+        if (cancelled(scratch_.cancel_token))
+            cancel_observed_count.fetch_add(1, std::memory_order_release);
         const bool result = DetectionEvaluationEngine::computeInstanceCounts(images, classes, per_class, overall,
                                                                                err_msg);
         active.fetch_sub(1, std::memory_order_relaxed);
@@ -219,6 +226,65 @@ private slots:
         QCOMPARE(manager.count(), 0);
     }
 
+    void shutdownWithMultipleControlledEvaluationsCancelsAllExecutorsBeforeWaiting()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat   = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 image = fixture.addImage(QStringLiteral("cat"));
+        QVERIFY(cat >= 0 && image >= 0);
+        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({cat}));
+        QVERIFY(fixture.writePrediction(
+            image, detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10)));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+        QString       error;
+        const auto    record = model_manager.addModelRecord(QStringLiteral("Managed"), QStringLiteral("ultralytics"),
+                                                           QStringLiteral("YOLOv8"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+        TaskManager task_manager;
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, &task_manager);
+        manager.setModelUuid(record.uuid);
+        QCOMPARE(manager.count(), 1);
+        auto *first_evaluation = manager.currentEvaluation();
+        QVERIFY(first_evaluation != nullptr);
+        const QString first_uuid = manager.currentTaskUuid();
+
+        const QString second_uuid = manager.createTask(QStringLiteral("Task 2"));
+        QVERIFY(!second_uuid.isEmpty());
+        QCOMPARE(manager.count(), 2);
+        auto *second_evaluation = manager.currentEvaluation();
+        QVERIFY(second_evaluation != nullptr);
+        QVERIFY(second_evaluation != first_evaluation);
+
+        BlockingEvaluationEngine::reset();
+        BlockingEvaluationEngine::cancel_block.store(true, std::memory_order_release);
+        EvaluationEngineRegistry::instance().registerEngine(
+            evaluation::Method::Detection, []() { return std::make_unique<BlockingEvaluationEngine>(); });
+        RestoreDetectionEvaluationEngine restore_registration;
+
+        first_evaluation->setEvaluationOptions(evaluationOptionsFor(fixture));
+        second_evaluation->setEvaluationOptions(evaluationOptionsFor(fixture));
+
+        first_evaluation->evaluate();
+        second_evaluation->evaluate();
+
+        QTRY_VERIFY_WITH_TIMEOUT(BlockingEvaluationEngine::entered_count.load(std::memory_order_acquire) == 2, 5000);
+        QCOMPARE(BlockingEvaluationEngine::active.load(std::memory_order_acquire), 2);
+
+        QElapsedTimer shutdown_timer;
+        shutdown_timer.start();
+        manager.shutdown();
+
+        QVERIFY2(shutdown_timer.elapsed() < 3000, "关闭超时，执行者未在等待前全部收到取消导致死锁或超时");
+        QCOMPARE(BlockingEvaluationEngine::cancel_observed_count.load(std::memory_order_acquire), 2);
+        QCOMPARE(BlockingEvaluationEngine::active.load(std::memory_order_acquire), 0);
+        QVERIFY(!first_evaluation->available());
+        QVERIFY(!second_evaluation->available());
+    }
 };
 
 REGISTER_TEST(ModelTestTaskManagerTest)

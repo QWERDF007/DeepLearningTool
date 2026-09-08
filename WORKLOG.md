@@ -47,6 +47,30 @@
 
 ---
 
+## 2026-09-08 — 统一模型评估与聚合任务的关闭收敛与快速取消
+
+**目标**
+- 解决测试任务管理器在关闭时，对缓存的评估任务逐个调用 shutdown 并在首个任务上等待共享线程池，导致后续并发评估未被及时取消而死锁/超时的问题。
+- 解决视图模型快速切换筛选时，旧的聚合计算未被真正中断而持续累积占用后台线程的问题。
+- 保证多评估任务与筛选聚合能够协同取消、安全结束、不发布迟到结果且不强杀线程。
+
+**当前状态**
+- 已完成：在 `ModelTestTaskManager::shutdownCachedEvaluations` 中改为两阶段收敛：第一阶段向所有缓存评估及当前评估发送 `beginShutdown()` 广播取消；第二阶段由共享线程池 `evaluation_pool_` 统一 `waitForDone()`；第三阶段再由各执行者完成析构收尾。
+- 已完成：在 `ModelEvaluationViewModel` 中实现 `beginShutdown()` 和 `activeAggregationCancelToken()`，并引入 `aggregation_cancel_token_`；当切换筛选或调度新聚合时立即取消上一轮未完成的聚合 worker。
+- 已完成：在 `aggregateEvaluation` 中引入 `cancel_token` 协作取消机制，在实例、图像、混淆矩阵、阈值搜索及图表构建阶段检查取消并提前终止。
+- 已完成：在 `test_AggregateEvaluation.cpp` 中新增 `cancellationAbortsAggregateEvaluationEarly` 测试；在 `test_ModelEvaluationViewModel.cpp` 中新增 `rapidFilterChangesCancelActiveAggregationWork` 测试；在 `test_ModelTestTaskManager.cpp` 中新增 `shutdownWithMultipleControlledEvaluationsCancelsAllExecutorsBeforeWaiting` 测试。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_evaluation_tests dltool_model_tasks_tests --parallel 4` → 构建通过。
+- `ctest --test-dir build -C Release -R '^dltool_model_evaluation_tests$' -V` → 10/10 全部通过（包含聚合取消与快速切换筛选测试）。
+- `ctest --test-dir build -C Release -R '^dltool_model_tasks_tests$' -V` → 全部通过（包含受控双评估并发运行并关闭测试）。
+
+**下一步**
+- 提交本阶段代码：`refactor: 统一模型评估与聚合任务的关闭收敛与快速取消`。
+- 推进 Ticket 05：收敛模型操作恢复及异步生命周期。
+
+---
+
 ## 2026-09-08 — 项目关闭等待期间拒绝新数据写入
 
 **目标**

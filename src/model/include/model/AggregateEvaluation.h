@@ -10,6 +10,8 @@
 #include <QString>
 #include <QVariantList>
 #include <QVariantMap>
+#include <atomic>
+#include <memory>
 #include <vector>
 
 namespace dltool::model {
@@ -44,7 +46,8 @@ struct MODEL_API EvaluationAggregateInput
     bool                         has_confusion_matrix{false};                                ///< 是否包含混淆矩阵。
     bool                         anomaly_detection{false};                                   ///< 是否为异常检测。
     EvaluationThresholdSearchResult threshold_search;                                        ///< 当前完整评估的阈值搜索结果。
-    bool                         threshold_search_is_complete{false};                       ///< 当前图像范围是否仍是完整评估范围。
+    bool                              threshold_search_is_complete{false};                       ///< 当前图像范围是否仍是完整评估范围。
+    std::shared_ptr<std::atomic_bool> cancel_token;                                             ///< 协作取消令牌，置位后提前终止计算。
 };
 
 /**
@@ -104,6 +107,7 @@ MODEL_API double imageScore(const EvaluationImageRecord &record);
  * @param input 聚合评估输入。
  * @return 聚合评估输出。
  */
-MODEL_API EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &input);
+MODEL_API EvaluationAggregateOutput aggregateEvaluation(
+    const EvaluationAggregateInput &input, const std::shared_ptr<std::atomic_bool> &cancel_token = nullptr);
 
 } // namespace dltool::model
