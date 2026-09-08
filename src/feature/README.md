@@ -13,6 +13,8 @@
 - 小样本学习的数据准备、FS-SAM2 进程、任务中心状态和项目目录落盘复用普通模型任务链路；预测结果导入由 `FewShotLearningController` 在测试任务完成后触发。
 - `FeatureManager` 继续向 QML 暴露 `imageSearch`、`smartAnnotation` 和 `fewShotLearning` 属性，保持页面调用方式稳定。
 
+Feature 控制器的项目关闭顺序、线程等待和迟到回调规则见 [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)；搜索和聚类的后台进度回调在控制器进入关闭状态后不再投递到全局进度模型，行为测试见 [`tests/feature/test_FeatureLifecycle.cpp`](../../tests/feature/test_FeatureLifecycle.cpp)。
+
 ## 与其他模块的关系
 
 - 依赖 `settings` 读取图像搜索、智能标注和小样本学习配置。

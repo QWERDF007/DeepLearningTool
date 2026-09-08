@@ -22,8 +22,17 @@ set(_feature_test_environment
     "PATH=path_list_prepend:${ONNXRUNTIME_ROOT}/lib"
     "PATH=path_list_prepend:F:/Github/faiss/install/bin"
     "PATH=path_list_prepend:D:/Software/dev/mkl/mkl/bin"
-    # This target directory must be prepended after the shared runtime root so
-    # a stale or incomplete copy in build/bin cannot shadow the built module.
+    # CTest applies ENVIRONMENT_MODIFICATION entries in order.  The module
+    # directories are repeated after the shared runtime root so every current
+    # build-tree DLL wins over a stale copy in build/bin.
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_common>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_core>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_parameter>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_settings>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_database>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_data>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_model>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_ui>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_feature>"
     "DLT_RUNTIME_ROOT=set:${CMAKE_BINARY_DIR}/bin"
 )

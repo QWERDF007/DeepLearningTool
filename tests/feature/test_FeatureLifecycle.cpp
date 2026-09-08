@@ -1,13 +1,17 @@
 #include "feature/FeatureManager.h"
+#include "feature/FeatureDataProvider.h"
 #include "feature/ImageSearchController.h"
 #include "feature/RoiClusterController.h"
+#include "feature/SearchControllerBase.h"
 #include "feature/SmartAnnotationController.h"
 #include "core/CoreDef.h"
 #include "data/DataManager.h"
 #include "data/DataOperationWorkflow.h"
 #include "database/DataBase.h"
+#include "ui/ProgressManager.h"
 
 #include <QDateTime>
+#include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QTemporaryDir>
@@ -15,8 +19,128 @@
 #include <QThread>
 
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 
 namespace {
+
+class SearchExecutorGate final
+{
+public:
+    void reset()
+    {
+        std::lock_guard lock(mutex_);
+        started_ = false;
+        release_ = false;
+    }
+
+    void waitUntilReleased()
+    {
+        {
+            std::lock_guard lock(mutex_);
+            started_ = true;
+        }
+        condition_.notify_all();
+
+        std::unique_lock lock(mutex_);
+        condition_.wait(lock, [this]() { return release_; });
+    }
+
+    bool started() const
+    {
+        std::lock_guard lock(mutex_);
+        return started_;
+    }
+
+    void release()
+    {
+        {
+            std::lock_guard lock(mutex_);
+            release_ = true;
+        }
+        condition_.notify_all();
+    }
+
+private:
+    mutable std::mutex      mutex_;
+    std::condition_variable condition_;
+    bool                    started_{false};
+    bool                    release_{false};
+};
+
+SearchExecutorGate search_executor_gate;
+
+class SearchLifecycleProvider final : public dltool::feature::FeatureDataProvider
+{
+public:
+    SearchLifecycleProvider()
+        : FeatureDataProvider(nullptr)
+    {
+    }
+};
+
+class SearchLifecycleController final : public dltool::feature::SearchControllerBase
+{
+public:
+    explicit SearchLifecycleController(dltool::feature::FeatureDataProvider *provider)
+        : SearchControllerBase(dltool::settings::generated::AccessorKey::ImageSearch)
+        , provider_(provider)
+    {
+    }
+
+protected:
+    dltool::feature::FeatureDataProvider *dataProvider() const override
+    {
+        return provider_;
+    }
+
+    SearchExecutor searchExecutor() const override
+    {
+        return &SearchLifecycleController::execute;
+    }
+
+    void buildSearchRequest(SearchRequest &request) const override
+    {
+        request.image_config.model_name   = "test";
+        request.image_config.feature_name = "test";
+    }
+
+    QString validationErrorForRequest(const SearchRequest &) const override
+    {
+        return {};
+    }
+
+    void collectGallery(SearchRequest &request, const SearchScope &) override
+    {
+        request.gallery_images.push_back({1, std::filesystem::path("gallery")});
+    }
+
+    void collectQuery(SearchRequest &request, const std::vector<int64_t> &) override
+    {
+        request.query_images.push_back(std::filesystem::path("query"));
+    }
+
+    void applyResults(const SearchResponse &) override {}
+    void clearProviderResults() override {}
+
+private:
+    static void execute(const SearchRequest &, SearchResponse &response, const BuildProgressCallback &progress)
+    {
+        search_executor_gate.waitUntilReleased();
+
+        irt::features::ImageSearchBuildProgress build_progress;
+        build_progress.stage          = irt::features::ImageSearchBuildStage::LoadingModel;
+        build_progress.processed_count = 1;
+        build_progress.total_count     = 1;
+        progress(build_progress);
+
+        response.success = true;
+        response.summary = QStringLiteral("测试搜索完成");
+    }
+
+    dltool::feature::FeatureDataProvider *provider_{nullptr};
+};
 
 class FeatureLifecycleTest : public QObject
 {
@@ -109,6 +233,32 @@ private slots:
         QVERIFY2(shutdown_timer.elapsed() < 2000,
                  qPrintable(QStringLiteral("RoiClusterController 关闭等待数据操作超时: %1 ms")
                                 .arg(shutdown_timer.elapsed())));
+    }
+
+    void searchProgressCallbacksAreDiscardedAfterShutdown()
+    {
+        search_executor_gate.reset();
+
+        SearchLifecycleProvider   provider;
+        SearchLifecycleController controller(&provider);
+        auto                     *progress = dltool::ui::ProgressManager::getInstance();
+        progress->reset();
+
+        QVERIFY(controller.search({QVariant(1)}, {}));
+        QTRY_VERIFY_WITH_TIMEOUT(search_executor_gate.started(), 2000);
+
+        std::thread releaser([]()
+                             {
+                                 QThread::msleep(200);
+                                 search_executor_gate.release();
+                             });
+        controller.shutdown();
+        releaser.join();
+
+        progress->reset();
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+        QCOMPARE(progress->getMessage(), QString());
+        QVERIFY(!controller.isRunning());
     }
 };
 

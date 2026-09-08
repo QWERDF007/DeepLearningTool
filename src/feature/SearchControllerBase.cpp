@@ -561,7 +561,7 @@ SearchControllerBase::BuildProgressCallback SearchControllerBase::createBuildPro
         }
 
         const QString message = formatBuildProgressMessage(progress, gallery_count);
-        if (!message.isEmpty())
+        if (!message.isEmpty() && controller && !controller->shutting_down_.load(std::memory_order_acquire))
             addProgressMessage(spdlog::level::info, message);
     };
 }
