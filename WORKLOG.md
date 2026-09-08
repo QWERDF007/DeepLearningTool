@@ -43,6 +43,33 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
+## 2026-09-08 — 修复模型创建复制的恢复窗口
+
+**目标**
+- 交付 Ticket 12：修复模型创建复制的恢复窗口（创建复制中断后仍能恢复一致模型）。
+- 数据库已提交、日志 ID 未更新时中断，可用预先持久化 UUID 找回记录。
+- 清理失败保留恢复凭证，重复恢复不丢数据、不创建重复模型。
+- 使用已有存储 Adapter 注入失败，重开核对目录、记录与复制范围。
+- 遵循 TDD，先增加失败/约束测试，再实现功能，并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `IModelRecordStore` 接口中增加 `findModelByUuid` 方法并在 `ProjectModelRecordStore` 与测试 mock `MemoryModelRecordStore` 中实现。
+- 已完成：在 `tests/model/test_ModelLifecycle.cpp` 建立 4 组 TDD 测试：
+  1. `recoversModelByPersistedUuidWhenJournalModelIdNotUpdated`：模拟数据库提交后、日志记录 model_id 尚未回写即中断的场景，验证恢复过程成功通过预先持久化的 UUID 找回记录并继续完成模型目录落地与日志清理。
+  2. `retainsJournalWhenCleanupFailsAndRepeatedRecoveryDoesNotDuplicateOrLoseData`：模拟目标模型已存在但暂存区清理失败的场景，验证恢复操作保留日志凭证、重复调用 `recoverPending()` 不丢失数据、不生成重复记录，故障解除后能安全收尾。
+  3. `recoversInterruptedModelCopyAndVerifiesDirectoryRecordAndCopyScope`：注入发布失败并执行恢复，核对目标目录存在且无残留操作日志，核对 UUID/名称/架构等数据库记录一致，核对模型训练参数、数据集选择配置与权重文件均完整复制。
+  4. `recoversInterruptedModelCopyWithNoWeightsAndVerifiesCopyScope`：验证不复制权重时的复制与中断恢复行为，核对参数与数据集完整复制，且目标模型权重目录中绝不生成非预期的权重文件。
+- 已完成：重构 `src/model/ModelLifecycle.cpp` 的 `recoverPending()` 逻辑，支持未绑定 model_id 时通过 uuid 兜底找回模型记录，并在 Create/Copy 恢复流程中严格校验暂存区与目标目录清理操作的返回值，确保清理失败时不误删日志凭证。
+- 未完成：无。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_storage_params_tests` → 构建成功，零编译警告/错误。
+- `ctest --test-dir build --output-on-failure -C Release -R "dltool_model_storage_params_tests"` → 100% 测试通过（包含 ModelLifecycleTest 全部 6 个测试用例：正常生命周期、注入失败回滚、UUID 兜底找回、清理失败保留凭证、复制中断恢复核对全范围、不含权重复制中断恢复）。
+- `ctest --test-dir build --output-on-failure -C Release -R "dltool_model_(evaluation|dataset|tasks|storage_params)_tests"` → 4/4 核心测试全部 Passed。
+
+**下一步**
+- 开始 Ticket 13：`docs/refactor-tickets/13-model-eval-config-sync.md`，收敛模型评估配置同步逻辑。
+
 ## 2026-09-08 — 统一格式转换的几何语义
 
 **目标**

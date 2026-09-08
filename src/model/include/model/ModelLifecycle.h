@@ -63,6 +63,7 @@ public:
     virtual bool updateModelName(qint64 model_id, const QString &name, qint64 mtime, QString &error) = 0;
     virtual bool deleteModel(qint64 model_id, QString &error) = 0;
     virtual bool findModel(qint64 model_id, ModelLifecycleRecord &record, bool &exists, QString &error) const = 0;
+    virtual bool findModelByUuid(const QString &uuid, ModelLifecycleRecord &record, bool &exists, QString &error) const = 0;
 };
 
 /**
@@ -77,6 +78,7 @@ public:
     bool updateModelName(qint64 model_id, const QString &name, qint64 mtime, QString &error) override;
     bool deleteModel(qint64 model_id, QString &error) override;
     bool findModel(qint64 model_id, ModelLifecycleRecord &record, bool &exists, QString &error) const override;
+    bool findModelByUuid(const QString &uuid, ModelLifecycleRecord &record, bool &exists, QString &error) const override;
 
 private:
     dltool::database::ProjectDataBase *database_{nullptr};

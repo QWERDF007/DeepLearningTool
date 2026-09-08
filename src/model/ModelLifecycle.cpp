@@ -245,6 +245,44 @@ bool ProjectModelRecordStore::findModel(const qint64 model_id, ModelLifecycleRec
     return true;
 }
 
+bool ProjectModelRecordStore::findModelByUuid(const QString &uuid, ModelLifecycleRecord &record, bool &exists,
+                                              QString &error) const
+{
+    exists = false;
+    if (database_ == nullptr)
+        return setError(error, QStringLiteral("项目数据库为空"));
+    if (uuid.trimmed().isEmpty())
+        return true;
+
+    std::vector<int64_t>              model_ids;
+    std::vector<QString>              uuids;
+    std::vector<QString>              names;
+    std::vector<QString>              framework_names;
+    std::vector<QString>              model_architectures;
+    std::vector<qint64>               ctimes;
+    std::vector<qint64>               mtimes;
+    std::vector<std::vector<uint8_t>> extra_data;
+    if (!database_->getAllModels(model_ids, uuids, names, framework_names, model_architectures, ctimes, mtimes,
+                                 extra_data, error))
+        return false;
+
+    for (size_t index = 0; index < uuids.size(); ++index)
+    {
+        if (uuids[index] != uuid)
+            continue;
+        record.model_id           = index < model_ids.size() ? model_ids[index] : -1;
+        record.uuid               = uuids[index];
+        record.name               = index < names.size() ? names[index] : QString();
+        record.framework_name     = index < framework_names.size() ? framework_names[index] : QString();
+        record.model_architecture = index < model_architectures.size() ? model_architectures[index] : QString();
+        record.ctime              = index < ctimes.size() ? ctimes[index] : 0;
+        record.mtime              = index < mtimes.size() ? mtimes[index] : 0;
+        exists                    = true;
+        return true;
+    }
+    return true;
+}
+
 ModelLifecycle::ModelLifecycle(IModelRecordStore &records, IModelStorageAdapter &storage)
     : records_(records)
     , storage_(storage)
@@ -340,10 +378,16 @@ ModelLifecycleResult ModelLifecycle::copy(const ModelLifecycleRecord &source, Mo
         database::ModelDataBase target_database(storage_.modelDatabasePathAt(journal.staging_path));
         QVariantMap                             train_params;
         QList<database::DatasetSelectionRecord> selections;
-        if (!source_database.readTrainParams(train_params, &error)
-            || !source_database.readDatasets(selections, &error)
-            || !target_database.replaceTrainParams(train_params, &error)
-            || !target_database.replaceDatasets(selections, &error))
+        bool db_ok = true;
+        if (!source_database.readTrainParams(train_params, &error))
+            db_ok = false;
+        else if (!source_database.readDatasets(selections, &error))
+            db_ok = false;
+        else if (!target_database.replaceTrainParams(train_params, &error))
+            db_ok = false;
+        else if (!target_database.replaceDatasets(selections, &error))
+            db_ok = false;
+        if (!db_ok)
         {
             QString cleanup_error;
             cleanupPath(storage_, journal.staging_path, cleanup_error);
@@ -502,10 +546,23 @@ ModelLifecycleResult ModelLifecycle::recoverPending()
 
         ModelLifecycleRecord record;
         bool                 exists = false;
-        if (!records_.findModel(journal.model_id, record, exists, error))
+        if (journal.model_id > 0)
         {
-            errors.push_back(error);
-            continue;
+            if (!records_.findModel(journal.model_id, record, exists, error))
+            {
+                errors.push_back(error);
+                continue;
+            }
+        }
+        if (!exists && !journal.uuid.isEmpty())
+        {
+            if (!records_.findModelByUuid(journal.uuid, record, exists, error))
+            {
+                errors.push_back(error);
+                continue;
+            }
+            if (exists)
+                journal.model_id = record.model_id;
         }
 
         const QString target = storage_.modelRoot(journal.target_name);
@@ -517,19 +574,20 @@ ModelLifecycleResult ModelLifecycle::recoverPending()
         case OperationKind::Copy:
             if (exists && QFileInfo::exists(target))
             {
-                cleanupPath(storage_, journal.staging_path, error);
-                recovered = true;
+                recovered = cleanupPath(storage_, journal.staging_path, error);
             }
             else if (exists && QDir(journal.staging_path).exists())
             {
                 recovered = storage_.moveDirectory(journal.staging_path, target, &error);
+                if (recovered && QDir(journal.staging_path).exists())
+                    recovered = cleanupPath(storage_, journal.staging_path, error);
             }
             else if (!exists)
             {
-                cleanupPath(storage_, journal.staging_path, error);
+                bool ok = cleanupPath(storage_, journal.staging_path, error);
                 if (QFileInfo::exists(target))
-                    cleanupPath(storage_, target, error);
-                recovered = true;
+                    ok = cleanupPath(storage_, target, error) && ok;
+                recovered = ok;
             }
             break;
         case OperationKind::Rename:
