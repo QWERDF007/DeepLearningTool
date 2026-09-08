@@ -241,6 +241,11 @@ DataManager::~DataManager()
 
 void DataManager::requestDataOperationCancel()
 {
+    if (active_export_cancel_token_)
+    {
+        active_export_cancel_token_->store(true);
+    }
+
     const QList<DataIO *> io_children = findChildren<DataIO *>();
     for (DataIO *io : io_children)
     {
@@ -1741,7 +1746,9 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
         int                          failed_count{0};
     };
 
-    auto                       state                = std::make_shared<ExportBatchState>();
+    auto state                      = std::make_shared<ExportBatchState>();
+    auto cancel_token               = std::make_shared<std::atomic_bool>(false);
+    active_export_cancel_token_     = cancel_token;
     state->task_id = QStringLiteral("export_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
 
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
@@ -1890,22 +1897,35 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                 result.error = QString("没有可导出的数据集");
             }
         },
-        [this, state, data_format, format_name, options](const DataOperationWorkflow::Result &result) mutable
+        [this, state, data_format, format_name, cancel_token, options](const DataOperationWorkflow::Result &result) mutable
         {
-            if (!result.success || state->items.empty())
+            const bool was_cancelled = (cancel_token && cancel_token->load()) || result.cancelled;
+            if (shutting_down_ || was_cancelled || !result.success || state->items.empty())
             {
                 setDataOperationRunning(false);
-                const QString message           = result.error.isEmpty() ? QString("没有可导出的数据集") : result.error;
-                const QString completed_message = QString("%1，%2，耗时 %3 ms")
+                const QString message = was_cancelled
+                                            ? QStringLiteral("导出已取消")
+                                            : (result.error.isEmpty() ? QStringLiteral("没有可导出的数据集") : result.error);
+                const QString completed_message = QStringLiteral("%1，%2，耗时 %3 ms")
                                                       .arg(message)
                                                       .arg(state->dataset_summary)
                                                       .arg(state->elapsed_timer.elapsed());
-                spdlog::error("导出失败: 格式={}, {}", format_name.toUtf8().constData(),
-                              completed_message.toUtf8().constData());
-                addProgressMessage(spdlog::level::err, completed_message, state->task_id);
+                if (was_cancelled)
+                {
+                    spdlog::warn("导出已取消: 格式={}, {}", format_name.toUtf8().constData(),
+                                 completed_message.toUtf8().constData());
+                    addProgressMessage(spdlog::level::warn, completed_message, state->task_id);
+                    ui::SignalHelper::notifyWarn(QStringLiteral("导出已取消"), completed_message);
+                }
+                else
+                {
+                    spdlog::error("导出失败: 格式={}, {}", format_name.toUtf8().constData(),
+                                  completed_message.toUtf8().constData());
+                    addProgressMessage(spdlog::level::err, completed_message, state->task_id);
+                    ui::SignalHelper::notifyError(QStringLiteral("导出失败"), completed_message);
+                }
                 QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "finishTask", Qt::QueuedConnection,
                                           Q_ARG(QString, state->task_id), Q_ARG(bool, false));
-                ui::SignalHelper::notifyError(QString("导出失败"), completed_message);
                 return;
             }
 
@@ -1913,18 +1933,31 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
             setDataOperationRunning(true);
             auto                                 start_next      = std::make_shared<std::function<void()>>();
             std::weak_ptr<std::function<void()>> weak_start_next = start_next;
-            *start_next = [this, data_format, format_name, options, state, weak_start_next]()
+            *start_next = [this, data_format, format_name, options, state, cancel_token, weak_start_next]()
             {
-                if (shutting_down_)
+                if (shutting_down_ || (cancel_token && cancel_token->load()))
                 {
                     setDataOperationRunning(false);
+                    const int     remaining_items = static_cast<int>(state->items.size()) - state->current;
+                    const QString message         = QStringLiteral("导出已取消: 成功 %1 个, 失败 %2 个, 未执行 %3 个，%4，耗时 %5 ms")
+                                                .arg(state->success_count)
+                                                .arg(state->failed_count)
+                                                .arg(std::max(0, remaining_items))
+                                                .arg(state->dataset_summary)
+                                                .arg(state->elapsed_timer.elapsed());
+                    spdlog::warn("导出已取消: 格式={}, {}", format_name.toUtf8().constData(),
+                                 message.toUtf8().constData());
+                    addProgressMessage(spdlog::level::warn, message, state->task_id);
+                    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "finishTask", Qt::QueuedConnection,
+                                              Q_ARG(QString, state->task_id), Q_ARG(bool, false));
+                    ui::SignalHelper::notifyWarn(QStringLiteral("导出已取消"), message);
                     return;
                 }
 
                 if (state->current >= static_cast<int>(state->items.size()))
                 {
                     const bool    success = state->success_count > 0 && state->failed_count == 0;
-                    const QString message = QString("导出完成: 成功 %1 个, 失败 %2 个，%3，耗时 %4 ms")
+                    const QString message = QStringLiteral("导出完成: 成功 %1 个, 失败 %2 个，%3，耗时 %4 ms")
                                                 .arg(state->success_count)
                                                 .arg(state->failed_count)
                                                 .arg(state->dataset_summary)
@@ -1937,35 +1970,40 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "finishTask", Qt::QueuedConnection,
                                               Q_ARG(QString, state->task_id), Q_ARG(bool, success));
                     if (success)
-                        ui::SignalHelper::notifySuccess(QString("导出完成"), message);
+                        ui::SignalHelper::notifySuccess(QStringLiteral("导出完成"), message);
                     else if (state->success_count > 0)
-                        ui::SignalHelper::notifyWarn(QString("导出完成"), message);
+                        ui::SignalHelper::notifyWarn(QStringLiteral("导出完成"), message);
                     else
-                        ui::SignalHelper::notifyError(QString("导出失败"), message);
+                        ui::SignalHelper::notifyError(QStringLiteral("导出失败"), message);
                     return;
                 }
 
+                const int       item_index    = state->current;
+                const int       total_items   = static_cast<int>(state->items.size());
                 ExportBatchItem item          = std::move(state->items[static_cast<size_t>(state->current++)]);
                 const int       dataset_index = state->current;
                 state->dataset_elapsed_timer.restart();
-                if (state->items.size() <= 3)
+                if (total_items <= 3)
                 {
                     const QString message
-                        = QString("开始导出数据集: %1 -> %2").arg(item.dataset.dataset_name, item.output_dir);
+                        = QStringLiteral("开始导出数据集: %1 -> %2").arg(item.dataset.dataset_name, item.output_dir);
                     spdlog::info("{}", message.toUtf8().constData());
                     addProgressMessage(spdlog::level::info, message, state->task_id);
                 }
                 else
                 {
                     addProgressMessage(spdlog::level::info,
-                                       QString("正在导出数据集 %1/%2").arg(dataset_index).arg(state->items.size()),
+                                       QStringLiteral("正在导出数据集 %1/%2: %3")
+                                           .arg(dataset_index)
+                                           .arg(total_items)
+                                           .arg(item.dataset.dataset_name),
                                        state->task_id);
                 }
 
                 DataIO *exporter = DataIO::createIO(data_format, this);
                 if (!exporter)
                 {
-                    addProgressMessage(spdlog::level::err, QString("不支持的数据格式"), state->task_id);
+                    addProgressMessage(spdlog::level::err, QStringLiteral("不支持的数据格式"), state->task_id);
                     ++state->failed_count;
                     if (auto next = weak_start_next.lock())
                     {
@@ -1976,9 +2014,13 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                 exporter->setTargetMethod(method_);
                 exporter->setTaskId(state->task_id);
 
+                const int range_min = item_index * 100 / total_items;
+                const int range_max = (item_index + 1) * 100 / total_items;
+                exporter->setProgressRange(range_min, range_max);
+
                 connect(
                     exporter, &DataIO::exportFinished, this,
-                    [this, exporter, state, dataset_name = item.dataset.dataset_name,
+                    [this, exporter, state, cancel_token, dataset_name = item.dataset.dataset_name,
                      start_next = weak_start_next.lock()](
                         bool success, const QString &message)
                     {
@@ -1988,13 +2030,21 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                             return;
                         }
 
+                        const bool was_cancelled = (cancel_token && cancel_token->load())
+                                                   || message.contains(QStringLiteral("取消"));
+                        if (was_cancelled && cancel_token)
+                        {
+                            cancel_token->store(true);
+                        }
+
                         if (success)
                             ++state->success_count;
-                        else
+                        else if (!was_cancelled)
                             ++state->failed_count;
+
                         const qint64 dataset_elapsed_ms
                             = state->dataset_elapsed_timer.isValid() ? state->dataset_elapsed_timer.elapsed() : 0;
-                        const QString completed_message = QString("数据集 %1：%2，耗时 %3 ms")
+                        const QString completed_message = QStringLiteral("数据集 %1：%2，耗时 %3 ms")
                                                               .arg(dataset_name)
                                                               .arg(message)
                                                               .arg(dataset_elapsed_ms);
@@ -2002,11 +2052,14 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                         {
                             if (success)
                                 spdlog::info("导出数据集结束: {}", completed_message.toUtf8().constData());
+                            else if (was_cancelled)
+                                spdlog::warn("导出数据集已取消: {}", completed_message.toUtf8().constData());
                             else
                                 spdlog::error("导出数据集失败: {}", completed_message.toUtf8().constData());
                         }
-                        addProgressMessage(success ? spdlog::level::info : spdlog::level::err, completed_message,
-                                           state->task_id);
+                        addProgressMessage(success ? spdlog::level::info
+                                                   : (was_cancelled ? spdlog::level::warn : spdlog::level::err),
+                                           completed_message, state->task_id);
                         exporter->deleteLater();
                         if (start_next)
                             (*start_next)();

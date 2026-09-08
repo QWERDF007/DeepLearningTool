@@ -939,6 +939,23 @@ bool DataIO::validateExportOutput(const int data_format, const ExportDataset &da
                 err_msg = QStringLiteral("COCO 标注文件内容不完整");
                 return false;
             }
+
+            const QString images_dir = QDir(output_dir).filePath(QStringLiteral("images"));
+            for (const auto &img_entry : document["images"])
+            {
+                if (!img_entry.contains("file_name") || !img_entry["file_name"].is_string())
+                {
+                    err_msg = QStringLiteral("COCO 标注文件图像清单缺少 file_name 字段");
+                    return false;
+                }
+                const QString   file_name = QString::fromStdString(img_entry["file_name"].get<std::string>());
+                const QFileInfo img_fi(QDir(images_dir).filePath(file_name));
+                if (!img_fi.isFile() || img_fi.size() <= 0)
+                {
+                    err_msg = QStringLiteral("COCO 导出清单中的图像文件不存在或无效: %1").arg(file_name);
+                    return false;
+                }
+            }
         }
         catch (const std::exception &e)
         {
@@ -1245,17 +1262,21 @@ void DataIO::startExport(ExportDataset dataset, const QString &output_dir, const
 
 void DataIO::updateProgress(int progress, const QString &message)
 {
+    const int clamped_progress  = std::clamp(progress, 0, 100);
+    const int effective_progress = min_progress_percent_
+                                 + (clamped_progress * (max_progress_percent_ - min_progress_percent_) / 100);
+
     if (!task_id_.isEmpty())
     {
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "updateProgress", Qt::QueuedConnection,
-                                  Q_ARG(int, progress), Q_ARG(QString, task_id_));
+                                  Q_ARG(int, effective_progress), Q_ARG(QString, task_id_));
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
                                   Q_ARG(int, spdlog::level::info), Q_ARG(QString, message), Q_ARG(QString, task_id_));
     }
     else
     {
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "updateProgress", Qt::QueuedConnection,
-                                  Q_ARG(int, progress));
+                                  Q_ARG(int, effective_progress));
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
                                   Q_ARG(int, spdlog::level::info), Q_ARG(QString, message));
     }
@@ -1984,6 +2005,12 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir, const int threa
             nlohmann::json image_json;
         };
 
+        if (isCancelRequested())
+        {
+            emit exportFinished(false, QStringLiteral("导出已取消"));
+            return;
+        }
+
         std::vector<CocoImageExportResult> image_results(image_count);
         parallelFor(static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
                     [&](const std::size_t index)
@@ -2011,6 +2038,12 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir, const int threa
                         updateProgress(5 + static_cast<int>(completed * 40 / std::max<std::size_t>(1, total)),
                                        QString("已复制 COCO 图像 %1/%2").arg(completed).arg(total));
                     });
+
+        if (isCancelRequested())
+        {
+            emit exportFinished(false, QStringLiteral("导出已取消"));
+            return;
+        }
 
         for (int i = 0; i < image_count; ++i)
         {
@@ -2085,6 +2118,12 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir, const int threa
                         updateProgress(50 + static_cast<int>(completed * 40 / std::max<std::size_t>(1, total)),
                                        QString("已生成 COCO 标注 %1/%2").arg(completed).arg(total));
                     });
+
+        if (isCancelRequested())
+        {
+            emit exportFinished(false, QStringLiteral("导出已取消"));
+            return;
+        }
 
         for (int i = 0; i < label_count; ++i)
         {
@@ -2634,6 +2673,12 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir, const int th
             QString error;
         };
 
+        if (isCancelRequested())
+        {
+            emit exportFinished(false, QStringLiteral("导出已取消"));
+            return;
+        }
+
         std::vector<LabelMeExportResult> results(image_count);
         parallelFor(
             static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
@@ -2712,6 +2757,12 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir, const int th
                 updateProgress(5 + static_cast<int>(completed * 90 / std::max<std::size_t>(1, total)),
                                QString("已处理 LabelMe 导出 %1/%2").arg(completed).arg(total));
             });
+
+        if (isCancelRequested())
+        {
+            emit exportFinished(false, QStringLiteral("导出已取消"));
+            return;
+        }
 
         for (int i = 0; i < image_count; ++i)
         {
@@ -3208,6 +3259,12 @@ void MaskIO::doExport(ExportDataset dataset, QString output_dir, QVariantMap opt
             int     skipped_labels{0};
         };
 
+        if (isCancelRequested())
+        {
+            emit exportFinished(false, QStringLiteral("导出已取消"));
+            return;
+        }
+
         std::vector<MaskExportResult> results(image_count);
         parallelFor(
             static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
@@ -3265,6 +3322,12 @@ void MaskIO::doExport(ExportDataset dataset, QString output_dir, QVariantMap opt
                 updateProgress(5 + static_cast<int>(completed * 90 / std::max<std::size_t>(1, total)),
                                QString("已写入 Mask %1/%2").arg(completed).arg(total));
             });
+
+        if (isCancelRequested())
+        {
+            emit exportFinished(false, QStringLiteral("导出已取消"));
+            return;
+        }
 
         int written_label_count = 0;
         int skipped_label_count = 0;
@@ -3624,6 +3687,12 @@ void FolderIO::doExport(ExportDataset dataset, QString output_dir, const int thr
             QString error;
         };
 
+        if (isCancelRequested())
+        {
+            emit exportFinished(false, QStringLiteral("导出已取消"));
+            return;
+        }
+
         std::vector<FolderExportResult> results(image_count);
         parallelFor(static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
                     [&](const std::size_t index)
@@ -3640,6 +3709,12 @@ void FolderIO::doExport(ExportDataset dataset, QString output_dir, const int thr
                         updateProgress(5 + static_cast<int>(completed * 90 / std::max<std::size_t>(1, total)),
                                        QString("已导出图像 %1/%2").arg(completed).arg(total));
                     });
+
+        if (isCancelRequested())
+        {
+            emit exportFinished(false, QStringLiteral("导出已取消"));
+            return;
+        }
 
         int exported = 0;
         for (int i = 0; i < image_count; ++i)

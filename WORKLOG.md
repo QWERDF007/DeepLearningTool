@@ -43,7 +43,29 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
-**边界**：不动导出的字段结构；不顺手重构 handler。
+## 2026-09-08 — 规范批量导出取消作用域与产物清单校验
+
+**目标**
+- 解决批量导出在取消后仍继续启动后续数据集，无法真正停止整批任务的问题。
+- 确保导出目标目录存在旧文件时，未执行项绝不能计入成功，目标旧文件完整保留。
+- 统一 Folder、Mask、LabelMe、COCO 在取消时的结果契约：立即退出、报告“导出已取消”、丢弃暂存产物、不触碰目标目录已有文件。
+- 批次进度按数据集数量分区平滑映射（setProgressRange），开始日志记录数据集清单与格式，结束耗时与实际成功/失败/未执行统计严格一致。
+
+**当前状态**
+- 已完成：在 `DataIO` 中增加 `setProgressRange(min, max)` 并在 `updateProgress` 中进行区间映射，避免批量导出进度条在各数据集之间反复跳回 0；规范四大导出器（FolderIO、MaskIO、LabelMeIO、COCOIO）取消契约，在前后 worker 边界严格拦截并统一发送 `exportFinished(false, "导出已取消")`。
+- 已完成：在 `DataIO::validateExportOutput` 中增强清单校验，对于 COCO 严格核对 `instances.json` 中图像清单对应的物理文件存在性与大小，对于 Folder/Mask/LabelMe 严格核对清单完整性。
+- 已完成：在 `DataManager` 中引入 `active_export_cancel_token_`；在 `requestDataOperationCancel` 中触发标记；在 `exportDatasets` 的数据准备阶段与数据集遍历循环中增加协作取消检测，取消后立即终止整批任务，向用户发送警告通知并记录未执行数据集数量。
+- 已完成：在 `tests/data/test_DataIOExport.cpp` 中编写 TDD 测试 `exportersUseConsistentContractOnCancellation` 与 `manifestValidationVerifiesFileExistenceAndContent`；在 `tests/project/test_DataExport.cpp` 中编写真实项目环境集成测试 `batchExportCancellationStopsSubsequentDatasetsAndPreservesTarget`。
+
+**验证证据**
+- `ctest --test-dir build -C Release -R "^dltool_data_data_ioexport_tests$" --output-on-failure` → 9/9 全部 Passed (0.62 sec)。
+- `ctest --test-dir build -C Release -R "^dltool_model_data_export_test$" --output-on-failure` → 4/4 全部 Passed (3.29 sec)，覆盖双数据集批量取消、未执行项不计入成功、旧产物完整性保护。
+
+**下一步**
+- 提交本阶段代码：`refactor: 规范批量导出取消作用域与产物清单校验`。
+- 推进 Ticket 08。
+
+---
 
 ## 2026-09-08 — 覆盖导出暂存校验与源文件防覆盖保护
 

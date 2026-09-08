@@ -270,6 +270,134 @@ private slots:
         QVERIFY(!err.contains(app_dir));
     }
 
+    void exportersUseConsistentContractOnCancellation()
+    {
+        const QVector<int> formats = {
+            dltool::data::DataFormat::Folder,
+            dltool::data::DataFormat::Mask,
+            dltool::data::DataFormat::LabelMe,
+            dltool::data::DataFormat::COCO,
+        };
+
+        for (const int format : formats)
+        {
+            QTemporaryDir temporary_dir;
+            QVERIFY(temporary_dir.isValid());
+
+            dltool::data::ExportDataset dataset;
+            dataset.dataset_name = QStringLiteral("cancel-contract-test");
+            for (int index = 0; index < 20; ++index)
+            {
+                const QString image_path = QDir(temporary_dir.path()).filePath(QString("source_%1.png").arg(index));
+                QImage        image(QSize(32, 32), QImage::Format_RGB32);
+                image.fill(Qt::blue);
+                QVERIFY(image.save(image_path));
+
+                dltool::data::ExportImage export_image;
+                export_image.image_id = index + 1;
+                export_image.path     = image_path;
+                export_image.width    = image.width();
+                export_image.height   = image.height();
+                dataset.images.push_back(std::move(export_image));
+
+                dltool::data::ExportLabel export_label;
+                export_label.label_id       = index + 1;
+                export_label.image_id       = index + 1;
+                export_label.label_class_id = 1;
+                export_label.data           = {
+                    {QStringLiteral("x"),      0 },
+                    {QStringLiteral("y"),      0 },
+                    {QStringLiteral("width"),  10},
+                    {QStringLiteral("height"), 10}
+                };
+                dataset.labels.push_back(std::move(export_label));
+            }
+            dataset.label_classes.push_back({1, QStringLiteral("defect"), QStringLiteral("#FF0000")});
+
+            const QString target_dir = QDir(temporary_dir.path()).filePath(QString("target_%1").arg(format));
+
+            auto *exporter = dltool::data::DataIO::createIO(format, this);
+            QVERIFY(exporter != nullptr);
+
+            bool    finished = false;
+            bool    success  = true;
+            QString message;
+
+            connect(exporter, &dltool::data::DataIO::exportFinished, this,
+                    [&finished, &success, &message](const bool s, const QString &m)
+                    {
+                        finished = true;
+                        success  = s;
+                        message  = m;
+                    });
+
+            exporter->startExport(dataset, target_dir);
+            exporter->requestCancel();
+
+            QTRY_VERIFY_WITH_TIMEOUT(finished, 5000);
+            QCOMPARE(success, false);
+            QVERIFY2(message.contains(QStringLiteral("取消")), qPrintable(message));
+
+            exporter->deleteLater();
+        }
+    }
+
+    void manifestValidationVerifiesFileExistenceAndContent()
+    {
+        QTemporaryDir temporary_dir;
+        QVERIFY(temporary_dir.isValid());
+
+        dltool::data::ExportDataset dataset;
+        dataset.dataset_name = QStringLiteral("manifest-test");
+        dltool::data::ExportImage image;
+        image.image_id = 1;
+        image.path     = QStringLiteral("sample.png");
+        dataset.images.push_back(image);
+
+        // 1. COCO with instances.json referencing non-existent image
+        {
+            const QString coco_dir = QDir(temporary_dir.path()).filePath(QStringLiteral("coco_test"));
+            QVERIFY(QDir().mkpath(QDir(coco_dir).filePath(QStringLiteral("images"))));
+            QVERIFY(QDir().mkpath(QDir(coco_dir).filePath(QStringLiteral("annotations"))));
+
+            QImage dummy_img(QSize(16, 16), QImage::Format_RGB32);
+            dummy_img.fill(Qt::white);
+            QVERIFY(dummy_img.save(QDir(coco_dir).filePath(QStringLiteral("images/actual_sample.png"))));
+
+            // write instances.json with mismatched file_name
+            QFile json_file(QDir(coco_dir).filePath(QStringLiteral("annotations/instances.json")));
+            QVERIFY(json_file.open(QIODevice::WriteOnly | QIODevice::Text));
+            json_file.write(R"({
+  "images": [
+    {"id": 1, "file_name": "missing_file.png", "width": 16, "height": 16}
+  ],
+  "annotations": [],
+  "categories": [
+    {"id": 1, "name": "defect"}
+  ]
+})");
+            json_file.close();
+
+            QString err;
+            QVERIFY(!dltool::data::DataIO::validateExportOutput(dltool::data::DataFormat::COCO, dataset, coco_dir, {}, err));
+            QVERIFY2(err.contains(QStringLiteral("清单")) || err.contains(QStringLiteral("missing_file.png")) || err.contains(QStringLiteral("不存在")),
+                     qPrintable(err));
+        }
+
+        // 2. Folder with empty 0-byte image
+        {
+            const QString folder_dir = QDir(temporary_dir.path()).filePath(QStringLiteral("folder_test"));
+            QVERIFY(QDir().mkpath(folder_dir));
+            QFile empty_file(QDir(folder_dir).filePath(QStringLiteral("sample.png")));
+            QVERIFY(empty_file.open(QIODevice::WriteOnly));
+            empty_file.close(); // 0 bytes
+
+            QString err;
+            QVERIFY(!dltool::data::DataIO::validateExportOutput(dltool::data::DataFormat::Folder, dataset, folder_dir, {}, err));
+            QVERIFY2(err.contains(QStringLiteral("无效")) || err.contains(QStringLiteral("0")), qPrintable(err));
+        }
+    }
+
 private:
     dltool::data::LabelMeIO exporter_;
 };

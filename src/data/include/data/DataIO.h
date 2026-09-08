@@ -80,6 +80,11 @@ public:
     void setTargetMethod(int method) { target_method_ = method; }
     void setTaskId(const QString &task_id) { task_id_ = task_id; }
     QString taskId() const { return task_id_; }
+    void setProgressRange(int min_percent, int max_percent)
+    {
+        min_progress_percent_ = std::clamp(min_percent, 0, 100);
+        max_progress_percent_ = std::clamp(max_percent, min_progress_percent_, 100);
+    }
     void requestCancel();
     bool isCancelRequested() const;
     /**
@@ -105,6 +110,8 @@ signals:
 protected:
     int             target_method_{-1};
     QString         task_id_;
+    int             min_progress_percent_{0};
+    int             max_progress_percent_{100};
     std::atomic_bool cancel_requested_{false};
     DataOperationWorkflow::HandlePtr operation_handle_;
 

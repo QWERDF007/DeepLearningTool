@@ -504,6 +504,7 @@ private:
     bool dataset_deletion_running_{false};
     bool image_operation_running_{false};
     bool data_operation_running_{false};
+    std::shared_ptr<std::atomic_bool> active_export_cancel_token_;
     std::vector<DataOperationWorkflow::HandlePtr> operation_handles_;
     bool                               shutting_down_{false};
     bool                               cleaned_up_{false};
