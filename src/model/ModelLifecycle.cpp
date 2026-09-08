@@ -447,6 +447,10 @@ ModelLifecycleResult ModelLifecycle::rename(const qint64 model_id, const QString
     journal.target_name     = new_name.trimmed();
     journal.staging_path    = storage_.operationStagingRoot(journal.id);
     QString error;
+    ModelLifecycleRecord existing_record;
+    bool                 record_exists = false;
+    if (records_.findModel(model_id, existing_record, record_exists, error) && record_exists)
+        journal.uuid = existing_record.uuid;
     if (!writeJournal(storage_, journal, error))
         return failed(error, journal.id);
     if (!storage_.moveDirectory(source, journal.staging_path, &error))
@@ -474,8 +478,16 @@ ModelLifecycleResult ModelLifecycle::rename(const qint64 model_id, const QString
         return ModelLifecycleResult{ModelLifecycleState::Succeeded, model_id, journal.id, error, true};
 
     QString cleanup_error;
-    if (!removeJournal(storage_, journal.id, cleanup_error))
+    if (QDir(journal.staging_path).exists() && !cleanupPath(storage_, journal.staging_path, cleanup_error))
+    {
+        updateJournal(storage_, journal, QStringLiteral("cleanup-pending"), cleanup_error);
         return ModelLifecycleResult{ModelLifecycleState::Succeeded, model_id, journal.id, cleanup_error, true};
+    }
+    if (!removeJournal(storage_, journal.id, cleanup_error))
+    {
+        updateJournal(storage_, journal, QStringLiteral("cleanup-pending"), cleanup_error);
+        return ModelLifecycleResult{ModelLifecycleState::Succeeded, model_id, journal.id, cleanup_error, true};
+    }
     return ModelLifecycleResult{ModelLifecycleState::Succeeded, model_id, journal.id, {}, false};
 }
 
@@ -493,6 +505,10 @@ ModelLifecycleResult ModelLifecycle::remove(const qint64 model_id, const QString
     journal.source_name      = name;
     journal.quarantine_path  = storage_.operationQuarantineRoot(journal.id);
     QString error;
+    ModelLifecycleRecord existing_record;
+    bool                 record_exists = false;
+    if (records_.findModel(model_id, existing_record, record_exists, error) && record_exists)
+        journal.uuid = existing_record.uuid;
     if (!writeJournal(storage_, journal, error))
         return failed(error, journal.id);
     if (!storage_.moveDirectory(source, journal.quarantine_path, &error))
@@ -521,7 +537,10 @@ ModelLifecycleResult ModelLifecycle::remove(const qint64 model_id, const QString
         return ModelLifecycleResult{ModelLifecycleState::Succeeded, model_id, journal.id, cleanup_error, true};
     }
     if (!removeJournal(storage_, journal.id, cleanup_error))
+    {
+        updateJournal(storage_, journal, QStringLiteral("cleanup-pending"), cleanup_error);
         return ModelLifecycleResult{ModelLifecycleState::Succeeded, model_id, journal.id, cleanup_error, true};
+    }
     return ModelLifecycleResult{ModelLifecycleState::Succeeded, model_id, journal.id, {}, false};
 }
 
@@ -594,31 +613,65 @@ ModelLifecycleResult ModelLifecycle::recoverPending()
             if (exists && record.name == journal.target_name)
             {
                 if (QFileInfo::exists(target))
+                {
                     recovered = cleanupPath(storage_, journal.staging_path, error);
+                }
                 else if (QDir(journal.staging_path).exists())
+                {
                     recovered = storage_.moveDirectory(journal.staging_path, target, &error);
+                    if (recovered && QDir(journal.staging_path).exists())
+                        recovered = cleanupPath(storage_, journal.staging_path, error);
+                }
             }
             else if (exists && record.name == journal.source_name)
             {
                 if (QFileInfo::exists(source))
+                {
                     recovered = cleanupPath(storage_, journal.staging_path, error);
+                }
                 else if (QDir(journal.staging_path).exists())
+                {
                     recovered = storage_.moveDirectory(journal.staging_path, source, &error);
+                    if (recovered && QDir(journal.staging_path).exists())
+                        recovered = cleanupPath(storage_, journal.staging_path, error);
+                }
                 else if (QFileInfo::exists(target))
+                {
                     recovered = storage_.moveDirectory(target, source, &error);
+                    if (recovered && QFileInfo::exists(target))
+                        recovered = cleanupPath(storage_, target, error);
+                }
+            }
+            else if (!exists)
+            {
+                bool ok = cleanupPath(storage_, journal.staging_path, error);
+                if (QFileInfo::exists(target))
+                    ok = cleanupPath(storage_, target, error) && ok;
+                if (QFileInfo::exists(source))
+                    ok = cleanupPath(storage_, source, error) && ok;
+                recovered = ok;
             }
             break;
         case OperationKind::Remove:
             if (exists)
             {
                 if (QFileInfo::exists(source))
+                {
                     recovered = cleanupPath(storage_, journal.quarantine_path, error);
+                }
                 else if (QDir(journal.quarantine_path).exists())
+                {
                     recovered = storage_.moveDirectory(journal.quarantine_path, source, &error);
+                    if (recovered && QDir(journal.quarantine_path).exists())
+                        recovered = cleanupPath(storage_, journal.quarantine_path, error);
+                }
             }
             else
             {
-                recovered = cleanupPath(storage_, journal.quarantine_path, error);
+                bool ok = cleanupPath(storage_, journal.quarantine_path, error);
+                if (QFileInfo::exists(source))
+                    ok = cleanupPath(storage_, source, error) && ok;
+                recovered = ok;
             }
             break;
         }

@@ -43,6 +43,35 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
+## 2026-09-08 — 完成模型重命名删除的中断恢复
+
+**目标**
+- 交付 Ticket 13：完成模型重命名删除的中断恢复（重命名和删除中断后目录与模型列表仍可恢复）。
+- 逐个验证目录发布、数据库更新和日志清理前后失败。
+- 名称冲突、文件占用、权限失败有明确结果，恢复可重复执行。
+- 重开后模型身份、内部引用及目录一致，不保留平行旧入口。
+- 遵循 TDD，先增加失败/约束测试，再实现功能，并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `tests/model/test_ModelLifecycle.cpp` 建立 7 组 TDD 测试覆盖重命名与删除的中断恢复与异常分支：
+  1. `renameFailsImmediatelyWhenTargetDirectoryAlreadyExists`：验证目标目录已存在时的快速路径检查与冲突拦截，不污染数据库与操作日志。
+  2. `renameRollbackFailureRequiresRecoveryAndRecoveryRestoresSourceModel`：验证重命名数据库更新失败且回滚移动被阻止时，恢复流程成功将暂存区目录恢复到源模型目录，不留孤立记录。
+  3. `renamePublishFailureRequiresRecoveryAndRecoveryPublishesTargetWithFullConsistency`：真实项目库环境测试，验证重命名发布失败后恢复流程完成新模型目录发布，核对 ID/UUID 身份不变、新名称生效、源目录与旧名称彻底清除无平行旧入口，且 `model.db` 参数、数据集选择与 `train/weights/best.pt` 权重文件完整无损。
+  4. `renameCleanupFailureRetainsJournalAndRepeatedRecoveryDoesNotDuplicateOrLoseData`：验证重命名暂存区或日志清理失败时保留恢复凭证，重复执行恢复不丢失数据、不生成重复记录，故障解除后成功完成清理。
+  5. `deleteRollbackFailureRequiresRecoveryAndRecoveryRestoresModel`：验证删除操作在数据库更新失败且回滚移动失败时，恢复流程成功将隔离区目录恢复回原模型目录，保留完整模型。
+  6. `deleteCleanupFailureRetainsJournalAndRepeatedRecoverySucceedsWithoutRecreatingModel`：真实项目库环境测试，验证删除提交后隔离区清理失败时保留凭证，重复恢复不会在数据库中复活模型，清理成功后彻底删除目录与日志。
+  7. `fileOccupancyOrPermissionFailureDuringRecoveryRetriesSafely`：模拟文件被其他进程占用或权限受阻导致的恢复中断，核对返回明确错误信息并保留凭证，占用释放后安全恢复。
+- 已完成：在 `src/model/ModelLifecycle.cpp` 中重命名与删除日志中写入预留的 `uuid` 字段，并在重命名和删除的收尾清理阶段增加状态流转与 cleanup-pending 状态更新，确保暂存/隔离区残留或日志删除失败时保留凭证；在 `recoverPending()` 中完善 Rename 与 Remove 各分支的目录复位、双向残留检查与孤立清理逻辑。
+- 未完成：无。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_storage_params_tests` → 构建成功，零编译警告/错误。
+- `ctest --test-dir build --output-on-failure -C Release -R "dltool_model_storage_params_tests"` → 100% 测试通过（包含 ModelLifecycleTest 全部 13 个测试用例）。
+- `ctest --test-dir build --output-on-failure -C Release -R "dltool_model_(evaluation|dataset|tasks|storage_params)_tests"` → 4/4 核心测试全部 Passed。
+
+**下一步**
+- 开始 Ticket 14：`docs/refactor-tickets/14-async-model-storage.md`，对齐模型异步存储能力。
+
 ## 2026-09-08 — 修复模型创建复制的恢复窗口
 
 **目标**

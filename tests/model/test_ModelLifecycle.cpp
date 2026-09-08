@@ -125,8 +125,11 @@ public:
 
     bool fail_publish{false};
     bool fail_cleanup{false};
+    int  keep_source_call_index{-1};
     int  move_calls{0};
     int  fail_publish_call_index{-1};
+    QSet<int> fail_move_call_indices;
+    QString custom_move_error;
 
     QString modelsRootPath() const override { return service.modelsRootPath(); }
     QString modelRoot(const QString &name) const override { return service.modelRoot(name); }
@@ -160,11 +163,18 @@ public:
     bool moveDirectory(const QString &source, const QString &target, QString *error) override
     {
         ++move_calls;
-        if (fail_publish && (fail_publish_call_index < 0 || move_calls == fail_publish_call_index))
+        if ((fail_publish && (fail_publish_call_index < 0 || move_calls == fail_publish_call_index))
+            || fail_move_call_indices.contains(move_calls))
         {
             if (error != nullptr)
-                *error = QStringLiteral("注入的模型目录发布失败");
+                *error = custom_move_error.isEmpty() ? QStringLiteral("注入的模型目录发布失败") : custom_move_error;
             return false;
+        }
+        if (keep_source_call_index == move_calls)
+        {
+            if (!service.copyDirectoryContents(source, target, error))
+                return false;
+            return true;
         }
         return service.moveDirectory(source, target, error);
     }
@@ -568,6 +578,356 @@ private slots:
         }
         const QString target_weight_path = QDir(storage.trainWeightsPathAt(target_root)).filePath(QStringLiteral("best.pt"));
         QVERIFY(!QFile::exists(target_weight_path));
+    }
+
+    void renameFailsImmediatelyWhenTargetDirectoryAlreadyExists()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        MemoryModelRecordStore records;
+        const ModelLifecycleRecord source = makeRecord(QStringLiteral("rename-src"));
+        const qint64                 model_id = 1;
+        ModelLifecycleRecord          stored   = source;
+        stored.model_id                        = model_id;
+        records.records.insert(model_id, stored);
+        TestStorageAdapter storage(directory.path());
+        QString            error;
+        QVERIFY(storage.service.ensureModelStorage(source.name, &error));
+        // Target directory already exists on disk
+        QVERIFY(storage.service.ensureModelStorage(QStringLiteral("rename-dest"), &error));
+        ModelLifecycle lifecycle(records, storage);
+
+        const ModelLifecycleResult result = lifecycle.rename(model_id, source.name, QStringLiteral("rename-dest"));
+        QVERIFY(!result.succeeded());
+        QVERIFY(!result.recoveryRequired());
+        QCOMPARE(result.error, QStringLiteral("模型重命名路径无效或目标已存在"));
+        QVERIFY(QDir(storage.modelRoot(source.name)).exists());
+        QVERIFY(QDir(storage.modelRoot(QStringLiteral("rename-dest"))).exists());
+        QVERIFY(QDir(storage.operationRoot()).entryList({QStringLiteral("*.json")}, QDir::Files).isEmpty());
+    }
+
+    void renameRollbackFailureRequiresRecoveryAndRecoveryRestoresSourceModel()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        MemoryModelRecordStore records;
+        const ModelLifecycleRecord source = makeRecord(QStringLiteral("rename-rb-src"));
+        const qint64                 model_id = 1;
+        ModelLifecycleRecord          stored   = source;
+        stored.model_id                        = model_id;
+        records.records.insert(model_id, stored);
+        TestStorageAdapter storage(directory.path());
+        QString            error;
+        QVERIFY(storage.service.ensureModelStorage(source.name, &error));
+
+        // Move call 1: source -> staging (succeeds)
+        // DB update fails
+        records.fail_rename = true;
+        // Move call 2: rollback move staging -> source (fails!)
+        storage.fail_move_call_indices.insert(2);
+        storage.custom_move_error = QStringLiteral("回滚目录移动被阻止");
+        ModelLifecycle lifecycle(records, storage);
+
+        const ModelLifecycleResult result = lifecycle.rename(model_id, source.name, QStringLiteral("rename-rb-dest"));
+        QVERIFY(!result.succeeded());
+        QVERIFY(result.recoveryRequired());
+
+        // Staging directory exists, source does not exist
+        QVERIFY(!QDir(storage.modelRoot(source.name)).exists());
+        QVERIFY(QDir(storage.operationStagingRoot(result.operation_id)).exists());
+
+        // Now clear failure and recover
+        records.fail_rename = false;
+        storage.fail_move_call_indices.clear();
+        const ModelLifecycleResult recovery = lifecycle.recoverPending();
+        QVERIFY2(recovery.succeeded(), qPrintable(recovery.error));
+
+        // Source restored, target does not exist, journal removed
+        QVERIFY(QDir(storage.modelRoot(source.name)).exists());
+        QVERIFY(!QDir(storage.modelRoot(QStringLiteral("rename-rb-dest"))).exists());
+        QVERIFY(QDir(storage.operationRoot()).entryList({QStringLiteral("*.json")}, QDir::Files).isEmpty());
+        QCOMPARE(records.records.value(model_id).name, source.name);
+    }
+
+    void renamePublishFailureRequiresRecoveryAndRecoveryPublishesTargetWithFullConsistency()
+    {
+        testsupport::EvaluationFixture fixture(0);
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ProjectModelRecordStore           records(&database);
+        TestStorageAdapter                storage(fixture.rootPath());
+
+        ModelLifecycleRecord source = makeRecord(QStringLiteral("model-rename-full"));
+        qint64               source_id = -1;
+        QString              err;
+        QVERIFY(records.addModel(source, source_id, err));
+        source.model_id = source_id;
+
+        // Initialize model storage, train params, datasets, and weights
+        QVERIFY(storage.service.ensureModelStorage(source.name, &err));
+        {
+            dltool::database::ModelDataBase source_db(storage.modelDatabasePath(source.name));
+            const QVariantMap params{{QStringLiteral("train"),
+                                      QVariantMap{{QStringLiteral("epochs"), 80}, {QStringLiteral("batch"), 32}}}};
+            QVERIFY(source_db.replaceTrainParams(params, &err));
+            QList<dltool::database::DatasetSelectionRecord> selections{
+                {QStringLiteral("train"), 1, {100, 200}}
+            };
+            QVERIFY(source_db.replaceDatasets(selections, &err));
+        }
+        const QString source_weights_dir = storage.trainWeightsPathAt(storage.modelRoot(source.name));
+        QVERIFY(QDir().mkpath(source_weights_dir));
+        QFile source_weight_file(QDir(source_weights_dir).filePath(QStringLiteral("best.pt")));
+        QVERIFY(source_weight_file.open(QIODevice::WriteOnly));
+        source_weight_file.write("weights-payload-rename-consistency");
+        source_weight_file.close();
+
+        // Inject directory publish failure (call 2 fails)
+        storage.fail_publish            = true;
+        storage.fail_publish_call_index = 2;
+        ModelLifecycle lifecycle(records, storage);
+
+        const QString new_name = QStringLiteral("model-renamed-complete");
+        const ModelLifecycleResult result = lifecycle.rename(source.model_id, source.name, new_name);
+        QVERIFY(!result.succeeded());
+        QVERIFY(result.recoveryRequired());
+
+        // Target directory not published yet, source moved to staging
+        QVERIFY(!QDir(storage.modelRoot(new_name)).exists());
+        QVERIFY(!QDir(storage.modelRoot(source.name)).exists());
+
+        // Clear failure and recover
+        storage.fail_publish = false;
+        const ModelLifecycleResult recovery = lifecycle.recoverPending();
+        QVERIFY2(recovery.succeeded(), qPrintable(recovery.error));
+
+        // 1. 目录一致：新目录存在，旧目录绝不平行存在
+        const QString target_root = storage.modelRoot(new_name);
+        QVERIFY(QDir(target_root).exists());
+        QVERIFY(!QDir(storage.modelRoot(source.name)).exists());
+        QVERIFY(QDir(storage.operationRoot()).entryList({QStringLiteral("*.json")}, QDir::Files).isEmpty());
+
+        // 2. 身份与记录一致：ID/UUID保持一致，新名称生效，旧名称不存在
+        ModelLifecycleRecord renamed_record;
+        bool                 exists = false;
+        QVERIFY(records.findModel(source.model_id, renamed_record, exists, err));
+        QVERIFY(exists);
+        QCOMPARE(renamed_record.model_id, source.model_id);
+        QCOMPARE(renamed_record.uuid, source.uuid);
+        QCOMPARE(renamed_record.name, new_name);
+
+        ModelLifecycleRecord by_uuid_record;
+        QVERIFY(records.findModelByUuid(source.uuid, by_uuid_record, exists, err));
+        QVERIFY(exists);
+        QCOMPARE(by_uuid_record.name, new_name);
+
+        // 3. 内部引用与数据一致：model.db 和 weights 完好无损
+        {
+            dltool::database::ModelDataBase target_db(storage.modelDatabasePath(new_name));
+            QVariantMap target_params;
+            QVERIFY(target_db.readTrainParams(target_params, &err));
+            const QVariantMap train_group = target_params.value(QStringLiteral("train")).toMap();
+            QCOMPARE(train_group.value(QStringLiteral("epochs")).toInt(), 80);
+            QCOMPARE(train_group.value(QStringLiteral("batch")).toInt(), 32);
+
+            QList<dltool::database::DatasetSelectionRecord> target_selections;
+            QVERIFY(target_db.readDatasets(target_selections, &err));
+            QCOMPARE(target_selections.size(), 1);
+            QCOMPARE(target_selections.front().class_ids, (QList<qint64>{100, 200}));
+        }
+        const QString target_weight_path = QDir(storage.trainWeightsPathAt(target_root)).filePath(QStringLiteral("best.pt"));
+        QVERIFY(QFile::exists(target_weight_path));
+        QFile target_weight_file(target_weight_path);
+        QVERIFY(target_weight_file.open(QIODevice::ReadOnly));
+        QCOMPARE(target_weight_file.readAll(), QByteArray("weights-payload-rename-consistency"));
+    }
+
+    void renameCleanupFailureRetainsJournalAndRepeatedRecoveryDoesNotDuplicateOrLoseData()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        MemoryModelRecordStore records;
+        const ModelLifecycleRecord source = makeRecord(QStringLiteral("rename-cleanup-src"));
+        const qint64                 model_id = 1;
+        ModelLifecycleRecord          stored   = source;
+        stored.model_id                        = model_id;
+        records.records.insert(model_id, stored);
+        TestStorageAdapter storage(directory.path());
+        QString            error;
+        QVERIFY(storage.service.ensureModelStorage(source.name, &error));
+
+        storage.fail_cleanup = true;
+        storage.keep_source_call_index = 2;
+        ModelLifecycle lifecycle(records, storage);
+
+        const QString new_name = QStringLiteral("rename-cleanup-dest");
+        const ModelLifecycleResult result = lifecycle.rename(model_id, source.name, new_name);
+        QVERIFY(result.succeeded());
+        QVERIFY(result.cleanup_pending);
+
+        // Target directory published, DB updated
+        QVERIFY(QDir(storage.modelRoot(new_name)).exists());
+        QVERIFY(!QDir(storage.modelRoot(source.name)).exists());
+
+        // First recovery with fail_cleanup still true -> fails, journal retained
+        const ModelLifecycleResult recovery1 = lifecycle.recoverPending();
+        QVERIFY(!recovery1.succeeded());
+        QVERIFY(recovery1.recoveryRequired());
+        QCOMPARE(QDir(storage.operationRoot()).entryList({QStringLiteral("*.json")}, QDir::Files).size(), 1);
+
+        // Second recovery with fail_cleanup = false -> succeeds, journal removed
+        storage.fail_cleanup = false;
+        const ModelLifecycleResult recovery2 = lifecycle.recoverPending();
+        QVERIFY2(recovery2.succeeded(), qPrintable(recovery2.error));
+        QVERIFY(QDir(storage.operationRoot()).entryList({QStringLiteral("*.json")}, QDir::Files).isEmpty());
+
+        // Model not duplicated or corrupted
+        QCOMPARE(records.records.size(), 1);
+        QCOMPARE(records.records.value(model_id).name, new_name);
+    }
+
+    void deleteRollbackFailureRequiresRecoveryAndRecoveryRestoresModel()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        MemoryModelRecordStore records;
+        const ModelLifecycleRecord source = makeRecord(QStringLiteral("del-rb-src"));
+        const qint64                 model_id = 1;
+        ModelLifecycleRecord          stored   = source;
+        stored.model_id                        = model_id;
+        records.records.insert(model_id, stored);
+        TestStorageAdapter storage(directory.path());
+        QString            error;
+        QVERIFY(storage.service.ensureModelStorage(source.name, &error));
+
+        records.fail_delete = true;
+        storage.fail_move_call_indices.insert(2);
+        storage.custom_move_error = QStringLiteral("删除回滚移动失败");
+        ModelLifecycle lifecycle(records, storage);
+
+        const ModelLifecycleResult result = lifecycle.remove(model_id, source.name);
+        QVERIFY(!result.succeeded());
+        QVERIFY(result.recoveryRequired());
+
+        // Quarantine exists, source does not exist
+        QVERIFY(!QDir(storage.modelRoot(source.name)).exists());
+        QVERIFY(QDir(storage.operationQuarantineRoot(result.operation_id)).exists());
+
+        // Clear failures and recover
+        records.fail_delete = false;
+        storage.fail_move_call_indices.clear();
+        const ModelLifecycleResult recovery = lifecycle.recoverPending();
+        QVERIFY2(recovery.succeeded(), qPrintable(recovery.error));
+
+        // Restored to source, quarantine cleaned up, journal removed
+        QVERIFY(QDir(storage.modelRoot(source.name)).exists());
+        QVERIFY(QDir(storage.operationRoot()).entryList({QStringLiteral("*.json")}, QDir::Files).isEmpty());
+        QCOMPARE(records.records.size(), 1);
+        QCOMPARE(records.records.value(model_id).name, source.name);
+    }
+
+    void deleteCleanupFailureRetainsJournalAndRepeatedRecoverySucceedsWithoutRecreatingModel()
+    {
+        testsupport::EvaluationFixture fixture(0);
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ProjectModelRecordStore           records(&database);
+        TestStorageAdapter                storage(fixture.rootPath());
+
+        ModelLifecycleRecord source = makeRecord(QStringLiteral("to-be-deleted-clean"));
+        qint64               source_id = -1;
+        QString              err;
+        QVERIFY(records.addModel(source, source_id, err));
+        source.model_id = source_id;
+
+        QVERIFY(storage.service.ensureModelStorage(source.name, &err));
+        {
+            dltool::database::ModelDataBase source_db(storage.modelDatabasePath(source.name));
+            const QVariantMap params{{QStringLiteral("train"),
+                                      QVariantMap{{QStringLiteral("epochs"), 10}}}};
+            QVERIFY(source_db.replaceTrainParams(params, &err));
+        }
+
+        storage.fail_cleanup = true;
+        ModelLifecycle lifecycle(records, storage);
+
+        const ModelLifecycleResult result = lifecycle.remove(source.model_id, source.name);
+        QVERIFY(result.succeeded());
+        QVERIFY(result.cleanup_pending);
+
+        // DB record is deleted
+        ModelLifecycleRecord lookup;
+        bool                 exists = false;
+        QVERIFY(records.findModel(source.model_id, lookup, exists, err));
+        QVERIFY(!exists);
+
+        // First recovery with fail_cleanup still true -> fails, journal retained
+        const ModelLifecycleResult recovery1 = lifecycle.recoverPending();
+        QVERIFY(!recovery1.succeeded());
+        QVERIFY(recovery1.recoveryRequired());
+        QCOMPARE(QDir(storage.operationRoot()).entryList({QStringLiteral("*.json")}, QDir::Files).size(), 1);
+
+        // Model not resurrected in DB
+        QVERIFY(records.findModel(source.model_id, lookup, exists, err));
+        QVERIFY(!exists);
+
+        // Second recovery with fail_cleanup = false -> succeeds, journal removed
+        storage.fail_cleanup = false;
+        const ModelLifecycleResult recovery2 = lifecycle.recoverPending();
+        QVERIFY2(recovery2.succeeded(), qPrintable(recovery2.error));
+        QVERIFY(QDir(storage.operationRoot()).entryList({QStringLiteral("*.json")}, QDir::Files).isEmpty());
+
+        // Model directory does not exist, DB has 0 records
+        QVERIFY(!QDir(storage.modelRoot(source.name)).exists());
+        QVERIFY(records.findModel(source.model_id, lookup, exists, err));
+        QVERIFY(!exists);
+    }
+
+    void fileOccupancyOrPermissionFailureDuringRecoveryRetriesSafely()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        MemoryModelRecordStore records;
+        const ModelLifecycleRecord source = makeRecord(QStringLiteral("lock-retry-src"));
+        const qint64                 model_id = 1;
+        ModelLifecycleRecord          stored   = source;
+        stored.model_id                        = model_id;
+        records.records.insert(model_id, stored);
+        TestStorageAdapter storage(directory.path());
+        QString            error;
+        QVERIFY(storage.service.ensureModelStorage(source.name, &error));
+
+        // Inject publish failure during rename
+        storage.fail_publish            = true;
+        storage.fail_publish_call_index = 2;
+        ModelLifecycle lifecycle(records, storage);
+
+        const QString new_name = QStringLiteral("lock-retry-dest");
+        const ModelLifecycleResult result = lifecycle.rename(model_id, source.name, new_name);
+        QVERIFY(!result.succeeded());
+        QVERIFY(result.recoveryRequired());
+
+        // Now during recovery: simulate file lock / permission failure on moveDirectory
+        storage.fail_publish = false;
+        storage.custom_move_error = QStringLiteral("拒绝访问：目标文件被占用");
+        storage.fail_move_call_indices.insert(3); // recovery will attempt move (call 3)
+
+        const ModelLifecycleResult recovery_fail = lifecycle.recoverPending();
+        QVERIFY(!recovery_fail.succeeded());
+        QVERIFY(recovery_fail.recoveryRequired());
+        QVERIFY(recovery_fail.error.contains(QStringLiteral("拒绝访问：目标文件被占用")));
+        QCOMPARE(QDir(storage.operationRoot()).entryList({QStringLiteral("*.json")}, QDir::Files).size(), 1);
+
+        // Lock released: retry recovery succeeds
+        storage.fail_move_call_indices.clear();
+        storage.custom_move_error.clear();
+        const ModelLifecycleResult recovery_ok = lifecycle.recoverPending();
+        QVERIFY2(recovery_ok.succeeded(), qPrintable(recovery_ok.error));
+        QVERIFY(QDir(storage.modelRoot(new_name)).exists());
+        QVERIFY(!QDir(storage.modelRoot(source.name)).exists());
+        QVERIFY(QDir(storage.operationRoot()).entryList({QStringLiteral("*.json")}, QDir::Files).isEmpty());
     }
 };
 
