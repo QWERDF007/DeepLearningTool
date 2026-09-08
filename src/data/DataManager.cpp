@@ -30,6 +30,7 @@
 #include <QQmlEngine>
 #include <QStringList>
 #include <QThread>
+#include <QUuid>
 #include <algorithm>
 #include <cstddef>
 #include <functional>
@@ -66,10 +67,18 @@ QString normalizedImagePath(const QString &path)
     return normalized;
 }
 
-void addProgressMessage(int level, const QString &message)
+void addProgressMessage(int level, const QString &message, const QString &taskId = QString())
 {
-    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection, Q_ARG(int, level),
-                              Q_ARG(QString, message));
+    if (!taskId.isEmpty())
+    {
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                                  Q_ARG(int, level), Q_ARG(QString, message), Q_ARG(QString, taskId));
+    }
+    else
+    {
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                                  Q_ARG(int, level), Q_ARG(QString, message));
+    }
 }
 
 QString exportFormatName(const int data_format)
@@ -118,6 +127,7 @@ std::map<QString, QString> parseLabelClassGroupMap(const QVariantMap &groups)
 
 struct DataManager::PendingImportTask
 {
+    QString       task_id;
     DataIO       *importer{nullptr};
     QElapsedTimer elapsed_timer;
 
@@ -1484,12 +1494,14 @@ void DataManager::scanImportLabelClasses(const int data_format, const QString &i
     scanner->setTargetMethod(method_);
     qRegisterMetaType<std::map<QString, QString>>("std::map<QString, QString>");
 
+    const QString scan_task_id = QStringLiteral("scan_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    scanner->setTaskId(scan_task_id);
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
-                              Q_ARG(QString, "扫描导入类别"));
+                              Q_ARG(QString, "扫描导入类别"), Q_ARG(QString, scan_task_id));
 
     connect(
         scanner, &DataIO::labelClassesScanned, this,
-        [this, scanner](bool success, const std::map<QString, QString> &label_class_info, const QString &message)
+        [this, scanner, scan_task_id](bool success, const std::map<QString, QString> &label_class_info, const QString &message)
         {
             if (shutting_down_)
             {
@@ -1524,8 +1536,9 @@ void DataManager::scanImportLabelClasses(const int data_format, const QString &i
             const int     level            = success ? spdlog::level::info : spdlog::level::err;
             const QString progress_message = message.isEmpty() ? QString("导入类别扫描完成") : message;
             QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                      Q_ARG(int, level), Q_ARG(QString, progress_message));
-            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+                                      Q_ARG(int, level), Q_ARG(QString, progress_message), Q_ARG(QString, scan_task_id));
+            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "finishTask", Qt::QueuedConnection,
+                                      Q_ARG(QString, scan_task_id), Q_ARG(bool, success));
 
             if (!success)
             {
@@ -1637,11 +1650,14 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
     setDataOperationRunning(true);
     // 显示进度对话框
     // 下面这样会在 UI 线程 (ProgressManager 所在线程) 中调用, 异步调用
+    const QString import_task_id = QStringLiteral("import_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    importer->setTaskId(import_task_id);
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
-                              Q_ARG(QString, "导入数据"));
+                              Q_ARG(QString, "导入数据"), Q_ARG(QString, import_task_id));
     importer->setTargetMethod(method_);
     import_running_                             = true;
     pending_import_task_                        = std::make_unique<PendingImportTask>();
+    pending_import_task_->task_id               = import_task_id;
     pending_import_task_->importer              = importer;
     pending_import_task_->dataset_id            = dataset_id;
     pending_import_task_->data_format           = data_format;
@@ -1715,11 +1731,6 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
         return;
     }
 
-    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
-                              Q_ARG(QString, "导出数据"));
-    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "updateProgress", Qt::QueuedConnection,
-                              Q_ARG(int, 1));
-
     struct ExportBatchItem
     {
         ExportDataset dataset;
@@ -1728,6 +1739,7 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
 
     struct ExportBatchState
     {
+        QString                      task_id;
         std::vector<ExportBatchItem> items;
         QString                      dataset_summary;
         QElapsedTimer                elapsed_timer;
@@ -1738,6 +1750,12 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
     };
 
     auto                       state                = std::make_shared<ExportBatchState>();
+    state->task_id = QStringLiteral("export_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+
+    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
+                              Q_ARG(QString, "导出数据"), Q_ARG(QString, state->task_id));
+    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "updateProgress", Qt::QueuedConnection,
+                              Q_ARG(int, 1), Q_ARG(QString, state->task_id));
     const std::vector<int64_t> selected_dataset_ids = dataset_ids;
     std::set<int64_t>          unique_selected_dataset_ids;
     std::vector<QString>       selected_dataset_names;
@@ -1880,8 +1898,9 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                                                       .arg(state->elapsed_timer.elapsed());
                 spdlog::error("导出失败: 格式={}, {}", format_name.toUtf8().constData(),
                               completed_message.toUtf8().constData());
-                addProgressMessage(spdlog::level::err, completed_message);
-                QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+                addProgressMessage(spdlog::level::err, completed_message, state->task_id);
+                QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "finishTask", Qt::QueuedConnection,
+                                          Q_ARG(QString, state->task_id), Q_ARG(bool, false));
                 ui::SignalHelper::notifyError(QString("导出失败"), completed_message);
                 return;
             }
@@ -1910,8 +1929,9 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                     const int level = state->failed_count == 0 ? spdlog::level::info : spdlog::level::warn;
                     spdlog::log(static_cast<spdlog::level::level_enum>(level), "导出结束: 格式={}, {}",
                                 format_name.toUtf8().constData(), message.toUtf8().constData());
-                    addProgressMessage(level, message);
-                    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+                    addProgressMessage(level, message, state->task_id);
+                    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "finishTask", Qt::QueuedConnection,
+                                              Q_ARG(QString, state->task_id), Q_ARG(bool, success));
                     if (success)
                         ui::SignalHelper::notifySuccess(QString("导出完成"), message);
                     else if (state->success_count > 0)
@@ -1929,18 +1949,19 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                     const QString message
                         = QString("开始导出数据集: %1 -> %2").arg(item.dataset.dataset_name, item.output_dir);
                     spdlog::info("{}", message.toUtf8().constData());
-                    addProgressMessage(spdlog::level::info, message);
+                    addProgressMessage(spdlog::level::info, message, state->task_id);
                 }
                 else
                 {
                     addProgressMessage(spdlog::level::info,
-                                       QString("正在导出数据集 %1/%2").arg(dataset_index).arg(state->items.size()));
+                                       QString("正在导出数据集 %1/%2").arg(dataset_index).arg(state->items.size()),
+                                       state->task_id);
                 }
 
                 DataIO *exporter = DataIO::createIO(data_format, this);
                 if (!exporter)
                 {
-                    addProgressMessage(spdlog::level::err, QString("不支持的数据格式"));
+                    addProgressMessage(spdlog::level::err, QString("不支持的数据格式"), state->task_id);
                     ++state->failed_count;
                     if (auto next = weak_start_next.lock())
                     {
@@ -1949,6 +1970,7 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                     return;
                 }
                 exporter->setTargetMethod(method_);
+                exporter->setTaskId(state->task_id);
 
                 connect(
                     exporter, &DataIO::exportFinished, this,
@@ -1979,7 +2001,8 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                             else
                                 spdlog::error("导出数据集失败: {}", completed_message.toUtf8().constData());
                         }
-                        addProgressMessage(success ? spdlog::level::info : spdlog::level::err, completed_message);
+                        addProgressMessage(success ? spdlog::level::info : spdlog::level::err, completed_message,
+                                           state->task_id);
                         exporter->deleteLater();
                         if (start_next)
                             (*start_next)();
@@ -3413,7 +3436,8 @@ void DataManager::handleDataBatchReady(int64_t dataset_id, std::vector<QString> 
         const QString progress_message = QString("批次写入失败，导入将回滚: %1").arg(task.first_error_message);
         spdlog::error("{}", progress_message.toUtf8().constData());
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, progress_message));
+                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, progress_message),
+                                  Q_ARG(QString, task.task_id));
         return;
     }
 }
@@ -3950,15 +3974,12 @@ void DataManager::finishBatchedImport(bool success, const QString &message)
         spdlog::error("{}", completed_message.toUtf8().constData());
     }
 
-    const int level = success ? spdlog::level::info : spdlog::level::err;
-    if (success)
-    {
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "updateProgress", Qt::QueuedConnection,
-                                  Q_ARG(int, 100));
-    }
+    const QString task_id = pending_import_task_ ? pending_import_task_->task_id : QString();
+    const int     level   = success ? spdlog::level::info : spdlog::level::err;
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection, Q_ARG(int, level),
-                              Q_ARG(QString, completed_message));
-    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+                              Q_ARG(QString, completed_message), Q_ARG(QString, task_id));
+    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "finishTask", Qt::QueuedConnection,
+                              Q_ARG(QString, task_id), Q_ARG(bool, success));
 
     if (importer)
     {

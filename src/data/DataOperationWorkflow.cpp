@@ -11,6 +11,7 @@
 #include <QMetaObject>
 #include <QPointer>
 #include <QThread>
+#include <QUuid>
 #include <algorithm>
 #include <exception>
 #include <utility>
@@ -81,14 +82,14 @@ void DataOperationWorkflow::beginProgress(const Options &options)
     }
 
     auto *progress = ui::ProgressManager::getInstance();
-    progress->startTask(options.title);
+    progress->startTask(options.title, options.task_id);
     if (options.initial_progress >= 0)
     {
-        progress->updateProgress(options.initial_progress);
+        progress->updateProgress(options.initial_progress, options.task_id);
     }
     if (!options.start_message.isEmpty())
     {
-        progress->addMessage(spdlog::level::info, options.start_message);
+        progress->addMessage(spdlog::level::info, options.start_message, options.task_id);
     }
 }
 
@@ -99,11 +100,8 @@ void DataOperationWorkflow::finishProgress(const Options &options, const Result 
         return;
     }
 
-    if (result.success)
-    {
-        ui::ProgressManager::getInstance()->updateProgress(100);
-    }
-    ui::ProgressManager::getInstance()->completeTask();
+    const bool success = result.success && !result.cancelled;
+    ui::ProgressManager::getInstance()->finishTask(options.task_id, success);
 }
 
 DataOperationWorkflow::HandlePtr DataOperationWorkflow::start(QObject *context, Options options, Work work,
@@ -111,6 +109,11 @@ DataOperationWorkflow::HandlePtr DataOperationWorkflow::start(QObject *context, 
 {
     if (context == nullptr || !work)
         return {};
+
+    if (options.manage_progress && options.task_id.isEmpty())
+    {
+        options.task_id = QStringLiteral("workflow_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    }
 
     beginProgress(options);
 
@@ -167,6 +170,7 @@ DataOperationWorkflow::HandlePtr DataOperationWorkflow::start(QObject *context, 
                         }
                         if (!callback_context || context_destroyed)
                         {
+                            finishProgress(options, result);
                             std::lock_guard lock(state->mutex);
                             state->completion_finished = true;
                             state->condition.notify_all();
@@ -199,6 +203,7 @@ DataOperationWorkflow::HandlePtr DataOperationWorkflow::start(QObject *context, 
 
             if (!callback_scheduled)
             {
+                finishProgress(options, result);
                 std::lock_guard lock(state->mutex);
                 state->completion_finished = true;
             }

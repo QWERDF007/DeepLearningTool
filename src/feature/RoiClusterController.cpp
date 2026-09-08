@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QMetaObject>
 #include <QThread>
+#include <QUuid>
 #include <algorithm>
 #include <limits>
 #include <map>
@@ -129,7 +130,10 @@ void RoiClusterController::shutdown()
 
     setRunning(false);
     if (was_running)
-        ui::ProgressManager::getInstance()->completeTask();
+    {
+        ui::ProgressManager::getInstance()->finishTask(current_cluster_task_id_, false);
+        current_cluster_task_id_.clear();
+    }
 }
 
 bool RoiClusterController::enabled() const
@@ -471,7 +475,8 @@ void RoiClusterController::resetForNewCluster()
 void RoiClusterController::startProgress(const Request &request)
 {
     setRunning(true);
-    ui::ProgressManager::getInstance()->startTask(QString("标注聚类"));
+    current_cluster_task_id_ = QStringLiteral("roi_cluster_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    ui::ProgressManager::getInstance()->startTask(QString("标注聚类"), current_cluster_task_id_);
     addProgressMessage(spdlog::level::info,
                        QString("开始标注聚类: %1 个标注").arg(request.items.size()));
 }
@@ -479,7 +484,8 @@ void RoiClusterController::startProgress(const Request &request)
 void RoiClusterController::finishProgress(const bool success, const QString &message)
 {
     addProgressMessage(success ? spdlog::level::info : spdlog::level::err, message);
-    ui::ProgressManager::getInstance()->completeTask();
+    ui::ProgressManager::getInstance()->finishTask(current_cluster_task_id_, success);
+    current_cluster_task_id_.clear();
 }
 
 void RoiClusterController::finishCluster(const Response &response)

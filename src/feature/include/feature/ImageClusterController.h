@@ -168,6 +168,7 @@ private:
     QString last_error_;
     QString last_summary_;
     int     result_count_{0};
+    QString current_cluster_task_id_;
     QPointer<::QThread> worker_thread_;
     std::shared_ptr<std::atomic_bool> cancellation_token_;
     std::atomic_bool    shutting_down_{false};

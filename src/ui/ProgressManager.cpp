@@ -38,18 +38,71 @@ QString ProgressManager::getColorfulMessage() const
     return getMessage();
 }
 
-void ProgressManager::startTask(const QString &taskName)
+QString ProgressManager::generateUniqueTaskId()
 {
+    return QStringLiteral("task_%1").arg(++task_seq_);
+}
+
+QString ProgressManager::startTask(const QString &taskName, const QString &taskId)
+{
+    const bool had_task_id   = !active_task_id_.isEmpty();
+    const bool had_task_name = !task_name_.isEmpty();
+    const bool was_running   = is_running_;
+    const bool had_progress  = (progress_ != 0);
+    const bool had_messages  = !message_queue_.isEmpty();
+
+    if (taskId.isEmpty())
+    {
+        active_task_id_ = generateUniqueTaskId();
+        is_anonymous_   = true;
+    }
+    else
+    {
+        active_task_id_ = taskId;
+        is_anonymous_   = false;
+    }
+
     task_name_  = taskName;
     progress_   = 0;
     is_running_ = true;
+    message_queue_.clear();
 
-    emit progressChanged();
-    emit runningStateChanged();
+    if (!had_task_id || active_task_id_ != taskId)
+        emit activeTaskIdChanged();
+    if (!had_task_name || task_name_ != taskName)
+        emit taskNameChanged();
+    if (had_progress || !was_running)
+        emit progressChanged();
+    if (!was_running)
+        emit runningStateChanged();
+    if (had_messages)
+        emit messageChanged();
+
+    return active_task_id_;
 }
 
-void ProgressManager::updateProgress(int progress)
+void ProgressManager::updateProgress(int progress, const QString &taskId)
 {
+    if (!is_running_)
+    {
+        return;
+    }
+
+    if (!taskId.isEmpty())
+    {
+        if (taskId != active_task_id_)
+        {
+            return;
+        }
+    }
+    else
+    {
+        if (!is_anonymous_)
+        {
+            return;
+        }
+    }
+
     // 验证并将进度值限制在 [0, 100] 范围内
     if (progress < 0)
     {
@@ -69,8 +122,23 @@ void ProgressManager::updateProgress(int progress)
     }
 }
 
-void ProgressManager::addMessage(int level, const QString &message)
+void ProgressManager::addMessage(int level, const QString &message, const QString &taskId)
 {
+    if (!taskId.isEmpty())
+    {
+        if (taskId != active_task_id_)
+        {
+            return;
+        }
+    }
+    else
+    {
+        if (!is_anonymous_ && is_running_)
+        {
+            return;
+        }
+    }
+
     message_queue_.enqueue(std::make_pair(level, message));
 
     // 处理队列溢出（FIFO）
@@ -82,30 +150,72 @@ void ProgressManager::addMessage(int level, const QString &message)
     emit messageChanged();
 }
 
-void ProgressManager::completeTask()
+void ProgressManager::completeTask(const QString &taskId, bool success)
 {
-    if (!is_running_)
+    finishTask(taskId, success);
+}
+
+void ProgressManager::finishTask(const QString &taskId, bool success)
+{
+    if (!taskId.isEmpty())
     {
-        spdlog::warn("调用了 completeTask() 但没有任务正在运行");
+        if (taskId != active_task_id_)
+        {
+            return;
+        }
+    }
+    else
+    {
+        if (!is_anonymous_ && is_running_)
+        {
+            return;
+        }
     }
 
-    progress_   = 100;
+    if (!is_running_)
+    {
+        return;
+    }
+
     is_running_ = false;
 
-    emit progressChanged();
+    if (success)
+    {
+        if (progress_ != 100)
+        {
+            progress_ = 100;
+            emit progressChanged();
+        }
+    }
+
     emit runningStateChanged();
 }
 
 void ProgressManager::reset()
 {
-    progress_   = 0;
-    is_running_ = false;
+    const bool was_running  = is_running_;
+    const bool had_progress = (progress_ != 0);
+    const bool had_messages = !message_queue_.isEmpty();
+    const bool had_task     = !active_task_id_.isEmpty() || !task_name_.isEmpty();
+
+    progress_     = 0;
+    is_running_   = false;
+    is_anonymous_ = false;
+    active_task_id_.clear();
     task_name_.clear();
     message_queue_.clear();
 
-    emit progressChanged();
-    emit runningStateChanged();
-    emit messageChanged();
+    if (had_progress)
+        emit progressChanged();
+    if (was_running)
+        emit runningStateChanged();
+    if (had_messages)
+        emit messageChanged();
+    if (had_task)
+    {
+        emit activeTaskIdChanged();
+        emit taskNameChanged();
+    }
 }
 
 } // namespace dltool::ui

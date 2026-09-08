@@ -70,7 +70,10 @@ void SearchControllerBase::shutdown()
     worker_thread_ = nullptr;
     setRunning(false);
     if (was_running)
-        ui::ProgressManager::getInstance()->completeTask();
+    {
+        ui::ProgressManager::getInstance()->finishTask(current_search_task_id_, false);
+        current_search_task_id_.clear();
+    }
 }
 
 bool SearchControllerBase::enabled() const
@@ -496,7 +499,8 @@ void SearchControllerBase::resetForNewSearch()
 void SearchControllerBase::startProgress(const SearchRequest &request)
 {
     setRunning(true);
-    ui::ProgressManager::getInstance()->startTask(searchDisplayName());
+    current_search_task_id_ = QStringLiteral("search_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    ui::ProgressManager::getInstance()->startTask(searchDisplayName(), current_search_task_id_);
     addProgressMessage(spdlog::level::info, QString("开始%1: 查询 %2 项, 搜索库 %3 项, TopK=%4")
                                                 .arg(searchDisplayName())
                                                 .arg(queryItemCount(request))
@@ -508,7 +512,8 @@ void SearchControllerBase::finishProgress(bool success, const QString &message)
 {
     const int level = success ? spdlog::level::info : spdlog::level::err;
     addProgressMessage(level, message);
-    ui::ProgressManager::getInstance()->completeTask();
+    ui::ProgressManager::getInstance()->finishTask(current_search_task_id_, success);
+    current_search_task_id_.clear();
 }
 
 void SearchControllerBase::finishSearch(const SearchResponse &response)
@@ -548,7 +553,8 @@ SearchControllerBase::BuildProgressCallback SearchControllerBase::createBuildPro
     QPointer<SearchControllerBase> controller, const size_t gallery_count,
     std::shared_ptr<std::atomic_bool> cancellation_token)
 {
-    return [controller, gallery_count, cancellation_token](const irt::features::ImageSearchBuildProgress &progress)
+    const QString task_id = controller ? controller->current_search_task_id_ : QString();
+    return [controller, gallery_count, cancellation_token, task_id](const irt::features::ImageSearchBuildProgress &progress)
     {
         if (!controller || !cancellation_token
             || cancellation_token->load(std::memory_order_acquire)
@@ -581,12 +587,12 @@ SearchControllerBase::BuildProgressCallback SearchControllerBase::createBuildPro
         {
             QMetaObject::invokeMethod(
                 controller.data(),
-                [controller, cancellation_token, pct]()
+                [controller, cancellation_token, pct, task_id]()
                 {
                     if (controller && cancellation_token
                         && !cancellation_token->load(std::memory_order_acquire)
                         && !controller->shutting_down_.load(std::memory_order_acquire))
-                        ui::ProgressManager::getInstance()->updateProgress(pct);
+                        ui::ProgressManager::getInstance()->updateProgress(pct, task_id);
                 },
                 Qt::QueuedConnection);
         }

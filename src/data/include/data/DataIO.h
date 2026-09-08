@@ -49,6 +49,8 @@ public:
                                      const QVariantMap &options, QString &err_msg);
 
     void setTargetMethod(int method) { target_method_ = method; }
+    void setTaskId(const QString &task_id) { task_id_ = task_id; }
+    QString taskId() const { return task_id_; }
     void requestCancel();
     bool isCancelRequested() const;
     /**
@@ -73,6 +75,7 @@ signals:
 
 protected:
     int             target_method_{-1};
+    QString         task_id_;
     std::atomic_bool cancel_requested_{false};
     DataOperationWorkflow::HandlePtr operation_handle_;
 

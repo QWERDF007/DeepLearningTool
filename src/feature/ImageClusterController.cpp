@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QMetaObject>
 #include <QThread>
+#include <QUuid>
 #include <algorithm>
 #include <chrono>
 #include <functional>
@@ -152,7 +153,10 @@ void ImageClusterController::shutdown()
         data_manager_->waitForOperations();
     setRunning(false);
     if (was_running)
-        ui::ProgressManager::getInstance()->completeTask();
+    {
+        ui::ProgressManager::getInstance()->finishTask(current_cluster_task_id_, false);
+        current_cluster_task_id_.clear();
+    }
 }
 
 bool ImageClusterController::enabled() const
@@ -674,7 +678,8 @@ void ImageClusterController::resetForNewCluster()
 void ImageClusterController::startProgress(const ClusterRequest &request)
 {
     setRunning(true);
-    ui::ProgressManager::getInstance()->startTask(QString("图像聚类"));
+    current_cluster_task_id_ = QStringLiteral("image_cluster_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    ui::ProgressManager::getInstance()->startTask(QString("图像聚类"), current_cluster_task_id_);
     addProgressMessage(spdlog::level::info, QString("开始图像聚类: %1 张图像").arg(request.items.size()));
 }
 
@@ -682,7 +687,8 @@ void ImageClusterController::finishProgress(bool success, const QString &message
 {
     const int level = success ? spdlog::level::info : spdlog::level::err;
     addProgressMessage(level, message);
-    ui::ProgressManager::getInstance()->completeTask();
+    ui::ProgressManager::getInstance()->finishTask(current_cluster_task_id_, success);
+    current_cluster_task_id_.clear();
 }
 
 void ImageClusterController::finishCluster(const ClusterResponse &response)

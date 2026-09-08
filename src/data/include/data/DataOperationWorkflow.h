@@ -97,6 +97,7 @@ public:
         QString start_message;
         int     initial_progress{5};
         bool    manage_progress{true};
+        QString task_id;
     };
 
     using Work       = std::function<void(Result &)>;

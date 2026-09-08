@@ -10,6 +10,7 @@
 #include "model/ModelTestTaskManager.h"
 #include "model/TaskManager.h"
 #include "settings/GlobalSettings.h"
+#include "ui/ProgressManager.h"
 
 #include <spdlog/spdlog.h>
 
@@ -119,6 +120,9 @@ void Project::shutdown()
         data_manager_->shutdown();
     if (task_manager_ != nullptr)
         task_manager_->shutdown();
+
+    // 重置全局进度管理器状态，清理旧项目的运行身份与未决状态
+    dltool::ui::ProgressManager::getInstance()->reset();
 }
 
 void Project::init()

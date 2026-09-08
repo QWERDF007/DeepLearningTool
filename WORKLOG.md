@@ -47,6 +47,29 @@
 
 ---
 
+## 2026-09-08 — 隔离不同任务的页脚进度与终态
+
+**目标**
+- 解决后台任务（数据导入/导出、特征聚类/检索等）复用全局单例 `ProgressManager` 时没有任务标识隔离，导致并发或乱序任务的进度、消息相互覆盖、失败或取消被误报为 100% 完成、多次重复通知的问题。
+- 确保前台状态展示真实反映当前活跃任务，旧任务的迟到进度/消息被丢弃，项目关闭时重置活跃状态。
+
+**当前状态**
+- 已完成：在 `ProgressManager` 中引入 `activeTaskId` 和任务身份校验；`startTask` 记录当前活跃任务 ID；`updateProgress`、`addMessage`、`completeTask`、`finishTask` 严格按任务 ID 过滤，防止不同任务交织覆盖。
+- 已完成：`finishTask(taskId, success)` 规范终态行为：仅在 `success=true` 时置进度为 100%，失败或取消保留当前真实进度；添加 `if (!is_running_) return;` 避免重复终态通知。
+- 已完成：在 `DataOperationWorkflow`、`DataManager`、`DataIO`、`SearchControllerBase`、`RoiClusterController`、`ImageClusterController` 中接入任务标识，并将失败/取消的真实成功状态传入 `finishTask`。
+- 已完成：在 `Project::shutdown()` 中调用 `ProgressManager::reset()`，保证项目关闭时清空活跃任务状态与消息。
+- 已完成：编写 `ProgressManagerTest` 6 个单元测试用例，覆盖任务身份隔离、交叉任务过滤、失败/取消不伪装100%、重复终态幂等、reset 清理和消息过滤。
+
+**验证证据**
+- `ctest --test-dir build -C Release -R "^(tst_dltool_ui|dltool_data_data_operation_workflow_tests|dltool_feature_lifecycle_tests|dltool_model_data_creation_test|dltool_model_project_shutdown_test)$"` → 6/6 全部 Passed (1.98 sec)。
+- `dltool_model_project_creation_test` 重新验证通过。
+
+**下一步**
+- 提交本阶段代码：`refactor: 隔离不同任务的页脚进度与终态`。
+- 推进 Ticket 06：安全导出与路径校验。
+
+---
+
 ## 2026-09-08 — 统一模型评估与聚合任务的关闭收敛与快速取消
 
 **目标**
