@@ -155,9 +155,10 @@ public:
         return service.ensureModelStorageAt(root, error);
     }
 
-    bool copyDirectoryContents(const QString &source, const QString &target, QString *error) const override
+    bool copyDirectoryContents(const QString &source, const QString &target, QString *error = nullptr,
+                               std::function<bool()> is_cancelled = nullptr) const override
     {
-        return service.copyDirectoryContents(source, target, error);
+        return service.copyDirectoryContents(source, target, error, is_cancelled);
     }
 
     bool moveDirectory(const QString &source, const QString &target, QString *error) override

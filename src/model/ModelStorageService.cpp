@@ -295,7 +295,68 @@ bool ModelStorageService::ensureModelStorageAt(const QString &model_root, QStrin
     return true;
 }
 
-bool ModelStorageService::copyDirectoryContents(const QString &source, const QString &target, QString *err_msg) const
+namespace {
+
+bool copyFileChunked(const QString &source, const QString &destination, QString *err_msg,
+                     const std::function<bool()> &is_cancelled)
+{
+    QFile src_file(source);
+    if (!src_file.open(QIODevice::ReadOnly))
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("打开源模型文件失败: %1").arg(src_file.errorString());
+        return false;
+    }
+
+    QFile dst_file(destination);
+    if (!dst_file.open(QIODevice::WriteOnly))
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("创建目标模型文件失败: %1").arg(dst_file.errorString());
+        return false;
+    }
+
+    constexpr qint64 kChunkSize = 64 * 1024;
+    QByteArray       buffer;
+    buffer.resize(kChunkSize);
+
+    while (!src_file.atEnd())
+    {
+        if (is_cancelled && is_cancelled())
+        {
+            dst_file.close();
+            QFile::remove(destination);
+            if (err_msg != nullptr)
+                *err_msg = QStringLiteral("复制模型文件已取消");
+            return false;
+        }
+
+        const qint64 bytes_read = src_file.read(buffer.data(), kChunkSize);
+        if (bytes_read < 0)
+        {
+            if (err_msg != nullptr)
+                *err_msg = QStringLiteral("读取源模型文件失败: %1").arg(src_file.errorString());
+            dst_file.close();
+            QFile::remove(destination);
+            return false;
+        }
+
+        if (dst_file.write(buffer.constData(), bytes_read) != bytes_read)
+        {
+            if (err_msg != nullptr)
+                *err_msg = QStringLiteral("写入目标模型文件失败: %1").arg(dst_file.errorString());
+            dst_file.close();
+            QFile::remove(destination);
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+bool ModelStorageService::copyDirectoryContents(const QString &source, const QString &target, QString *err_msg,
+                                                std::function<bool()> is_cancelled) const
 {
     const QFileInfo source_info(source);
     if (!source_info.exists() || !source_info.isDir())
@@ -311,6 +372,13 @@ bool ModelStorageService::copyDirectoryContents(const QString &source, const QSt
                           QDirIterator::Subdirectories);
     while (iterator.hasNext())
     {
+        if (is_cancelled && is_cancelled())
+        {
+            if (err_msg != nullptr)
+                *err_msg = QStringLiteral("复制模型目录已取消");
+            return false;
+        }
+
         const QFileInfo item(iterator.next());
         const QString   relative    = QDir(source).relativeFilePath(item.absoluteFilePath());
         const QString   destination = QDir(target).filePath(relative);
@@ -323,10 +391,8 @@ bool ModelStorageService::copyDirectoryContents(const QString &source, const QSt
                 return false;
             }
         }
-        else if (!QFile::copy(item.absoluteFilePath(), destination))
+        else if (!copyFileChunked(item.absoluteFilePath(), destination, err_msg, is_cancelled))
         {
-            if (err_msg != nullptr)
-                *err_msg = QStringLiteral("复制模型文件失败: %1").arg(item.absoluteFilePath());
             return false;
         }
     }

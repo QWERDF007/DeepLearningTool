@@ -45,6 +45,7 @@ private slots:
         if (!copied.isValid())
         {
             QVERIFY(manager->copyModel(source.model_id, false));
+            QVERIFY(manager->waitForOperations());
             copied = modelByName(manager, PersistentProjectFixture::patchcoreModelCopyName());
         }
 

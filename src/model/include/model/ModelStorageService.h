@@ -139,7 +139,8 @@ public:
 
     /** @brief 复制目录内容，不复制源目录本身。 */
     bool copyDirectoryContents(const QString &source, const QString &target,
-                               QString *err_msg = nullptr) const override;
+                               QString *err_msg = nullptr,
+                               std::function<bool()> is_cancelled = nullptr) const override;
 
     /** @brief 在模型存储根目录内移动目录。 */
     bool moveDirectory(const QString &source, const QString &target,

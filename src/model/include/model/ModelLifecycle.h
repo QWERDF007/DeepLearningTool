@@ -5,6 +5,7 @@
 #include <QString>
 
 #include <cstdint>
+#include <functional>
 
 namespace dltool::database {
 class ProjectDataBase;
@@ -28,6 +29,7 @@ enum class ModelLifecycleState
     Succeeded,
     Failed,
     RecoveryRequired,
+    Cancelled,
 };
 
 struct MODEL_API ModelLifecycleResult
@@ -46,6 +48,11 @@ struct MODEL_API ModelLifecycleResult
     bool recoveryRequired() const
     {
         return state == ModelLifecycleState::RecoveryRequired;
+    }
+
+    bool isCancelled() const
+    {
+        return state == ModelLifecycleState::Cancelled;
     }
 };
 
@@ -106,7 +113,8 @@ public:
     virtual QString operationJournalPath(const QString &operation_id) const = 0;
 
     virtual bool ensureModelStorageAt(const QString &root, QString *error = nullptr) const = 0;
-    virtual bool copyDirectoryContents(const QString &source, const QString &target, QString *error = nullptr) const = 0;
+    virtual bool copyDirectoryContents(const QString &source, const QString &target, QString *error = nullptr,
+                                       std::function<bool()> is_cancelled = nullptr) const = 0;
     virtual bool moveDirectory(const QString &source, const QString &target, QString *error = nullptr) = 0;
     virtual bool removeDirectory(const QString &root, QString *error = nullptr) const = 0;
 };
@@ -121,14 +129,14 @@ public:
 
     ModelLifecycleResult create(ModelLifecycleRecord record);
     ModelLifecycleResult copy(const ModelLifecycleRecord &source, ModelLifecycleRecord target,
-                              bool copy_train_weights);
+                              bool copy_train_weights, std::function<bool()> is_cancelled = nullptr);
     ModelLifecycleResult rename(qint64 model_id, const QString &old_name, const QString &new_name);
     ModelLifecycleResult remove(qint64 model_id, const QString &name);
 
     /**
      * @brief 恢复启动前未完成的 staging/quarantine 操作。
      */
-    ModelLifecycleResult recoverPending();
+    ModelLifecycleResult recoverPending(std::function<bool()> is_cancelled = nullptr);
 
 private:
     IModelRecordStore   &records_;

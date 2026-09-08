@@ -117,6 +117,15 @@ ModelManager::~ModelManager()
 
 void ModelManager::shutdown()
 {
+    shutting_down_ = true;
+    for (const auto &handle : operation_handles_)
+    {
+        if (handle)
+            handle->requestCancel();
+    }
+    waitForOperations(5000);
+    operation_handles_.clear();
+
     if (tensorboard_runner_ != nullptr)
         tensorboard_runner_->shutdown();
 }
@@ -126,16 +135,59 @@ QString ModelManager::projectDatabasePath() const
     return database_ != nullptr ? database_->path() : QString();
 }
 
-void ModelManager::init()
+ModelOperationWorkflow::HandlePtr ModelManager::trackOperation(ModelOperationWorkflow::HandlePtr handle)
 {
-    if (model_lifecycle_ != nullptr)
-    {
-        const ModelLifecycleResult recovery = model_lifecycle_->recoverPending();
-        if (!recovery.succeeded())
+    if (handle == nullptr || shutting_down_)
+        return {};
+
+    operation_handles_.erase(
+        std::remove_if(operation_handles_.begin(), operation_handles_.end(),
+                       [](const ModelOperationWorkflow::HandlePtr &candidate)
+                       {
+                           return candidate == nullptr
+                                  || (candidate->isFinished() && candidate->isCompletionFinished());
+                       }),
+        operation_handles_.end());
+    operation_handles_.push_back(handle);
+    return handle;
+}
+
+bool ModelManager::waitForOperations(const int timeout_ms)
+{
+    return ModelOperationWorkflow::waitForCompletions(operation_handles_, timeout_ms);
+}
+
+ModelOperationWorkflow::HandlePtr ModelManager::recoverPendingAsync(
+    ModelOperationWorkflow::Completion completion)
+{
+    if (shutting_down_)
+        return {};
+
+    ModelOperationWorkflow::Options options;
+    options.title         = QStringLiteral("恢复模型");
+    options.start_message = QStringLiteral("正在恢复未完成的模型操作...");
+
+    auto handle = ModelOperationWorkflow::startRecovery(
+        this, projectDatabasePath(), project_dir_, std::move(options),
+        [this, completion = std::move(completion)](const ModelOperationWorkflow::Result &result)
         {
-            spdlog::error("恢复模型未完成操作失败: {}", recovery.error.toUtf8().constData());
-        }
-    }
+            if (result.success)
+            {
+                reloadFromDatabase();
+            }
+            if (completion)
+            {
+                completion(result);
+            }
+        });
+
+    return trackOperation(handle);
+}
+
+void ModelManager::reloadFromDatabase()
+{
+    if (shutting_down_)
+        return;
 
     beginResetModel();
     models_.clear();
@@ -184,6 +236,17 @@ void ModelManager::init()
     }
 
     endResetModel();
+}
+
+void ModelManager::init()
+{
+    reloadFromDatabase();
+    if (model_lifecycle_ != nullptr)
+    {
+        const ModelLifecycleResult recovery = model_lifecycle_->recoverPending();
+        if (recovery.succeeded())
+            reloadFromDatabase();
+    }
 }
 
 int ModelManager::rowCount(const QModelIndex &parent) const
@@ -427,33 +490,35 @@ bool ModelManager::deleteModel(const qint64 model_id)
     return true;
 }
 
-bool ModelManager::copyModel(const qint64 model_id, const bool copy_train_weights)
+ModelOperationWorkflow::HandlePtr ModelManager::copyModelAsync(
+    const qint64 model_id, const bool copy_train_weights,
+    ModelOperationWorkflow::Completion completion)
 {
+    if (shutting_down_)
+    {
+        spdlog::warn("复制模型失败: 模型管理器正在关闭");
+        return {};
+    }
+
     const int row = indexOfModel(model_id);
     if (row < 0)
     {
         spdlog::warn("复制模型失败: 模型 {} 不存在", model_id);
-        return false;
+        return {};
     }
 
-    // Keep the source record stable while inserting the copied model. The
-    // insertion may reallocate models_ and invalidate references into it.
-    const ModelRecord   source = models_[row];
-    if (model_lifecycle_ == nullptr)
-    {
-        spdlog::error("复制模型失败: 生命周期模块为空");
-        return false;
-    }
-    const qint64        now         = QDateTime::currentSecsSinceEpoch();
-    const QString       copied_name = uniqueCopyName(source.name);
+    const ModelRecord source = models_[row];
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    const QString copied_name = uniqueCopyName(source.name);
+
     ModelLifecycleRecord source_record;
-    source_record.model_id          = source.model_id;
-    source_record.uuid              = source.uuid;
-    source_record.name              = source.name;
-    source_record.framework_name    = source.framework_name;
+    source_record.model_id           = source.model_id;
+    source_record.uuid               = source.uuid;
+    source_record.name               = source.name;
+    source_record.framework_name     = source.framework_name;
     source_record.model_architecture = source.model_architecture;
-    source_record.ctime             = source.ctime;
-    source_record.mtime             = source.mtime;
+    source_record.ctime              = source.ctime;
+    source_record.mtime              = source.mtime;
 
     ModelLifecycleRecord target_record;
     target_record.uuid               = dltool::common::uuid();
@@ -462,55 +527,84 @@ bool ModelManager::copyModel(const qint64 model_id, const bool copy_train_weight
     target_record.model_architecture = source.model_architecture;
     target_record.ctime              = now;
     target_record.mtime              = now;
-    const ModelLifecycleResult result = model_lifecycle_->copy(source_record, target_record, copy_train_weights);
-    if (!result.succeeded())
-    {
-        spdlog::error("复制模型失败, id: {}, 错误: {}", model_id, result.error.toUtf8().constData());
-        return false;
-    }
 
-    const int insert_row = rowCount();
-    beginInsertRows(QModelIndex(), insert_row, insert_row);
-    models_.push_back(ModelRecord{
-        result.model_id,
-        target_record.uuid,
-        copied_name,
-        source.framework_name,
-        source.model_architecture,
-        now,
-        now,
-    });
-    endInsertRows();
+    ModelOperationWorkflow::Options options;
+    options.title         = QStringLiteral("复制模型");
+    options.start_message = QStringLiteral("正在复制模型: %1 -> %2").arg(source.name, copied_name);
 
-    const auto source_found = model_instances_.find(instanceKey(source.uuid));
-    if (source_found != model_instances_.end() && source_found->second)
-    {
-        auto copied_model = createRegisteredModelInstance(source.framework_name, source.model_architecture);
-        if (copied_model && copied_model->config() && source_found->second->config())
+    auto handle = ModelOperationWorkflow::startCopy(
+        this, projectDatabasePath(), project_dir_,
+        source_record, target_record, copy_train_weights,
+        std::move(options),
+        [this, source, target_record, now, completion = std::move(completion)](
+            const ModelOperationWorkflow::Result &result)
         {
-            ITrainParams       *target_train_params      = copied_model->config()->trainParams();
-            const ITrainParams *source_train_inst_params = source_found->second->config()->trainParams();
-            if (target_train_params != nullptr && source_train_inst_params != nullptr)
+            if (!shutting_down_ && result.success)
             {
-                target_train_params->copyValuesFrom(*source_train_inst_params);
+                const int insert_row = rowCount();
+                beginInsertRows(QModelIndex(), insert_row, insert_row);
+                models_.push_back(ModelRecord{
+                    result.model_id,
+                    target_record.uuid,
+                    target_record.name,
+                    source.framework_name,
+                    source.model_architecture,
+                    now,
+                    now,
+                    {},
+                });
+                endInsertRows();
+
+                const auto source_found = model_instances_.find(instanceKey(source.uuid));
+                if (source_found != model_instances_.end() && source_found->second)
+                {
+                    auto copied_model = createRegisteredModelInstance(source.framework_name, source.model_architecture);
+                    if (copied_model && copied_model->config() && source_found->second->config())
+                    {
+                        ITrainParams       *target_train_params      = copied_model->config()->trainParams();
+                        const ITrainParams *source_train_inst_params = source_found->second->config()->trainParams();
+                        if (target_train_params != nullptr && source_train_inst_params != nullptr)
+                        {
+                            target_train_params->copyValuesFrom(*source_train_inst_params);
+                        }
+
+                        ITestParams       *target_test_params = copied_model->config()->testParams();
+                        const ITestParams *source_test_params = source_found->second->config()->testParams();
+                        if (target_test_params != nullptr && source_test_params != nullptr)
+                        {
+                            target_test_params->copyValuesFrom(*source_test_params);
+                        }
+
+                        copied_model->setParent(const_cast<ModelManager *>(this));
+                        copied_model->setUuid(target_record.uuid);
+                        QQmlEngine::setObjectOwnership(copied_model.get(), QQmlEngine::CppOwnership);
+                        model_instances_[instanceKey(target_record.uuid)] = std::move(copied_model);
+                        config_load_started_.insert(instanceKey(target_record.uuid));
+                    }
+                }
+                spdlog::info("模型复制成功, id: {}, 名称: {}", result.model_id, target_record.name.toUtf8().constData());
+            }
+            else if (result.cancelled)
+            {
+                spdlog::info("模型复制已取消: {}", target_record.name.toUtf8().constData());
+            }
+            else
+            {
+                spdlog::error("复制模型失败, 错误: {}", result.error.toUtf8().constData());
             }
 
-            ITestParams       *target_test_params = copied_model->config()->testParams();
-            const ITestParams *source_test_params = source_found->second->config()->testParams();
-            if (target_test_params != nullptr && source_test_params != nullptr)
+            if (completion)
             {
-                target_test_params->copyValuesFrom(*source_test_params);
+                completion(result);
             }
+        });
 
-            copied_model->setParent(const_cast<ModelManager *>(this));
-            copied_model->setUuid(target_record.uuid);
-            QQmlEngine::setObjectOwnership(copied_model.get(), QQmlEngine::CppOwnership);
-            model_instances_[instanceKey(target_record.uuid)] = std::move(copied_model);
-            config_load_started_.insert(instanceKey(target_record.uuid));
-        }
-    }
+    return trackOperation(handle);
+}
 
-    return true;
+bool ModelManager::copyModel(const qint64 model_id, const bool copy_train_weights)
+{
+    return copyModelAsync(model_id, copy_train_weights) != nullptr;
 }
 
 QStringList ModelManager::supportedFrameworks() const

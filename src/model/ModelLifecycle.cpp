@@ -100,6 +100,15 @@ ModelLifecycleResult recoveryRequired(const QString &error, const QString &opera
     return result;
 }
 
+ModelLifecycleResult cancelled(const QString &operation_id = {})
+{
+    ModelLifecycleResult result;
+    result.state        = ModelLifecycleState::Cancelled;
+    result.operation_id = operation_id;
+    result.error        = QStringLiteral("操作已取消");
+    return result;
+}
+
 QJsonObject toJson(const OperationJournal &journal)
 {
     return {
@@ -140,12 +149,14 @@ bool writeJournal(const IModelStorageAdapter &storage, const OperationJournal &j
     if (root.isEmpty() || path.isEmpty() || !QDir().mkpath(root))
         return setError(error, QStringLiteral("创建模型操作记录目录失败"));
 
-    QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly))
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return setError(error, QStringLiteral("打开模型操作记录失败: %1").arg(file.errorString()));
     const QByteArray data = QJsonDocument(toJson(journal)).toJson(QJsonDocument::Compact);
-    if (file.write(data) != data.size() || !file.commit())
+    if (file.write(data) != data.size())
         return setError(error, QStringLiteral("写入模型操作记录失败: %1").arg(file.errorString()));
+    file.flush();
+    file.close();
     return true;
 }
 
@@ -345,8 +356,12 @@ ModelLifecycleResult ModelLifecycle::create(ModelLifecycleRecord record)
 }
 
 ModelLifecycleResult ModelLifecycle::copy(const ModelLifecycleRecord &source, ModelLifecycleRecord target,
-                                         const bool copy_train_weights)
+                                         const bool copy_train_weights,
+                                         std::function<bool()> is_cancelled)
 {
+    if (is_cancelled && is_cancelled())
+        return cancelled();
+
     target.name = target.name.trimmed();
     const QString source_root = storage_.modelRoot(source.name);
     const QString target_root = storage_.modelRoot(target.name);
@@ -366,11 +381,25 @@ ModelLifecycleResult ModelLifecycle::copy(const ModelLifecycleRecord &source, Mo
     QString error;
     if (!writeJournal(storage_, journal, error))
         return failed(error, journal.id);
+
+    if (is_cancelled && is_cancelled())
+    {
+        removeJournal(storage_, journal.id, error);
+        return cancelled(journal.id);
+    }
+
     if (!storage_.ensureModelStorageAt(journal.staging_path, &error))
     {
         cleanupPath(storage_, journal.staging_path, error);
         removeJournal(storage_, journal.id, error);
         return failed(error, journal.id);
+    }
+
+    if (is_cancelled && is_cancelled())
+    {
+        cleanupPath(storage_, journal.staging_path, error);
+        removeJournal(storage_, journal.id, error);
+        return cancelled(journal.id);
     }
 
     {
@@ -396,17 +425,43 @@ ModelLifecycleResult ModelLifecycle::copy(const ModelLifecycleRecord &source, Mo
         }
     }
 
+    if (is_cancelled && is_cancelled())
+    {
+        cleanupPath(storage_, journal.staging_path, error);
+        removeJournal(storage_, journal.id, error);
+        return cancelled(journal.id);
+    }
+
     if (copy_train_weights
         && !storage_.copyDirectoryContents(storage_.trainWeightsPathAt(source_root),
-                                           storage_.trainWeightsPathAt(journal.staging_path), &error))
+                                           storage_.trainWeightsPathAt(journal.staging_path), &error,
+                                           is_cancelled))
     {
         QString cleanup_error;
         cleanupPath(storage_, journal.staging_path, cleanup_error);
         removeJournal(storage_, journal.id, cleanup_error);
+        if (is_cancelled && is_cancelled())
+            return cancelled(journal.id);
         return failed(error, journal.id);
     }
+
+    if (is_cancelled && is_cancelled())
+    {
+        cleanupPath(storage_, journal.staging_path, error);
+        removeJournal(storage_, journal.id, error);
+        return cancelled(journal.id);
+    }
+
     if (!updateJournal(storage_, journal, QStringLiteral("staged"), error))
         return recoveryRequired(error, journal.id);
+
+    // Commit point check: last chance to abort before mutating database
+    if (is_cancelled && is_cancelled())
+    {
+        cleanupPath(storage_, journal.staging_path, error);
+        removeJournal(storage_, journal.id, error);
+        return cancelled(journal.id);
+    }
 
     qint64 model_id = -1;
     if (!records_.addModel(target, model_id, error))
@@ -418,6 +473,8 @@ ModelLifecycleResult ModelLifecycle::copy(const ModelLifecycleRecord &source, Mo
         return failed(error, journal.id);
     }
     journal.model_id = model_id;
+
+    // Passed commit point! Operation must converge to consistent state even if cancelled.
     if (!updateJournal(storage_, journal, QStringLiteral("database-committed"), error))
         return recoveryRequired(error, journal.id, model_id);
     if (!storage_.moveDirectory(journal.staging_path, target_root, &error))
@@ -544,7 +601,7 @@ ModelLifecycleResult ModelLifecycle::remove(const qint64 model_id, const QString
     return ModelLifecycleResult{ModelLifecycleState::Succeeded, model_id, journal.id, {}, false};
 }
 
-ModelLifecycleResult ModelLifecycle::recoverPending()
+ModelLifecycleResult ModelLifecycle::recoverPending(std::function<bool()> is_cancelled)
 {
     const QString root = storage_.operationRoot();
     if (root.isEmpty() || !QDir(root).exists())
@@ -554,6 +611,9 @@ ModelLifecycleResult ModelLifecycle::recoverPending()
     QStringList        errors;
     for (const QString &file_name : paths)
     {
+        if (is_cancelled && is_cancelled())
+            break;
+
         OperationJournal journal;
         QString           error;
         const QString     path = QDir(root).filePath(file_name);

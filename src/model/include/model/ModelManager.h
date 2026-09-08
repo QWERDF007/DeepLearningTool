@@ -3,12 +3,15 @@
 #include "IModel.h"
 #include "dltool/model/Export.h"
 #include "model/ModelDatasetSelection.h"
+#include "model/ModelOperationWorkflow.h"
 #include "model/ModelRegistry.h"
 
 #include <QAbstractListModel>
+#include <QList>
 #include <QStringList>
 #include <QVariantMap>
 #include <QtQml>
+#include <atomic>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -157,6 +160,35 @@ public:
      * @return 操作成功返回 true
      */
     Q_INVOKABLE bool copyModel(const qint64 model_id, bool copy_train_weights = false);
+
+    /**
+     * @brief 异步复制模型
+     * @param model_id 源模型 ID
+     * @param copy_train_weights 是否复制训练权重
+     * @param completion 完成回调
+     * @return 操作句柄
+     */
+    ModelOperationWorkflow::HandlePtr copyModelAsync(qint64 model_id, bool copy_train_weights = false,
+                                                    ModelOperationWorkflow::Completion completion = {});
+
+    /**
+     * @brief 异步恢复未完成的模型操作
+     * @param completion 完成回调
+     * @return 操作句柄
+     */
+    ModelOperationWorkflow::HandlePtr recoverPendingAsync(ModelOperationWorkflow::Completion completion = {});
+
+    /**
+     * @brief 等待所有正在进行的模型后台操作完成
+     * @param timeout_ms 超时时间（毫秒），负数表示无限等待
+     * @return 是否全部完成
+     */
+    bool waitForOperations(int timeout_ms = -1);
+
+    /**
+     * @brief 从数据库重新加载模型记录列表
+     */
+    void reloadFromDatabase();
 
     /**
      * @brief 获取支持的框架名称列表
@@ -478,6 +510,11 @@ private:
     mutable std::unordered_map<std::string, std::unique_ptr<IModel>> model_instances_; ///< 模型实例缓存
 
     mutable std::unordered_set<std::string> config_load_started_; ///< 已触发配置加载的模型
+
+    ModelOperationWorkflow::HandlePtr trackOperation(ModelOperationWorkflow::HandlePtr handle);
+
+    std::atomic_bool                               shutting_down_{false};
+    QList<ModelOperationWorkflow::HandlePtr>       operation_handles_;
 };
 
 } // namespace dltool::model

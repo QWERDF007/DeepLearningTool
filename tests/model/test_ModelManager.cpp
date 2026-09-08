@@ -88,6 +88,7 @@ private slots:
                         .exists());
             QVERIFY(!manager.renameModel(model_id, QStringLiteral("bad/name")));
             QVERIFY(manager.copyModel(model_id));
+            QVERIFY(manager.waitForOperations());
             QCOMPARE(manager.rowCount(), 2);
             QCOMPARE(manager.modelAt(1).value(QStringLiteral("name")).toString(), QStringLiteral("DetectorRenamed Copy"));
             QVERIFY(QDir(ModelStorageService(fixture.rootPath()).path(QStringLiteral("DetectorRenamed Copy"),

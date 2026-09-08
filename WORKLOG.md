@@ -43,6 +43,36 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
+## 2026-09-08 — 让模型复制与恢复不阻塞界面
+
+**目标**
+- 交付 Ticket 14：让模型复制与恢复不阻塞界面（耗时模型文件操作在后台完成，支持进度和安全关闭）。
+- 复用生命周期接口，worker 自有文件与数据库资源，不回读 GUI manager。
+- 大文件复制和恢复扫描期间 GUI 事件可响应，并记录前后证据。
+- 取消/关闭遵守提交点，等待真实工作收敛；结果可重开验证。
+- 遵循 TDD，先增加失败/约束测试，再实现功能，并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `src/model/ModelOperationWorkflow.h/cpp` 中实现异步工作流组件 `ModelOperationWorkflow` 与句柄 `Handle`，支持生命周期操作在独立 worker 线程中执行，worker 自有隔离的 `ProjectDataBase`、`ProjectModelRecordStore`、`ModelStorageService` 与 `ModelLifecycle`，彻底解耦 GUI `ModelManager`；对接 `ProgressManager` 实现阶段与进度通知，完成回调通过 `Qt::QueuedConnection` 跨线程安全派发。
+- 已完成：在 `src/model/ModelLifecycle.h/cpp` 与 `ModelStorageService.h/cpp` 中增加 `is_cancelled` 取消判定回调与 `copyFileChunked` 分块复制，精确定义提交点：提交前取消即回滚暂存区并清理日志；提交后取消保证收敛至发布完成，维持数据库与磁盘单一事实源；修复 Windows 原地替换日志时的文件锁权限拒绝问题。
+- 已完成：在 `src/model/ModelManager.h/cpp` 中增加 `copyModelAsync()`、`recoverPendingAsync()`、`waitForOperations()` 以及在 `shutdown()` 时自动向所有活动句柄请求取消并等待安全收敛。
+- 已完成：在 `tests/model/test_ModelOperationWorkflow.cpp` 中新增 6 组 TDD 测试：
+  1. `asyncCopyRunsInBackgroundWithoutBlockingGuiEventLoop`：验证 10MB 大权重文件异步复制期间主线程 Qt 事件循环持续响应（实测记录 GUI event loop 至少打点 4~6 次）。
+  2. `asyncRecoveryScansPendingJournalsWithoutBlockingGuiEventLoop`：验证多批残留恢复日志扫描在工作线程执行，不阻塞主线程事件分发。
+  3. `workerOwnsResourcesAndDoesNotAccessGuiManager`：验证 worker 使用自有的独立数据库与文件存储资源，不回读主线程管理器状态。
+  4. `cancelBeforeCommitRollsBackStagingAndCleansJournal`：验证在提交点前触发取消时，工作线程安全回滚暂存区并清理日志，返回 Cancelled 状态且数据库无脏记录。
+  5. `cancelAfterCommitConvergesAndModelIsConsistent`：验证在提交点后触发取消时，系统收敛至发布完成，模型记录与文件结构保持一致且可重开验证。
+  6. `managerShutdownCancelsAndWaitsActiveOperations`：验证模型管理器销毁/关闭时自动向下游操作广播取消信号，并等待工作线程安全收敛退出。
+- 未完成：无。
+
+**验证证据**
+- `cmake --build build --config Release` → 全量 Release 编译通过，无报错。
+- `ctest --test-dir build --output-on-failure -C Release -R "^dltool_model_storage_params_tests$"` → 100% 测试通过（实测记录 `[Evidence] GUI event loop ticked 4 times during 10MB async model copy`）。
+- `ctest --test-dir build --output-on-failure -C Release -R "dltool_model_(evaluation|dataset|tasks|storage_params)_tests|patchcore_copy|patchcore_delete|project_creation"` → 10/10 Passed 100%（涵盖 model 及 project 集成测试）。
+
+**下一步**
+- 推进 Ticket 15：`docs/refactor-tickets/15-test-task-recovery.md`（统一测试任务恢复机制）。
+
 ## 2026-09-08 — 完成模型重命名删除的中断恢复
 
 **目标**
