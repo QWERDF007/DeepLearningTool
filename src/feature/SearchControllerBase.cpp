@@ -56,6 +56,9 @@ void SearchControllerBase::shutdown()
     if (shutting_down_.exchange(true, std::memory_order_acq_rel))
         return;
 
+    if (cancellation_token_ != nullptr)
+        cancellation_token_->store(true, std::memory_order_release);
+
     const bool was_running = running_;
 
     QThread *thread = worker_thread_.data();
@@ -182,6 +185,8 @@ bool SearchControllerBase::search(const QVariantList &ids, const QVariantList &s
 
     req.index_file = computeIndexPath(req);
     req.started_at = std::chrono::steady_clock::now();
+    req.cancellation_token = std::make_shared<std::atomic_bool>(false);
+    cancellation_token_     = req.cancellation_token;
 
     resetForNewSearch();
     startProgress(req);
@@ -431,9 +436,18 @@ void SearchControllerBase::executeImageSearch(const SearchRequest &request, Sear
         const auto                 weights_path = toFsPath(request.weights_file);
         const auto                 index_path   = toFsPath(request.index_file);
 
+        if (request.cancellationRequested())
+            return;
+
         addProgressMessage(spdlog::level::info,
                            QString("正在准备图像搜索特征库: %1 张图像").arg(request.gallery_images.size()));
         search.buildOrLoad(weights_path, request.gallery_images, index_path, request.rebuild_index, progress);
+
+        if (request.cancellationRequested())
+        {
+            response.error = QStringLiteral("图像搜索已取消");
+            return;
+        }
 
         std::map<int64_t, float> result_scores;
         for (const auto &query_image : request.query_images)

@@ -132,6 +132,9 @@ void ImageClusterController::shutdown()
     if (shutting_down_.exchange(true, std::memory_order_acq_rel))
         return;
 
+    if (cancellation_token_ != nullptr)
+        cancellation_token_->store(true, std::memory_order_release);
+
     const bool was_running = running_;
 
     QThread *thread = worker_thread_.data();
@@ -275,6 +278,8 @@ bool ImageClusterController::cluster(const QVariantList &dataset_ids)
 
     request.weights_file = QFileInfo(request.weights_file).absoluteFilePath();
     request.started_at   = std::chrono::steady_clock::now();
+    request.cancellation_token = std::make_shared<std::atomic_bool>(false);
+    cancellation_token_        = request.cancellation_token;
 
     resetForNewCluster();
     startProgress(request);
@@ -411,11 +416,20 @@ void ImageClusterController::executeCluster(const ClusterRequest &request, Clust
 {
     try
     {
+        if (request.cancellationRequested())
+            return;
+
         addProgressMessage(spdlog::level::info, QString("正在抽取图像特征并聚类: %1 张图像").arg(request.items.size()));
 
         irt::features::ImageCluster cluster(request.config);
         const auto                  result = cluster.cluster(toFsPath(request.weights_file), request.items,
                                                              progress);
+
+        if (request.cancellationRequested())
+        {
+            response.error = QStringLiteral("图像聚类已取消");
+            return;
+        }
 
         response.assignments.reserve(result.assignments.size());
         for (const auto &assignment : result.assignments)

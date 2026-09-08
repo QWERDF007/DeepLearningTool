@@ -209,9 +209,18 @@ void RoiSearchController::executeRoiSearch(const SearchRequest &request, SearchR
         const auto               weights_path = toFsPath(request.weights_file);
         const auto               index_path   = toFsPath(request.index_file);
 
+        if (request.cancellationRequested())
+            return;
+
         addProgressMessage(spdlog::level::info, QString("正在准备标注搜索特征库: %1 个标注").arg(gallery_count));
         search.buildOrLoad(weights_path, request.gallery_rois, index_path, request.rebuild_index,
                            progress);
+
+        if (request.cancellationRequested())
+        {
+            response.error = QStringLiteral("标注搜索已取消");
+            return;
+        }
 
         std::map<int64_t, float> result_scores;
         for (const auto &query_item : request.query_rois)

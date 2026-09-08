@@ -70,6 +70,7 @@ private:
 };
 
 SearchExecutorGate search_executor_gate;
+std::atomic_bool   search_executor_saw_cancellation{false};
 
 class SearchLifecycleProvider final : public dltool::feature::FeatureDataProvider
 {
@@ -125,9 +126,17 @@ protected:
     void clearProviderResults() override {}
 
 private:
-    static void execute(const SearchRequest &, SearchResponse &response, const BuildProgressCallback &progress)
+    static void execute(const SearchRequest &request, SearchResponse &response, const BuildProgressCallback &progress)
     {
         search_executor_gate.waitUntilReleased();
+
+        if (request.cancellationRequested())
+        {
+            search_executor_saw_cancellation.store(true, std::memory_order_release);
+            response.success = false;
+            response.error     = QStringLiteral("测试搜索已取消");
+            return;
+        }
 
         irt::features::ImageSearchBuildProgress build_progress;
         build_progress.stage          = irt::features::ImageSearchBuildStage::LoadingModel;
@@ -238,6 +247,7 @@ private slots:
     void searchProgressCallbacksAreDiscardedAfterShutdown()
     {
         search_executor_gate.reset();
+        search_executor_saw_cancellation.store(false, std::memory_order_release);
 
         SearchLifecycleProvider   provider;
         SearchLifecycleController controller(&provider);
@@ -255,6 +265,7 @@ private slots:
         controller.shutdown();
         releaser.join();
 
+        QVERIFY(search_executor_saw_cancellation.load(std::memory_order_acquire));
         progress->reset();
         QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
         QCOMPARE(progress->getMessage(), QString());

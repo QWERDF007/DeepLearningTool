@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <set>
 #include <vector>
 
@@ -76,6 +77,12 @@ private:
         std::vector<irt::features::RoiClusterItem> items;
 
         std::chrono::steady_clock::time_point started_at;
+        std::shared_ptr<std::atomic_bool> cancellation_token;
+
+        bool cancellationRequested() const noexcept
+        {
+            return cancellation_token != nullptr && cancellation_token->load(std::memory_order_relaxed);
+        }
     };
 
     struct Response
@@ -122,6 +129,7 @@ private:
     QString last_summary_;
     int     result_count_{0};
     QPointer<::QThread> worker_thread_;
+    std::shared_ptr<std::atomic_bool> cancellation_token_;
     std::atomic_bool    shutting_down_{false};
 };
 

@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
 #include <set>
 #include <vector>
 
@@ -90,6 +91,13 @@ protected:
 
         std::vector<irt::features::RoiSearchItem> query_rois;
         std::vector<irt::features::RoiSearchItem> gallery_rois;
+
+        std::shared_ptr<std::atomic_bool> cancellation_token;
+
+        bool cancellationRequested() const noexcept
+        {
+            return cancellation_token != nullptr && cancellation_token->load(std::memory_order_relaxed);
+        }
     };
 
     struct SearchResponse
@@ -157,6 +165,7 @@ private:
     QString last_summary_;
     int     result_count_{0};
     QPointer<::QThread> worker_thread_;
+    std::shared_ptr<std::atomic_bool> cancellation_token_;
     std::atomic_bool  shutting_down_{false};
 };
 
