@@ -4,6 +4,7 @@
 #include "DataOperationWorkflow.h"
 #include "dltool/data/Export.h"
 
+
 #include <QObject>
 #include <QPointF>
 #include <QRect>
@@ -22,6 +23,31 @@ struct DATA_API ImportedLabel
     QString     label_class_name;
     QVariantMap data;
     QString     image_path;
+};
+
+class DATA_API SafeExportScope
+{
+public:
+    explicit SafeExportScope(const QString &target_dir);
+    ~SafeExportScope();
+
+    SafeExportScope(const SafeExportScope &) = delete;
+    SafeExportScope &operator=(const SafeExportScope &) = delete;
+
+    bool           isValid() const { return valid_; }
+    const QString &stagingDir() const { return staging_dir_; }
+    const QString &targetDir() const { return target_dir_; }
+    const QString &error() const { return error_; }
+
+    bool publish(QString &err_msg);
+    void discard();
+
+private:
+    QString target_dir_;
+    QString staging_dir_;
+    QString error_;
+    bool    valid_{false};
+    bool    published_{false};
 };
 
 class DATA_API DataIO : public QObject
@@ -47,6 +73,9 @@ public:
      */
     static bool validateExportOutput(int data_format, const ExportDataset &dataset, const QString &output_dir,
                                      const QVariantMap &options, QString &err_msg);
+
+    static bool checkExportSourceCollision(const ExportDataset &dataset, const QString &target_dir,
+                                           int data_format, QString &err_msg);
 
     void setTargetMethod(int method) { target_method_ = method; }
     void setTaskId(const QString &task_id) { task_id_ = task_id; }

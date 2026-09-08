@@ -85,7 +85,14 @@ void ProgressManager::updateProgress(int progress, const QString &taskId)
 {
     if (!is_running_)
     {
-        return;
+        if (taskId.isEmpty())
+        {
+            startTask(QStringLiteral("后台任务"), QString());
+        }
+        else
+        {
+            return;
+        }
     }
 
     if (!taskId.isEmpty())

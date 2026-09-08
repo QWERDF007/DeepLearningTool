@@ -45,6 +45,30 @@
 
 **边界**：不动导出的字段结构；不顺手重构 handler。
 
+## 2026-09-08 — 覆盖导出暂存校验与源文件防覆盖保护
+
+**目标**
+- 解决数据导出（COCO、LabelMe、Mask、Folder）时，若导出路径与源图像同名/为路径别名或导出目录包含源图像，会删除/破坏源数据的问题。
+- 解决导出中途失败或取消时，未完成的文件散落在目标目录中污染已有文件，甚至清除目标目录中已有用户文件的问题。
+- 严格校验导出目标路径：禁止将 Windows UNC 路径解析为应用工作目录相对路径；禁止无显式根目录的相对路径导出。
+- 保证导出采用原子暂存发布（SafeExportScope）：在暂存区完成全部导出产物及 manifest 校验后，才原子替换发布到目标目录；若导出失败则回滚并保留目标目录原有内容。
+
+**当前状态**
+- 已完成：在 `DatasetIO` 中增加 `isSameFileOrAlias`、`isPathInsideDirectory`、`resolveExportPath`，并加固 `copyFile`，拒绝覆盖同一文件/别名。
+- 已完成：在 `Utils` 中增加 `isUncPath` 和 `isValidUncPath`，在 `runtimePath` 和 `resolvePath` 中禁止将 UNC 路径当成相对路径拼接到工作目录。
+- 已完成：在 `DataIO` 中实现 `SafeExportScope`，提供 `.staging_<name>_<uuid>` 隔离暂存与 `.backup_<name>_<uuid>` 失败回滚机制；实现 `checkExportSourceCollision`，在导出前预先拦截目标目录或目标文件与源图像冲突。
+- 已完成：更新 `COCOIO`、`LabelMeIO`、`MaskIO`、`FolderIO` 四种导出器：前置冲突检查 -> 写入隔离暂存区 -> `validateExportOutput` 校验产物清单 -> `scope.publish()` 原子发布。
+- 已完成：更新 `DataManager::exportDatasets`，使用 `resolveExportPath` 统一校验输出路径并前置拦截文件冲突。
+- 已完成：编写 `test_DataIOExport.cpp`，覆盖源文件碰撞防破坏保护、导出失败保留目标目录已有文件、原子暂存发布以及 UNC/相对路径语义校验 4 个新用例。
+
+**验证证据**
+- `ctest --test-dir build -C Release -R "^dltool_data_data_ioexport_tests$" --output-on-failure` → 7/7 全部 Passed (0.34 sec)。
+- `ctest --test-dir build -C Release -R "^dltool_model_data_export_test$" --output-on-failure` → 4/4 全部 Passed (3.04 sec)。
+
+**下一步**
+- 提交本阶段代码：`refactor: 覆盖导出暂存校验与源文件防覆盖保护`。
+- 推进 Ticket 07：批量导出取消作用域与清单校验。
+
 ---
 
 ## 2026-09-08 — 隔离不同任务的页脚进度与终态

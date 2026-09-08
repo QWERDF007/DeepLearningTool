@@ -67,7 +67,11 @@ public:
     static QString     generateDefaultColor(int index);
     static QString     uniqueFileName(const QString &source_path, int64_t stable_id,
                                       const std::map<QString, int> &used_names);
-    static bool        copyFile(const QString &source_path, const QString &target_path, QString &err_msg);
+    static bool copyFile(const QString &source_path, const QString &target_path, QString &err_msg);
+    static bool isSameFileOrAlias(const QString &path1, const QString &path2);
+    static bool isPathInsideDirectory(const QString &file_path, const QString &dir_path);
+    static bool resolveExportPath(const QString &output_dir, const QVariantMap &options, QString &resolved_dir,
+                                  QString &err_msg);
 };
 
 } // namespace dltool::data

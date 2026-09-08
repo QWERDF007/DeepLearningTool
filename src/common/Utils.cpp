@@ -30,6 +30,21 @@ QString toQString(const QStringList &str_list, const QString &sep, Qt::SplitBeha
     str += str_list[size];
     return str;
 }
+bool isUncPath(const QString &path)
+{
+    const QString trimmed = path.trimmed();
+    return trimmed.startsWith(QStringLiteral("//")) || trimmed.startsWith(QStringLiteral("\\\\"));
+}
+
+bool isValidUncPath(const QString &path)
+{
+    if (!isUncPath(path))
+        return false;
+    const QString normalized = QDir::fromNativeSeparators(path.trimmed());
+    const QString rest = normalized.mid(2);
+    const QStringList parts = rest.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    return parts.size() >= 2 && !parts[0].isEmpty() && !parts[1].isEmpty();
+}
 
 QString cleanPath(const QString &path)
 {
@@ -42,7 +57,7 @@ QString cleanPath(const QString &path)
 QString runtimePath(const QString &path)
 {
     const QString cleaned = cleanPath(path);
-    if (cleaned.isEmpty() || QFileInfo(cleaned).isAbsolute())
+    if (cleaned.isEmpty() || QFileInfo(cleaned).isAbsolute() || isUncPath(path))
         return cleaned;
     const QString configured_root = qEnvironmentVariable("DLT_RUNTIME_ROOT").trimmed();
     const QString runtime_root
@@ -53,7 +68,7 @@ QString runtimePath(const QString &path)
 QString resolvePath(const QString &base_dir, const QString &path)
 {
     const QString cleaned = cleanPath(path);
-    if (cleaned.isEmpty() || QFileInfo(cleaned).isAbsolute())
+    if (cleaned.isEmpty() || QFileInfo(cleaned).isAbsolute() || isUncPath(path))
         return cleaned;
     return cleanPath(QDir(base_dir).filePath(cleaned));
 }

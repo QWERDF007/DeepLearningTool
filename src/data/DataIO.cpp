@@ -984,6 +984,244 @@ bool DataIO::validateExportOutput(const int data_format, const ExportDataset &da
     }
 }
 
+static bool copyDirectoryRecursively(const QString &source_dir, const QString &target_dir, QString &err_msg)
+{
+    QDir source(source_dir);
+    if (!source.exists())
+    {
+        err_msg = QString("源目录不存在: %1").arg(source_dir);
+        return false;
+    }
+    if (!QDir().mkpath(target_dir))
+    {
+        err_msg = QString("无法创建目标目录: %1").arg(target_dir);
+        return false;
+    }
+
+    QDirIterator it(source_dir, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+    while (it.hasNext())
+    {
+        it.next();
+        const QString relative    = source.relativeFilePath(it.filePath());
+        const QString target_path = QDir(target_dir).filePath(relative);
+        if (it.fileInfo().isDir())
+        {
+            if (!QDir().mkpath(target_path))
+            {
+                err_msg = QString("无法创建子目录: %1").arg(target_path);
+                return false;
+            }
+        }
+        else
+        {
+            QFileInfo target_fi(target_path);
+            if (!QDir().mkpath(target_fi.dir().path()))
+            {
+                err_msg = QString("无法创建子目录: %1").arg(target_fi.dir().path());
+                return false;
+            }
+            if (QFile::exists(target_path))
+            {
+                QFile::remove(target_path);
+            }
+            if (!QFile::copy(it.filePath(), target_path))
+            {
+                err_msg = QString("复制文件失败: %1 -> %2").arg(it.filePath(), target_path);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+SafeExportScope::SafeExportScope(const QString &target_dir)
+    : target_dir_(common::cleanPath(target_dir))
+{
+    if (target_dir_.isEmpty())
+    {
+        error_ = QStringLiteral("目标目录为空");
+        return;
+    }
+
+    const QFileInfo target_fi(target_dir_);
+    const QDir      parent_dir = target_fi.dir();
+    const QString   candidate_staging
+        = parent_dir.filePath(QStringLiteral(".staging_%1_%2").arg(target_fi.fileName()).arg(common::uuid()));
+
+    QString dir_err;
+    if (common::ensureDirectory(candidate_staging, &dir_err))
+    {
+        staging_dir_ = candidate_staging;
+        valid_       = true;
+    }
+    else
+    {
+        const QString fallback_staging = QDir(QDir::tempPath())
+                                             .filePath(QStringLiteral("dltool_staging_%1_%2")
+                                                           .arg(target_fi.fileName())
+                                                           .arg(common::uuid()));
+        if (common::ensureDirectory(fallback_staging, &dir_err))
+        {
+            staging_dir_ = fallback_staging;
+            valid_       = true;
+        }
+        else
+        {
+            error_ = QStringLiteral("无法创建导出暂存目录: %1").arg(dir_err);
+        }
+    }
+}
+
+SafeExportScope::~SafeExportScope()
+{
+    discard();
+}
+
+void SafeExportScope::discard()
+{
+    if (!published_ && !staging_dir_.isEmpty())
+    {
+        QDir(staging_dir_).removeRecursively();
+    }
+}
+
+bool SafeExportScope::publish(QString &err_msg)
+{
+    if (!valid_)
+    {
+        err_msg = error_;
+        return false;
+    }
+
+    if (published_)
+        return true;
+
+    if (!QDir(staging_dir_).exists())
+    {
+        err_msg = QStringLiteral("暂存目录不存在: %1").arg(staging_dir_);
+        return false;
+    }
+
+    const QFileInfo target_fi(target_dir_);
+    const QDir      parent_dir = target_fi.dir();
+
+    if (!QFileInfo::exists(target_dir_))
+    {
+        if (!common::ensureDirectory(parent_dir.path(), &err_msg))
+            return false;
+
+        if (QDir().rename(staging_dir_, target_dir_))
+        {
+            published_ = true;
+            return true;
+        }
+
+        if (copyDirectoryRecursively(staging_dir_, target_dir_, err_msg))
+        {
+            QDir(staging_dir_).removeRecursively();
+            published_ = true;
+            return true;
+        }
+
+        QDir(target_dir_).removeRecursively();
+        return false;
+    }
+
+    // Target directory already exists: back it up first to preserve original content if publish fails
+    const QString backup_dir = parent_dir.filePath(
+        QStringLiteral(".backup_%1_%2").arg(target_fi.fileName()).arg(common::uuid()));
+
+    bool backed_up = QDir().rename(target_dir_, backup_dir);
+    if (!backed_up)
+    {
+        backed_up = copyDirectoryRecursively(target_dir_, backup_dir, err_msg);
+        if (backed_up)
+        {
+            QDir(target_dir_).removeRecursively();
+        }
+        else
+        {
+            err_msg = QStringLiteral("无法备份既有目标目录: %1").arg(target_dir_);
+            return false;
+        }
+    }
+
+    // Now move staging_dir_ to target_dir_
+    bool publish_success = QDir().rename(staging_dir_, target_dir_);
+    if (!publish_success)
+    {
+        publish_success = copyDirectoryRecursively(staging_dir_, target_dir_, err_msg);
+    }
+
+    if (!publish_success)
+    {
+        // Rollback! Restore original target from backup
+        QDir(target_dir_).removeRecursively();
+        if (!QDir().rename(backup_dir, target_dir_))
+        {
+            copyDirectoryRecursively(backup_dir, target_dir_, err_msg);
+        }
+        QDir(backup_dir).removeRecursively();
+        err_msg = QStringLiteral("发布暂存导出失败，已恢复原目标内容: %1").arg(target_dir_);
+        return false;
+    }
+
+    // Clean up backup directory and staging
+    QDir(backup_dir).removeRecursively();
+    QDir(staging_dir_).removeRecursively();
+    published_ = true;
+    return true;
+}
+
+bool DataIO::checkExportSourceCollision(const ExportDataset &dataset, const QString &target_dir,
+                                       const int data_format, QString &err_msg)
+{
+    const QString clean_target = common::cleanPath(target_dir);
+    if (clean_target.isEmpty())
+        return true;
+
+    for (const ExportImage &image : dataset.images)
+    {
+        if (image.path.isEmpty())
+            continue;
+
+        if (DatasetIO::isSameFileOrAlias(image.path, clean_target))
+        {
+            err_msg = QStringLiteral("导出目标路径与源图像文件冲突（同一文件或别名），拒绝覆盖: %1").arg(image.path);
+            return false;
+        }
+
+        if (DatasetIO::isPathInsideDirectory(image.path, clean_target))
+        {
+            err_msg = QStringLiteral("导出目标目录与源图像冲突（包含源图像文件），拒绝覆盖源文件目录: %1").arg(image.path);
+            return false;
+        }
+
+        QString planned_target_path;
+        const QString file_name = QFileInfo(image.path).fileName();
+        switch (data_format)
+        {
+        case DataFormat::COCO:
+        case DataFormat::LabelMe:
+        case DataFormat::Mask:
+            planned_target_path = QDir(clean_target).filePath(QStringLiteral("images/") + file_name);
+            break;
+        case DataFormat::Folder:
+            planned_target_path = QDir(clean_target).filePath(file_name);
+            break;
+        default:
+            break;
+        }
+
+        if (!planned_target_path.isEmpty() && DatasetIO::isSameFileOrAlias(image.path, planned_target_path))
+        {
+            err_msg = QStringLiteral("导出目标图像与源图像文件冲突（同一文件或别名），拒绝覆盖: %1").arg(image.path);
+            return false;
+        }
+    }
+    return true;
+}
+
 void DataIO::startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
 {
     Q_UNUSED(dataset_id)
@@ -1692,9 +1930,22 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir, const int threa
 {
     try
     {
-        QString       err_msg;
-        const QString images_dir      = QDir(output_dir).filePath(QStringLiteral("images"));
-        const QString annotations_dir = QDir(output_dir).filePath(QStringLiteral("annotations"));
+        QString err_msg;
+        if (!DataIO::checkExportSourceCollision(dataset, output_dir, DataFormat::COCO, err_msg))
+        {
+            emit exportFinished(false, err_msg);
+            return;
+        }
+
+        SafeExportScope scope(output_dir);
+        if (!scope.isValid())
+        {
+            emit exportFinished(false, scope.error());
+            return;
+        }
+
+        const QString images_dir      = QDir(scope.stagingDir()).filePath(QStringLiteral("images"));
+        const QString annotations_dir = QDir(scope.stagingDir()).filePath(QStringLiteral("annotations"));
         if (!ensureDirectory(images_dir, err_msg) || !ensureDirectory(annotations_dir, err_msg))
         {
             emit exportFinished(false, err_msg);
@@ -1850,7 +2101,12 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir, const int threa
 
         annotation_file.write(QByteArray::fromStdString(json_data.dump(2)));
         annotation_file.close();
-        if (!DataIO::validateExportOutput(DataFormat::COCO, dataset, output_dir, {}, err_msg))
+        if (!DataIO::validateExportOutput(DataFormat::COCO, dataset, scope.stagingDir(), {}, err_msg))
+        {
+            emit exportFinished(false, err_msg);
+            return;
+        }
+        if (!scope.publish(err_msg))
         {
             emit exportFinished(false, err_msg);
             return;
@@ -2324,9 +2580,22 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir, const int th
 {
     try
     {
-        QString       err_msg;
-        const QString images_dir      = QDir(output_dir).filePath(QStringLiteral("images"));
-        const QString annotations_dir = QDir(output_dir).filePath(QStringLiteral("annotations"));
+        QString err_msg;
+        if (!DataIO::checkExportSourceCollision(dataset, output_dir, DataFormat::LabelMe, err_msg))
+        {
+            emit exportFinished(false, err_msg);
+            return;
+        }
+
+        SafeExportScope scope(output_dir);
+        if (!scope.isValid())
+        {
+            emit exportFinished(false, scope.error());
+            return;
+        }
+
+        const QString images_dir      = QDir(scope.stagingDir()).filePath(QStringLiteral("images"));
+        const QString annotations_dir = QDir(scope.stagingDir()).filePath(QStringLiteral("annotations"));
         if (!ensureDirectory(images_dir, err_msg) || !ensureDirectory(annotations_dir, err_msg))
         {
             emit exportFinished(false, err_msg);
@@ -2453,7 +2722,13 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir, const int th
             }
         }
 
-        if (!DataIO::validateExportOutput(DataFormat::LabelMe, dataset, output_dir, {}, err_msg))
+        if (!DataIO::validateExportOutput(DataFormat::LabelMe, dataset, scope.stagingDir(), {}, err_msg))
+        {
+            emit exportFinished(false, err_msg);
+            return;
+        }
+
+        if (!scope.publish(err_msg))
         {
             emit exportFinished(false, err_msg);
             return;
@@ -2858,9 +3133,22 @@ void MaskIO::doExport(ExportDataset dataset, QString output_dir, QVariantMap opt
 {
     try
     {
-        QString       err_msg;
-        const QString images_dir = QDir(output_dir).filePath(QStringLiteral("images"));
-        const QString masks_dir  = QDir(output_dir).filePath(QStringLiteral("masks"));
+        QString err_msg;
+        if (!DataIO::checkExportSourceCollision(dataset, output_dir, DataFormat::Mask, err_msg))
+        {
+            emit exportFinished(false, err_msg);
+            return;
+        }
+
+        SafeExportScope scope(output_dir);
+        if (!scope.isValid())
+        {
+            emit exportFinished(false, scope.error());
+            return;
+        }
+
+        const QString images_dir = QDir(scope.stagingDir()).filePath(QStringLiteral("images"));
+        const QString masks_dir  = QDir(scope.stagingDir()).filePath(QStringLiteral("masks"));
         if (!ensureDirectory(images_dir, err_msg) || !ensureDirectory(masks_dir, err_msg))
         {
             emit exportFinished(false, err_msg);
@@ -2991,13 +3279,19 @@ void MaskIO::doExport(ExportDataset dataset, QString output_dir, QVariantMap opt
             skipped_label_count += results[i].skipped_labels;
         }
 
-        if (!writeClassMetadata(dataset, output_dir, mode, class_values, err_msg))
+        if (!writeClassMetadata(dataset, scope.stagingDir(), mode, class_values, err_msg))
         {
             emit exportFinished(false, err_msg);
             return;
         }
 
-        if (!DataIO::validateExportOutput(DataFormat::Mask, dataset, output_dir, options, err_msg))
+        if (!DataIO::validateExportOutput(DataFormat::Mask, dataset, scope.stagingDir(), options, err_msg))
+        {
+            emit exportFinished(false, err_msg);
+            return;
+        }
+
+        if (!scope.publish(err_msg))
         {
             emit exportFinished(false, err_msg);
             return;
@@ -3262,7 +3556,20 @@ void FolderIO::doExport(ExportDataset dataset, QString output_dir, const int thr
     try
     {
         QString err_msg;
-        if (!ensureDirectory(output_dir, err_msg))
+        if (!DataIO::checkExportSourceCollision(dataset, output_dir, DataFormat::Folder, err_msg))
+        {
+            emit exportFinished(false, err_msg);
+            return;
+        }
+
+        SafeExportScope scope(output_dir);
+        if (!scope.isValid())
+        {
+            emit exportFinished(false, scope.error());
+            return;
+        }
+
+        if (!ensureDirectory(scope.stagingDir(), err_msg))
         {
             emit exportFinished(false, err_msg);
             return;
@@ -3292,7 +3599,7 @@ void FolderIO::doExport(ExportDataset dataset, QString output_dir, const int thr
                     class_name = name_it->second;
             }
 
-            const QString class_dir = QDir(output_dir).filePath(class_name);
+            const QString class_dir = QDir(scope.stagingDir()).filePath(class_name);
             class_dirs.insert(class_dir);
             target_paths[i] = QDir(class_dir).filePath(QFileInfo(image.path).fileName());
             if (!used_target_paths.insert(target_paths[i]).second)
@@ -3345,7 +3652,13 @@ void FolderIO::doExport(ExportDataset dataset, QString output_dir, const int thr
             ++exported;
         }
 
-        if (!DataIO::validateExportOutput(DataFormat::Folder, dataset, output_dir, {}, err_msg))
+        if (!DataIO::validateExportOutput(DataFormat::Folder, dataset, scope.stagingDir(), {}, err_msg))
+        {
+            emit exportFinished(false, err_msg);
+            return;
+        }
+
+        if (!scope.publish(err_msg))
         {
             emit exportFinished(false, err_msg);
             return;

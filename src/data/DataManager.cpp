@@ -1698,20 +1698,12 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
         return;
     }
 
-    const QString clean_output_dir = dltool::common::cleanPath(output_dir);
-    if (clean_output_dir.isEmpty())
+    QString clean_output_dir;
+    QString resolve_err;
+    if (!DatasetIO::resolveExportPath(output_dir, options, clean_output_dir, resolve_err))
     {
-        const QString message = QString("输出目录为空");
-        spdlog::error("导出数据失败, {}", message.toUtf8().constData());
-        ui::SignalHelper::notifyError(QString("导出失败"), message);
-        return;
-    }
-
-    if (!QFileInfo(clean_output_dir).isAbsolute())
-    {
-        const QString message = QString("导出目录必须是有效的绝对路径: %1").arg(output_dir);
-        spdlog::error("导出数据失败, {}", message.toUtf8().constData());
-        ui::SignalHelper::notifyError(QString("导出失败"), message);
+        spdlog::error("导出数据失败, {}", resolve_err.toUtf8().constData());
+        ui::SignalHelper::notifyError(QString("导出失败"), resolve_err);
         return;
     }
 
@@ -1783,8 +1775,8 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
     prepare_options.manage_progress = false;
     runDatasetExportAsync(
         this, std::move(export_request), std::move(prepare_options),
-        [selected_dataset_ids, clean_output_dir, state](const DatasetExportSource     &source,
-                                                        DataOperationWorkflow::Result &result)
+        [selected_dataset_ids, clean_output_dir, state, data_format](const DatasetExportSource     &source,
+                                                                     DataOperationWorkflow::Result &result)
         {
             std::map<int64_t, size_t>            state_index_by_dataset;
             std::map<int64_t, std::set<int64_t>> class_ids_by_dataset;
@@ -1880,6 +1872,18 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
             state->items.erase(std::remove_if(state->items.begin(), state->items.end(),
                                               [](const ExportBatchItem &item) { return item.dataset.images.empty(); }),
                                state->items.end());
+
+            for (const auto &item : state->items)
+            {
+                QString collision_err;
+                if (!DataIO::checkExportSourceCollision(item.dataset, item.output_dir, data_format, collision_err))
+                {
+                    result.success = false;
+                    result.error   = collision_err;
+                    return;
+                }
+            }
+
             result.success = !state->items.empty();
             if (!result.success)
             {
