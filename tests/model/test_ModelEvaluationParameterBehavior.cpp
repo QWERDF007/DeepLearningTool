@@ -1329,6 +1329,70 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
         QCOMPARE(evaluation->instances()->rowCount(), 1);
     }
+
+    void firstEvaluationAppliesBestThresholdWithoutTriggeringSecondEvaluation()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        fixture.addClass(QStringLiteral("Normal"), QStringLiteral("normal"));
+        const qint64 anomaly_class = fixture.addClass(QStringLiteral("Defect"), QStringLiteral("anomaly"));
+        const qint64 image = fixture.addImage(QStringLiteral("first_eval_sample"));
+        QVERIFY(fixture.addAnomalyLabel(image, anomaly_class, {{2, 2}, {6, 2}, {6, 6}, {2, 6}}) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::AnomalyDetection), &database, nullptr);
+        QString      error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("FirstEvalModel"), QStringLiteral("anomalib"),
+                                                         QStringLiteral("patchcore"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, nullptr);
+        manager.setModelUuid(record.uuid);
+        const QString task_uuid = manager.currentTaskUuid();
+        QVERIFY(!task_uuid.isEmpty());
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image, anomalyPrediction(0.77), true, &error),
+                 qPrintable(error));
+
+        const ModelStorageService storage(fixture.rootPath());
+        const QString task_db_path = storage.testTaskDatabasePath(record.name, manager.currentTaskDirectory());
+        dltool::database::ModelTaskDataBase task_db(task_db_path);
+
+        // 验证首评前尚未记录自动应用事实
+        bool applied_before = false;
+        QVERIFY(task_db.readAdaptiveThresholdApplied(applied_before));
+        QVERIFY(!applied_before);
+
+        auto *evaluation = manager.currentEvaluation();
+        QVERIFY(evaluation != nullptr);
+
+        // 触发首次评估
+        evaluation->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+
+        // 验收条件 2: 首评应用不触发第二次评估（evaluationCount 严格等于 1）
+        QCOMPARE(evaluation->evaluationCount(), 1);
+        QVERIFY(evaluation->hasBestThreshold());
+        const double best = evaluation->bestThreshold();
+        QVERIFY(std::isfinite(best));
+
+        // 验证已自动写库标记应用事实
+        bool applied_after = false;
+        QVERIFY(task_db.readAdaptiveThresholdApplied(applied_after));
+        QVERIFY(applied_after);
+
+        // 验证当前测试参数已更新为最佳阈值
+        ITestParams *params = manager.currentTestParams();
+        QVERIFY(params != nullptr);
+        auto *eval_group = findGroup(params, QStringLiteral("evaluation"));
+        QVERIFY(eval_group != nullptr);
+        const double current_param_threshold = eval_group->valueForName(QStringLiteral("classification_threshold")).toDouble();
+        QCOMPARE(current_param_threshold, best);
+
+        // 等待可能残留的异步信号，验证 evaluationCount 始终保持 1
+        QTest::qWait(100);
+        QCOMPARE(evaluation->evaluationCount(), 1);
+    }
 };
 
 REGISTER_TEST(ModelEvaluationParameterBehaviorTest)

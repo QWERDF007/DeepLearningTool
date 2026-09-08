@@ -63,12 +63,13 @@ EvaluationThresholdSearchResult selectBestEvaluationThreshold(
     if (positive_ground_truth_count <= 0)
         return result;
 
+    constexpr double kF1Epsilon = 1e-12;
     for (const EvaluationThresholdPoint &point : points)
     {
-        const bool                    new_best_f1
-            = !result.available || point.f1 > result.best_point.f1;
-        const bool                    equal_best_f1
-            = result.available && point.f1 == result.best_point.f1;
+        const bool new_best_f1
+            = !result.available || point.f1 > result.best_point.f1 + kF1Epsilon;
+        const bool equal_best_f1
+            = result.available && std::abs(point.f1 - result.best_point.f1) <= kF1Epsilon;
         if (new_best_f1)
         {
             result.best_point = point;

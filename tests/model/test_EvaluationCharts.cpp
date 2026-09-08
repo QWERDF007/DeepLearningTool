@@ -401,6 +401,112 @@ private slots:
         }
         QVERIFY(found_best_threshold);
     }
+
+    void precisionRecallSamplingTo100PointsDoesNotDistortBestThresholdSolution()
+    {
+        // 构造带有一个非整刻度最佳阈值（0.4567）与 F1（0.8234）的搜索结果
+        EvaluationThresholdSearchResult search;
+        search.available = true;
+        search.positive_ground_truth_count = 1;
+        search.points = {
+            EvaluationThresholdPoint{0.1, EvaluationCounts{1, 2, 0}, 1.0 / 3.0, 1.0, 0.5},
+            EvaluationThresholdPoint{0.4567, EvaluationCounts{1, 0, 0}, 1.0, 1.0, 0.8234},
+            EvaluationThresholdPoint{0.9, EvaluationCounts{0, 0, 1}, 0.0, 0.0, 0.0}
+        };
+        search.best_point = search.points.at(1);
+        search.equivalent_best_threshold_min = 0.4567;
+        search.equivalent_best_threshold_max = 0.4567;
+
+        // 生成异常检测 PR 曲线图表
+        const QVariantMap chart = anomalyPrecisionRecallChartForImages({}, &search);
+        QCOMPARE(chart.value(evaluation::fieldName(evaluation::Field::ChartId)).toString(),
+                 evaluation::chartIdKey(evaluation::ChartId::PrecisionRecall));
+        const QVariantList datasets = chart.value(evaluation::fieldName(evaluation::Field::Data))
+                                          .toMap()
+                                          .value(evaluation::fieldName(evaluation::Field::Datasets))
+                                          .toList();
+
+        // 验收条件 2: 约 100 点图表采样不影响解
+        bool found_sampled_curve = false;
+        bool found_best_point = false;
+        for (const QVariant &dataset_val : datasets)
+        {
+            const QVariantMap ds = dataset_val.toMap();
+            const auto kind = evaluation::seriesKindFromKey(
+                ds.value(evaluation::fieldName(evaluation::Field::SeriesKind)).toString());
+            if (kind == evaluation::SeriesKind::Micro)
+            {
+                found_sampled_curve = true;
+                const QVariantList pts = ds.value(QStringLiteral("data")).toList();
+                QCOMPARE(pts.size(), kPrecisionRecallInterpolationPoints);
+                QCOMPARE(kPrecisionRecallInterpolationPoints, 100);
+            }
+            else if (kind == evaluation::SeriesKind::BestThreshold)
+            {
+                found_best_point = true;
+                QCOMPARE(ds.value(evaluation::fieldName(evaluation::Field::Threshold)).toDouble(), 0.4567);
+                QCOMPARE(ds.value(evaluation::fieldName(evaluation::Field::F1)).toDouble(), 0.8234);
+            }
+        }
+        QVERIFY(found_sampled_curve);
+        QVERIFY(found_best_point);
+    }
+
+    void anomalyScoreChartVisualPropertiesAndLegendSeparation()
+    {
+        EvaluationImageData normal;
+        normal.id = 1;
+        normal.anomaly_score_map = std::make_shared<const EvaluationScoreMap>(EvaluationScoreMap{1, 1, {0.12}});
+
+        EvaluationImageData anomaly;
+        anomaly.id = 2;
+        anomaly.gt.push_back(EvaluationGroundTruthData{1, 2, QStringLiteral("Defect"), {}, {}, {}, true});
+        anomaly.anomaly_score_map = std::make_shared<const EvaluationScoreMap>(EvaluationScoreMap{1, 1, {0.88}});
+
+        EvaluationThresholdSearchResult search;
+        search.available = true;
+        search.best_point.threshold = 0.50;
+
+        const QVariantMap chart = anomalyScoreChartForImages({normal, anomaly}, 0.50, &search);
+        const QVariantList datasets = chart.value(evaluation::fieldName(evaluation::Field::Data))
+                                          .toMap()
+                                          .value(evaluation::fieldName(evaluation::Field::Datasets))
+                                          .toList();
+
+        // 验收条件 3: 异常正常两组颜色及阈值线提示正确，不新增额外图例
+        int non_reference_count = 0;
+        int reference_count = 0;
+        for (const QVariant &val : datasets)
+        {
+            const QVariantMap ds = val.toMap();
+            const bool is_ref = ds.value(evaluation::fieldName(evaluation::Field::Reference)).toBool();
+            const auto kind = evaluation::seriesKindFromKey(
+                ds.value(evaluation::fieldName(evaluation::Field::SeriesKind)).toString());
+            if (is_ref)
+            {
+                ++reference_count;
+                QVERIFY(ds.value(QStringLiteral("tooltipXOnly")).toBool());
+                QVERIFY(!ds.value(QStringLiteral("tooltipLabel")).toString().isEmpty());
+            }
+            else
+            {
+                ++non_reference_count;
+                if (kind == evaluation::SeriesKind::Good)
+                {
+                    QCOMPARE(ds.value(QStringLiteral("borderColor")).toString(), QStringLiteral("#43A047"));
+                    QCOMPARE(ds.value(QStringLiteral("backgroundColor")).toString(), QStringLiteral("rgba(67, 160, 71, 0.24)"));
+                }
+                else if (kind == evaluation::SeriesKind::Anomaly)
+                {
+                    QCOMPARE(ds.value(QStringLiteral("borderColor")).toString(), QStringLiteral("#E53935"));
+                    QCOMPARE(ds.value(QStringLiteral("backgroundColor")).toString(), QStringLiteral("rgba(229, 57, 53, 0.24)"));
+                }
+            }
+        }
+        // 恰好两组分布数据：正常与异常，其他均为参考线（供 QML 过滤不进入额外图例）
+        QCOMPARE(non_reference_count, 2);
+        QCOMPARE(reference_count, 3);
+    }
 };
 
 REGISTER_TEST(EvaluationChartsTest)

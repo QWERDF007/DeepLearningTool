@@ -40,7 +40,28 @@
 **干到哪了**：
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
-- [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
+## 2026-09-09 — 完成阈值搜索与图表的行为验收
+
+**目标**
+- 交付 Ticket 24：完成阈值搜索与图表的行为验收。
+- 穷举样例对照全部有限去重切分点的 micro-F1，同分选择最高阈值。
+- 约 100 点图表采样不影响解，首评应用不触发第二次评估。
+- 异常正常两组颜色及阈值线提示正确，不新增额外图例；不足覆盖时补实现。
+- 遵循 TDD，先编写失败/约束测试建立基线，再实现并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `src/model/EvaluationThresholdSearch.cpp` 中引入 `kF1Epsilon = 1e-12`，解决浮点 micro-F1 在同分比较时的 ULP 误差，确保同分时严格选择最高候选阈值，并保持等价最优区间 `[min, max]` 正确计算。
+- 已完成：在 `tests/model/test_EvaluationThresholdSearch.cpp` 中新增 `exhaustiveDeduplicatedThresholdCandidatesCompareMicroF1AndSelectHighestOnTie`，针对包含正负样本、重合分数、NaN 及 Inf 的穷举样例，逐一比对全量去重有限切分点的 manual micro-F1，验证最佳解与同分取最高阈值逻辑。
+- 已完成：在 `tests/model/test_EvaluationCharts.cpp` 中新增 `precisionRecallSamplingTo100PointsDoesNotDistortBestThresholdSolution`，验证 PR 曲线插值采样为 `kPrecisionRecallInterpolationPoints` (100) 点仅用于渲染，最优点以参考点单独挂载，不扭曲最佳阈值解。
+- 已完成：在 `tests/model/test_EvaluationCharts.cpp` 中新增 `anomalyScoreChartVisualPropertiesAndLegendSeparation`，验证正常曲线颜色 `#43A047`、异常曲线颜色 `#E53935`，所有参考线均附带 `reference: true`，配合 QML 图例过滤器不生成额外图例项。
+- 已完成：在 `tests/model/test_ModelEvaluationParameterBehavior.cpp` 中新增 `firstEvaluationAppliesBestThresholdWithoutTriggeringSecondEvaluation`，测试从任务创建、首次推理评估全流程，验证自适应最佳阈值自动落盘与应用，且评估调用次数严格为 1，不触发二次冗余重算。
+- 已完成：全部 22 个模型测试通过（22/22 passed，100%）。
+
+**验证证据**
+- `ctest --test-dir build/Release -L "model" --output-on-failure` → 22/22 passed, 0 failed, 71.54s
+
+**下一步**
+- 检查并推进 Ticket 25。
 
 ## 2026-09-09 — 限制跨任务缓存与视觉请求总量
 

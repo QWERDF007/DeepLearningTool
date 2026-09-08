@@ -228,6 +228,109 @@ private slots:
         QVERIFY(!result.available);
         QVERIFY(error.contains(QStringLiteral("计数")));
     }
+
+    void exhaustiveDeduplicatedThresholdCandidatesCompareMicroF1AndSelectHighestOnTie()
+    {
+        // 5 个正类预测样本分数与 5 个负类预测样本分数，包含 NaN、Inf、重复值
+        struct Sample {
+            double score;
+            bool is_positive;
+        };
+        const std::vector<Sample> dataset = {
+            {0.15, false},
+            {0.25, false},
+            {0.35, true},
+            {0.45, false},
+            {0.55, true},
+            {0.65, true},
+            {0.75, false},
+            {0.85, true},
+            {0.95, true},
+            {0.45, false}, // 重复值
+            {0.85, true},  // 重复值
+        };
+        QVector<double> raw_scores;
+        for (const auto &item : dataset)
+            raw_scores.push_back(item.score);
+        raw_scores.push_back(std::numeric_limits<double>::quiet_NaN());
+        raw_scores.push_back(std::numeric_limits<double>::infinity());
+
+        const qint64 total_positives = 5;
+
+        // 穷举手动在所有去重后的候选切分点上计算微观 micro-F1
+        const QVector<double> candidates = evaluationThresholdCandidates(raw_scores);
+        QVERIFY(candidates.size() >= 8);
+
+        double manual_best_f1 = -1.0;
+        double manual_best_threshold = -1.0;
+        double manual_tie_min = 1e9;
+        double manual_tie_max = -1e9;
+
+        for (const double thresh : candidates)
+        {
+            qint64 tp = 0;
+            qint64 fp = 0;
+            for (const auto &item : dataset)
+            {
+                if (item.score >= thresh)
+                {
+                    if (item.is_positive)
+                        ++tp;
+                    else
+                        ++fp;
+                }
+            }
+            const qint64 fn = total_positives - tp;
+            const double f1 = (tp + fp > 0 && tp + fn > 0)
+                                ? (2.0 * tp) / (2.0 * tp + fp + fn)
+                                : 0.0;
+            if (f1 > manual_best_f1 + 1e-12)
+            {
+                manual_best_f1 = f1;
+                manual_best_threshold = thresh;
+                manual_tie_min = thresh;
+                manual_tie_max = thresh;
+            }
+            else if (std::abs(f1 - manual_best_f1) <= 1e-12)
+            {
+                manual_tie_min = std::min(manual_tie_min, thresh);
+                manual_tie_max = std::max(manual_tie_max, thresh);
+                if (thresh > manual_best_threshold)
+                    manual_best_threshold = thresh;
+            }
+        }
+
+        // 使用 searchBestEvaluationThreshold 搜索
+        const EvaluationThresholdSearchResult result = searchBestEvaluationThreshold(
+            raw_scores, total_positives,
+            [&dataset, total_positives](const double threshold, EvaluationCounts &counts, QString *)
+            {
+                counts = {0, 0, total_positives};
+                for (const auto &item : dataset)
+                {
+                    if (item.score >= threshold)
+                    {
+                        if (item.is_positive)
+                        {
+                            ++counts.tp;
+                            --counts.fn;
+                        }
+                        else
+                        {
+                            ++counts.fp;
+                        }
+                    }
+                }
+                return true;
+            });
+
+        QVERIFY(result.available);
+        // 验收条件 1: 穷举样例对照全部有限去重切分点的 micro-F1，同分选择最高阈值
+        QCOMPARE(result.best_point.f1, manual_best_f1);
+        QCOMPARE(result.best_point.threshold, manual_best_threshold);
+        QCOMPARE(result.equivalent_best_threshold_min, manual_tie_min);
+        QCOMPARE(result.equivalent_best_threshold_max, manual_tie_max);
+    }
 };
 
 REGISTER_TEST(EvaluationThresholdSearchTest)
