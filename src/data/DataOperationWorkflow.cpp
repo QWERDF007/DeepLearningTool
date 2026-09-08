@@ -142,9 +142,9 @@ DataOperationWorkflow::HandlePtr DataOperationWorkflow::start(QObject *context, 
             }
 
             result.elapsed_ms = timer.elapsed();
-            result.cancelled   = result.cancellationRequested();
-            if (result.cancelled)
-                result.success = false;
+            // 取消由实际提交者裁决：提交前取消回滚，提交后必须发布真实结果；
+            // 禁止工作流仅根据收到取消请求就把已提交成功改成失败。
+            result.cancelled   = result.cancellationRequested() && !result.success;
 
             bool callback_scheduled = false;
             if (callback_context)

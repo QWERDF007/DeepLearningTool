@@ -78,6 +78,38 @@ private slots:
         QVERIFY(handle->isCompletionFinished());
     }
 
+    void cancellationAfterSuccessPreservesCommittedResult()
+    {
+        QObject context;
+        bool    completion_called = false;
+        DataOperationWorkflow::Result completion_result;
+
+        DataOperationWorkflow::HandlePtr handle;
+
+        handle = DataOperationWorkflow::start(
+            &context, {},
+            [&handle](DataOperationWorkflow::Result &result)
+            {
+                // 模拟业务 worker 完成提交
+                result.success = true;
+                // 提交完成后、worker 退出前发生取消请求
+                handle->requestCancel();
+            },
+            [&completion_called, &completion_result](const DataOperationWorkflow::Result &result)
+            {
+                completion_called = true;
+                completion_result  = result;
+            });
+
+        QVERIFY(handle != nullptr);
+        QVERIFY(handle->waitForDone(2000));
+        QTRY_VERIFY_WITH_TIMEOUT(completion_called, 1000);
+
+        // 提交后取消必须保留真实已提交结果，不能将已提交改为失败
+        QVERIFY(completion_result.success);
+        QVERIFY(!completion_result.cancelled);
+    }
+
     void waitForCompletionsDrainsQueuedCallbacks()
     {
         QObject context;

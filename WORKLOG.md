@@ -47,6 +47,26 @@
 
 ---
 
+## 2026-09-08 — 统一数据操作提交后取消保留已提交结果
+
+**目标**
+- 解决数据操作工作流（DataOperationWorkflow）在 worker 提交成功后被请求取消时，终态结果被错误置为 cancelled/failure 的问题。
+- 保证已成功提交的数据操作状态不可逆，防止界面与数据库状态产生分歧。
+
+**当前状态**
+- 已完成：在 `DataOperationWorkflow` 中收敛取消逻辑：当 `result.success == true` 时，迟到的取消请求不再覆盖成功状态，`result.cancelled` 仅在 `!result.success` 时成立。
+- 已完成：在 `test_DataOperationWorkflow.cpp` 中新增测试 `cancellationAfterSuccessPreservesCommittedResult`，验证 worker 提交成功后触发的取消请求仍保留 `success = true` 与 `cancelled = false`。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_data_data_operation_workflow_tests --parallel 4` → 构建通过。
+- `ctest --test-dir build -C Release -R '^dltool_data_data_operation_workflow_tests$' -V` → 7/7 全部通过。
+
+**下一步**
+- 提交本阶段代码：`refactor: 统一数据操作提交后取消保留已提交结果`。
+- 推进 Ticket 03：项目关闭等待期间拒绝新数据写入。
+
+---
+
 ## 2026-09-08 — 等待数据并行全部 worker 退出后再裁决异常
 
 **目标**
