@@ -1,0 +1,410 @@
+{
+  "valid_messages": [
+    {
+      "name": "running_status_with_progress_and_eta",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "status",
+        "status": "running",
+        "progress": 25,
+        "eta_seconds": 120,
+        "message": "Training in progress",
+        "epoch": 2
+      },
+      "expected_type": "status",
+      "expected_status": "running",
+      "expected_progress": 25,
+      "expected_eta_seconds": 120
+    },
+    {
+      "name": "finished_status_with_complete_progress",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "status",
+        "status": "finished",
+        "progress": 100,
+        "eta_seconds": 0,
+        "message": "Task finished successfully"
+      },
+      "expected_type": "status",
+      "expected_status": "finished",
+      "expected_progress": 100,
+      "expected_eta_seconds": 0
+    },
+    {
+      "name": "failed_status_with_error",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "status",
+        "status": "failed",
+        "progress": -1,
+        "eta_seconds": -1,
+        "message": "CUDA out of memory"
+      },
+      "expected_type": "status",
+      "expected_status": "failed",
+      "expected_progress": -1,
+      "expected_eta_seconds": -1
+    },
+    {
+      "name": "stopped_status",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "status",
+        "status": "stopped",
+        "progress": -1,
+        "eta_seconds": -1
+      },
+      "expected_type": "status",
+      "expected_status": "stopped",
+      "expected_progress": -1,
+      "expected_eta_seconds": -1
+    },
+    {
+      "name": "progress_message",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": 60,
+        "eta_seconds": 45
+      },
+      "expected_type": "progress",
+      "expected_status": "",
+      "expected_progress": 60,
+      "expected_eta_seconds": 45
+    },
+    {
+      "name": "log_message",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "log",
+        "message": "Epoch 1/10 completed"
+      },
+      "expected_type": "log",
+      "expected_status": "",
+      "expected_progress": -1,
+      "expected_eta_seconds": -1
+    },
+    {
+      "name": "command_stop_message",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "command",
+        "command": "stop"
+      },
+      "expected_type": "command",
+      "expected_status": "",
+      "expected_progress": -1,
+      "expected_eta_seconds": -1
+    },
+    {
+      "name": "event_message",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "event",
+        "status": "running"
+      },
+      "expected_type": "event",
+      "expected_status": "running",
+      "expected_progress": -1,
+      "expected_eta_seconds": -1
+    }
+  ],
+  "invalid_messages": [
+    {
+      "name": "missing_project_id",
+      "payload": {
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": 50
+      },
+      "reason": "missing_project_id"
+    },
+    {
+      "name": "empty_project_id",
+      "payload": {
+        "project_id": "   ",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": 50
+      },
+      "reason": "empty_project_id"
+    },
+    {
+      "name": "invalid_project_id_type",
+      "payload": {
+        "project_id": 12345,
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": 50
+      },
+      "reason": "invalid_project_id_type"
+    },
+    {
+      "name": "missing_task_id",
+      "payload": {
+        "project_id": "project-alpha",
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": 50
+      },
+      "reason": "missing_task_id"
+    },
+    {
+      "name": "negative_task_id",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": -1,
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": 50
+      },
+      "reason": "negative_task_id"
+    },
+    {
+      "name": "string_task_id",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": "1",
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": 50
+      },
+      "reason": "string_task_id"
+    },
+    {
+      "name": "float_task_id",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1.5,
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": 50
+      },
+      "reason": "float_task_id"
+    },
+    {
+      "name": "missing_run_id",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "type": "progress",
+        "progress": 50
+      },
+      "reason": "missing_run_id"
+    },
+    {
+      "name": "empty_run_id",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "   ",
+        "type": "progress",
+        "progress": 50
+      },
+      "reason": "empty_run_id"
+    },
+    {
+      "name": "invalid_run_id_type",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": true,
+        "type": "progress",
+        "progress": 50
+      },
+      "reason": "invalid_run_id_type"
+    },
+    {
+      "name": "missing_type",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001"
+      },
+      "reason": "missing_type"
+    },
+    {
+      "name": "unknown_type",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "magic_event"
+      },
+      "reason": "unknown_type"
+    },
+    {
+      "name": "invalid_type_data_type",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": 999
+      },
+      "reason": "invalid_type_data_type"
+    },
+    {
+      "name": "status_type_missing_status",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "status"
+      },
+      "reason": "status_type_missing_status"
+    },
+    {
+      "name": "unknown_status_paused",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "status",
+        "status": "paused"
+      },
+      "reason": "unknown_status_paused"
+    },
+    {
+      "name": "invalid_status_type",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "status",
+        "status": 123
+      },
+      "reason": "invalid_status_type"
+    },
+    {
+      "name": "progress_type_missing_progress",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "progress"
+      },
+      "reason": "progress_type_missing_progress"
+    },
+    {
+      "name": "progress_out_of_bounds_negative",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": -5
+      },
+      "reason": "progress_out_of_bounds_negative"
+    },
+    {
+      "name": "progress_out_of_bounds_large",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": 105
+      },
+      "reason": "progress_out_of_bounds_large"
+    },
+    {
+      "name": "progress_wrong_type_string",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": "50"
+      },
+      "reason": "progress_wrong_type_string"
+    },
+    {
+      "name": "progress_wrong_type_float",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": 45.6
+      },
+      "reason": "progress_wrong_type_float"
+    },
+    {
+      "name": "eta_seconds_wrong_type_string",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": 50,
+        "eta_seconds": "100"
+      },
+      "reason": "eta_seconds_wrong_type_string"
+    },
+    {
+      "name": "eta_seconds_negative_invalid",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "progress",
+        "progress": 50,
+        "eta_seconds": -5
+      },
+      "reason": "eta_seconds_negative_invalid"
+    },
+    {
+      "name": "command_type_missing_command",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "command"
+      },
+      "reason": "command_type_missing_command"
+    },
+    {
+      "name": "unknown_command",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "command",
+        "command": "pause"
+      },
+      "reason": "unknown_command"
+    },
+    {
+      "name": "invalid_message_field_type",
+      "payload": {
+        "project_id": "project-alpha",
+        "task_id": 1,
+        "run_id": "run-001",
+        "type": "log",
+        "message": 12345
+      },
+      "reason": "invalid_message_field_type"
+    }
+  ]
+}
+

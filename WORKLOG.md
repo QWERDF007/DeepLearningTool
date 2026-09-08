@@ -43,6 +43,42 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
+## 2026-09-08 — 严格验证 C++ Python 任务协议
+
+**目标**
+- 交付 Ticket 16：严格验证 C++ Python 任务协议（非法消息不会静默改变任务状态或进度）。
+- 双端共享合法/非法样例，验证身份、字段类型、状态顺序及进度范围。
+- 验证通过前不更新状态；已绑定当前运行的非法消息明确失败。
+- 旧运行丢弃，未绑定错误不误伤其他任务；不增加旧协议兼容（移除废弃的 paused 状态）。
+- 遵循 TDD，先增加失败/约束测试，再实现功能，并通过 Release 构建、CTest 及 pytest。
+
+**当前状态**
+- 已完成：在 `tests/assets/task_protocol_samples.json` 中建立双端共享测试用例，涵盖 8 组合法样例和 26 组非法样例（覆盖缺少/空/类型错误的 project_id、task_id、run_id、type、status、progress 越界及非整型、eta_seconds、command 等全部边界）。
+- 已完成：在 `3rdparty/EasyTrain/src/python/task/dltool_task_protocol.py` 中：
+  1. 移除无用的 `TaskStatus.PAUSED`，严格对齐 C++ 协议状态枚举。
+  2. 实现 `validate_task_message` 纯函数校验字典消息的字段完整性、类型、枚举值及数值范围（progress 严格 0-100 或 -1，eta_seconds >= -1）。
+  3. 在 `AsyncTaskClient.send` 中发送前执行强校验，参数非法直接抛出 `ValueError`，不再静默 clamp 掩盖错误。
+  4. 在 `_read_loop` 接收端对服务端下发命令执行严格协议解码与校验。
+- 已完成：在 `src/model/include/model/TaskCommunication.h` 和 `src/model/TaskCommunication.cpp` 中：
+  1. 导出 `validateTaskProtocolJson(const QJsonObject &json, TaskMessage *out_message, QString *error_message)`，严格校验各字段类型、数值边界及枚举有效性。
+  2. 在 `TaskCommunicationServer::processLine` 中：未绑定连接收到非法 JSON 或校验失败时记录警告并丢弃，不误伤任何任务；已绑定连接收到非法消息时生成合成 `Failed` 状态事件通知 `TaskManager` 明确失败，并断开异常连接。身份不一致的消息予以忽略，不干扰当前绑定任务。
+- 已完成：在 `src/model/TaskManager.cpp` 中：
+  1. `handleTaskMessage` 实行“先严格验证，验证通过前不更新任何状态或进度”的原则。
+  2. 收到进度越界（< -1 或 > 100）时立即 `failTask` 并弹出明确错误通知，不更新进度值。
+  3. 收到倒退或非法状态顺序（如 Running 状态收到 Pending/Preparing）时立即 `failTask` 并弹出明确错误通知，状态不倒退。
+  4. 终态任务持续忽略迟到消息，旧运行身份消息直接丢弃。
+- 已完成：更新 `tests/model/test_TaskCommunicationProtocol.cpp`、`tests/model/test_TaskCommunicationServer.cpp`、`tests/model/test_TaskManager.cpp` 与 `tests/tools/test_dltool_task_protocol.py`，完整覆盖共享样例集、未绑定丢弃、已绑定明确失败、非法进度与倒退状态时序。
+
+**验证证据**
+- `pytest tests/tools/test_dltool_task_protocol.py` → 4 passed in 0.08s
+- `pytest tests/tools` → 16 passed in 1.93s
+- `cmake --build build --config Release --target dltool_model_tasks_tests` → 生成成功（0 错误）
+- `ctest --test-dir build --output-on-failure -C Release -R "^dltool_model_tasks_tests$"` → 1/1 passed (100% passed, 0 failed, 32.40s)
+- `ctest --test-dir build --output-on-failure -C Release -R "^(dltool_model_evaluation_behavior_tests|dltool_model_storage_params_tests)$"` → 2/2 passed (100% passed, 0 failed, 4.05s)
+
+**下一步**
+- 继续进行阶段 6 下一任务：Ticket 17（`docs/refactor-tickets/17-real-task-terminal.md`，“真实外部任务正常退出与终态验证”）。
+
 ## 2026-09-08 — 让测试任务目录操作可恢复
 
 **目标**

@@ -246,7 +246,7 @@ private slots:
         QVERIFY(!index.data(TaskManager::CanDeleteRole).toBool());
 
         message.status = TaskProtocolStatus::Finished;
-        message.progress = 101;
+        message.progress = 100;
         QMetaObject::invokeMethod(manager, "handleTaskMessage", Qt::DirectConnection, Q_ARG(TaskMessage, message));
         QCOMPARE(manager->findTask(id)->status, TaskManager::Finished);
         QCOMPARE(manager->findTask(id)->progress, 100);
@@ -364,6 +364,50 @@ private slots:
         QString error;
         QVERIFY(!manager.ensureTaskServer(&error));
         QVERIFY(error.contains(QStringLiteral("关闭")));
+    }
+
+    void boundTaskFailsOnInvalidProgressWithoutUpdatingProgress()
+    {
+        TaskManager manager;
+        const int task_id = manager.addTask(QStringLiteral("model-prog"), QStringLiteral("Model Prog"),
+                                            ModelTaskType::Train);
+        QVERIFY(task_id > 0);
+        QVERIFY(manager.startTask(task_id));
+        QVERIFY(manager.markTaskRunning(task_id));
+        QCOMPARE(manager.findTask(task_id)->progress, 0);
+
+        TaskMessage invalid_progress;
+        invalid_progress.identity = manager.findTask(task_id)->identity;
+        invalid_progress.type     = TaskMessageType::Progress;
+        invalid_progress.progress = 150;
+        QMetaObject::invokeMethod(&manager, "handleTaskMessage", Qt::DirectConnection,
+                                  Q_ARG(TaskMessage, invalid_progress));
+
+        const TaskManager::Task *task = manager.findTask(task_id);
+        QVERIFY(task != nullptr);
+        QCOMPARE(task->status, TaskManager::Failed);
+        QCOMPARE(task->progress, 0);
+    }
+
+    void outOfOrderStatusTransitionExplicitlyFailsTask()
+    {
+        TaskManager manager;
+        const int task_id = manager.addTask(QStringLiteral("model-order"), QStringLiteral("Model Order"),
+                                            ModelTaskType::Train);
+        QVERIFY(task_id > 0);
+        QVERIFY(manager.startTask(task_id));
+        QVERIFY(manager.markTaskRunning(task_id));
+
+        TaskMessage backwards_status;
+        backwards_status.identity = manager.findTask(task_id)->identity;
+        backwards_status.type     = TaskMessageType::Status;
+        backwards_status.status   = TaskProtocolStatus::Pending;
+        QMetaObject::invokeMethod(&manager, "handleTaskMessage", Qt::DirectConnection,
+                                  Q_ARG(TaskMessage, backwards_status));
+
+        const TaskManager::Task *task = manager.findTask(task_id);
+        QVERIFY(task != nullptr);
+        QCOMPARE(task->status, TaskManager::Failed);
     }
 };
 

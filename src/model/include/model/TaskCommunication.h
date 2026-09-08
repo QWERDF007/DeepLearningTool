@@ -11,6 +11,7 @@
 
 class QTcpServer;
 class QTcpSocket;
+class QJsonObject;
 
 namespace dltool::model {
 
@@ -116,6 +117,20 @@ struct MODEL_API TaskMessage
     QString            message;                             ///< 消息文本
     QVariantMap        payload;                             ///< 附加数据
 };
+
+/**
+ * @brief 严格校验任务通信 JSON 消息格式及语义。
+ *
+ * 验证身份（project_id, task_id, run_id）、字段类型、消息类型、状态枚举、
+ * 进度范围（0-100 或 -1）、预计剩余时间（>= -1）及命令有效性。
+ *
+ * @param json 原始 JSON 消息对象
+ * @param out_message 解析成功时输出的 TaskMessage（可选）
+ * @param error_message 校验失败时的错误原因（可选）
+ * @return 校验通过返回 true，否则返回 false
+ */
+MODEL_API bool validateTaskProtocolJson(const QJsonObject &json, TaskMessage *out_message = nullptr,
+                                        QString *error_message = nullptr);
 
 /**
  * @brief 任务通信服务端，监听本地 TCP 端口接收外部训练进程的状态上报并转发命令

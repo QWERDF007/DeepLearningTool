@@ -619,6 +619,59 @@ void TaskManager::handleTaskMessage(const TaskMessage &message)
         return;
     }
 
+    // 状态时序与进度合法性严格检查（验证通过前不更新任何状态或进度）
+    if (message.progress < -1 || message.progress > 100)
+    {
+        spdlog::error("任务 {} 上报非法进度值: {}", message.identity.task_id, message.progress);
+        failTask(message.identity.task_id);
+        ui::SignalHelper::notifyError(
+            QString("模型任务 %1 失败").arg(message.identity.task_id),
+            QStringLiteral("任务上报非法进度值: %1").arg(message.progress));
+        TaskMessage fail_msg = message;
+        fail_msg.status      = TaskProtocolStatus::Failed;
+        fail_msg.message     = QStringLiteral("任务通信协议错误: 进度值越界 (%1)").arg(message.progress);
+        emit taskMessageReceived(fail_msg);
+        return;
+    }
+
+    if (message.type == TaskMessageType::Status || message.status != TaskProtocolStatus::Unknown)
+    {
+        bool transition_valid = false;
+        if (task->status == Pending || task->status == Preparing)
+        {
+            transition_valid = (message.status == TaskProtocolStatus::Running
+                             || message.status == TaskProtocolStatus::Finished
+                             || message.status == TaskProtocolStatus::Failed
+                             || message.status == TaskProtocolStatus::Error
+                             || message.status == TaskProtocolStatus::Stopped
+                             || message.status == TaskProtocolStatus::Pending);
+        }
+        else if (task->status == Running)
+        {
+            transition_valid = (message.status == TaskProtocolStatus::Running
+                             || message.status == TaskProtocolStatus::Finished
+                             || message.status == TaskProtocolStatus::Failed
+                             || message.status == TaskProtocolStatus::Error
+                             || message.status == TaskProtocolStatus::Stopped);
+        }
+
+        if (!transition_valid)
+        {
+            spdlog::error("任务 {} 非法状态转移: 当前={}, 上报={}", message.identity.task_id,
+                          static_cast<int>(task->status), static_cast<int>(message.status));
+            failTask(message.identity.task_id);
+            ui::SignalHelper::notifyError(
+                QString("模型任务 %1 失败").arg(message.identity.task_id),
+                QStringLiteral("非法任务状态转移: %1").arg(taskProtocolStatusName(message.status)));
+            TaskMessage fail_msg = message;
+            fail_msg.status      = TaskProtocolStatus::Failed;
+            fail_msg.message     = QStringLiteral("任务通信协议错误: 非法状态时序 (%1)")
+                                   .arg(taskProtocolStatusName(message.status));
+            emit taskMessageReceived(fail_msg);
+            return;
+        }
+    }
+
     if (message.progress >= 0)
         updateTaskProgress(message.identity.task_id, message.progress);
     if (message.payload.contains(taskProtocolFieldName(TaskProtocolField::EtaSeconds)) && message.eta_seconds >= 0)

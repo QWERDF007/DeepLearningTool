@@ -135,6 +135,62 @@ private slots:
         QTest::qWait(100);
         QCOMPARE(received.count(), 2);
     }
+
+    void unboundClientInvalidMessageDoesNotDamageOtherTasks()
+    {
+        TaskCommunicationServer server;
+        QVERIFY(server.start());
+        QSignalSpy received(&server, &TaskCommunicationServer::messageReceived);
+
+        QTcpSocket socket;
+        socket.connectToHost(server.host(), server.port());
+        QVERIFY(socket.waitForConnected(2000));
+
+        // Invalid JSON on unbound socket
+        socket.write("malformed-not-json\n");
+        // Invalid progress on unbound socket
+        socket.write(R"({"project_id":"proj","task_id":1,"run_id":"run-1","type":"progress","progress":999})" "\n");
+        // Unknown type on unbound socket
+        socket.write(R"({"project_id":"proj","task_id":1,"run_id":"run-1","type":"unknown_type"})" "\n");
+        // Unknown status on unbound socket
+        socket.write(R"({"project_id":"proj","task_id":1,"run_id":"run-1","type":"status","status":"paused"})" "\n");
+        socket.flush();
+
+        QTest::qWait(100);
+        QCOMPARE(received.count(), 0);
+    }
+
+    void boundClientIllegalMessageExplicitlyFailsTask()
+    {
+        TaskCommunicationServer server;
+        QVERIFY(server.start());
+        QSignalSpy received(&server, &TaskCommunicationServer::messageReceived);
+
+        QTcpSocket socket;
+        socket.connectToHost(server.host(), server.port());
+        QVERIFY(socket.waitForConnected(2000));
+
+        // First message binds the connection
+        socket.write(R"({"project_id":"project-42","task_id":42,"run_id":"run-42","type":"status","status":"running","progress":10})" "\n");
+        socket.flush();
+        QTRY_COMPARE_WITH_TIMEOUT(received.count(), 1, 2000);
+
+        const TaskMessage first_msg = qvariant_cast<TaskMessage>(received.at(0).at(0));
+        QCOMPARE(first_msg.status, TaskProtocolStatus::Running);
+        QCOMPARE(first_msg.identity.task_id, 42);
+
+        // Now, bound socket sends illegal progress (> 100)
+        socket.write(R"({"project_id":"project-42","task_id":42,"run_id":"run-42","type":"progress","progress":200})" "\n");
+        socket.flush();
+        QTRY_COMPARE_WITH_TIMEOUT(received.count(), 2, 2000);
+
+        const TaskMessage second_msg = qvariant_cast<TaskMessage>(received.at(1).at(0));
+        QCOMPARE(second_msg.identity.task_id, 42);
+        QCOMPARE(second_msg.identity.run_id, QStringLiteral("run-42"));
+        QCOMPARE(second_msg.identity.project_id, QStringLiteral("project-42"));
+        QCOMPARE(second_msg.status, TaskProtocolStatus::Failed);
+        QVERIFY2(!second_msg.message.isEmpty(), "Failure message should describe the validation failure");
+    }
 };
 
 REGISTER_TEST(TaskCommunicationServerTest)

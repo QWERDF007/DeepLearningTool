@@ -11,8 +11,42 @@ TASK_DIR = Path(__file__).resolve().parents[2] / "3rdparty" / "EasyTrain" / "src
 if str(TASK_DIR) not in sys.path:
     sys.path.insert(0, str(TASK_DIR))
 
-from dltool_task_protocol import AsyncTaskClient, MessageType, ProtocolField, TaskStatus  # noqa: E402
+from dltool_task_protocol import (  # noqa: E402
+    AsyncTaskClient,
+    MessageType,
+    ProtocolField,
+    TaskStatus,
+    validate_task_message,
+)
 from dltool_task_reporting import create_task_client  # noqa: E402
+
+
+def test_shared_protocol_samples() -> None:
+    fixture_path = Path(__file__).resolve().parents[2] / "tests" / "assets" / "task_protocol_samples.json"
+    with open(fixture_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    for item in data["valid_messages"]:
+        ok, err = validate_task_message(item["payload"])
+        assert ok, f"Expected valid for {item['name']}, but failed with: {err}"
+
+    for item in data["invalid_messages"]:
+        ok, err = validate_task_message(item["payload"])
+        assert not ok, f"Expected invalid for {item['name']}, but validation succeeded"
+        assert err, f"Error message should not be empty for {item['name']}"
+
+
+def test_async_task_client_validates_out_of_range_inputs() -> None:
+    client = AsyncTaskClient("127.0.0.1", 9999, 1, "run-1", "project-1")
+    # Progress > 100
+    with pytest.raises(ValueError):
+        asyncio.run(client.send(1, MessageType.PROGRESS, None, 101, -1))
+    # Progress < -1
+    with pytest.raises(ValueError):
+        asyncio.run(client.send(1, MessageType.PROGRESS, None, -2, -1))
+    # Eta < -1
+    with pytest.raises(ValueError):
+        asyncio.run(client.send(1, MessageType.PROGRESS, None, 50, -2))
 
 
 def test_task_messages_carry_project_and_run_identity_and_filter_stop_commands() -> None:
@@ -103,3 +137,4 @@ def test_task_client_requires_complete_identity_when_transport_is_enabled() -> N
 
     with pytest.raises(ValueError, match="dltool_project_id"):
         create_task_client(args)
+
