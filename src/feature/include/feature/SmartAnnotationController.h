@@ -13,6 +13,7 @@
 #include <QVariantMap>
 #include <QtQml>
 #include <atomic>
+#include <functional>
 #include <memory>
 
 class QThread;
@@ -39,11 +40,15 @@ class FEATURE_API SmartAnnotationController : public QObject
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged FINAL)
 
 public:
+    using ModelLoader = std::function<std::unique_ptr<irt::features::SAMImagePredictor>(
+        const QString &, const QString &, const irt::model::ModelRuntime &, irt::model::ModelPrecision)>;
+
     /**
      * @brief 构造函数
      * @param parent 父对象
      */
     explicit SmartAnnotationController(QObject *parent = nullptr);
+    explicit SmartAnnotationController(ModelLoader model_loader, QObject *parent = nullptr);
     ~SmartAnnotationController() override;
 
     /** @brief 等待模型加载线程收敛并丢弃迟到结果。 */
@@ -133,6 +138,8 @@ private:
     bool    loading_model_{false}; ///< 是否正在加载模型
     QString last_error_;           ///< 最后一次错误信息
     QList<QPointer<::QThread>> worker_threads_;
+    ModelLoader               model_loader_;
+    std::shared_ptr<std::atomic_bool> loading_cancellation_token_;
     std::atomic_bool           shutting_down_{false};
 };
 

@@ -8,7 +8,10 @@
 #include "data/DataManager.h"
 #include "data/DataOperationWorkflow.h"
 #include "database/DataBase.h"
+#include "settings/GlobalSettings.h"
 #include "ui/ProgressManager.h"
+
+#include <inferrt/features/SAMImagePredictor.hpp>
 
 #include <QDateTime>
 #include <QCoreApplication>
@@ -70,6 +73,43 @@ private:
     std::condition_variable condition_;
     bool                    started_{false};
     bool                    release_{false};
+};
+
+class SmartModelLoadGate final
+{
+public:
+    void waitUntilCalls(const int expected_calls)
+    {
+        std::unique_lock lock(mutex_);
+        condition_.wait(lock, [this, expected_calls]() { return calls_ >= expected_calls; });
+    }
+
+    void wait()
+    {
+        {
+            std::lock_guard lock(mutex_);
+            ++calls_;
+        }
+        condition_.notify_all();
+
+        std::unique_lock lock(mutex_);
+        condition_.wait(lock, [this]() { return released_; });
+    }
+
+    void release()
+    {
+        {
+            std::lock_guard lock(mutex_);
+            released_ = true;
+        }
+        condition_.notify_all();
+    }
+
+private:
+    std::mutex              mutex_;
+    std::condition_variable condition_;
+    int                     calls_{0};
+    bool                    released_{false};
 };
 
 SearchExecutorGate search_executor_gate;
@@ -336,6 +376,62 @@ private slots:
 
         QCOMPARE(progress_spy.count(), 0);
         search_executor_delay_progress.store(false, std::memory_order_release);
+    }
+
+    void staleSmartAnnotationLoadsAreDiscardedAfterCacheClear()
+    {
+        auto *settings = dltool::settings::GlobalSettings::getInstance();
+        QVERIFY(settings != nullptr);
+
+        namespace field = dltool::settings::generated::field;
+        const QVariant old_enabled   = settings->valueForField(field::SmartAnnotation::Enabled);
+        const QVariant old_model     = settings->valueForField(field::SmartAnnotation::Model);
+        const QVariant old_modelPath = settings->valueForField(field::SmartAnnotation::ModelPath);
+        const bool     old_auto_save = settings->autoSaveEnabled();
+        settings->setAutoSaveEnabled(false);
+
+        QTemporaryFile model_file;
+        QVERIFY(model_file.open());
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, true));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, QStringLiteral("edge_sam")));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, model_file.fileName()));
+
+        SmartModelLoadGate gate;
+        dltool::feature::SmartAnnotationController controller(
+            [&gate](const QString &, const QString &, const irt::model::ModelRuntime &,
+                    const irt::model::ModelPrecision)
+                -> std::unique_ptr<irt::features::SAMImagePredictor>
+            {
+                gate.wait();
+                return {};
+            });
+        QSignalSpy load_finished(&controller, &dltool::feature::SmartAnnotationController::modelLoadFinished);
+
+        QVariantMap point;
+        point.insert(QStringLiteral("x"), 1.0);
+        point.insert(QStringLiteral("y"), 1.0);
+        point.insert(QStringLiteral("label"), 1);
+        const QVariantList prompt_points{point};
+
+        const QVariantMap first_result = controller.infer(QStringLiteral("unused"), prompt_points, {});
+        QVERIFY(first_result.value(QStringLiteral("loading")).toBool());
+        gate.waitUntilCalls(1);
+
+        controller.clearCache();
+        const QVariantMap second_result = controller.infer(QStringLiteral("unused"), prompt_points, {});
+        QVERIFY(second_result.value(QStringLiteral("loading")).toBool());
+        gate.waitUntilCalls(2);
+
+        gate.release();
+        QTRY_VERIFY_WITH_TIMEOUT(load_finished.count() == 1, 2000);
+        QTest::qWait(100);
+        QCOMPARE(load_finished.count(), 1);
+
+        controller.shutdown();
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, old_enabled));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, old_model));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, old_modelPath));
+        settings->setAutoSaveEnabled(old_auto_save);
     }
 };
 

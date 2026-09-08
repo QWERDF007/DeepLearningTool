@@ -701,8 +701,24 @@ std::vector<uint8_t> selectedBinaryMask(const irt::features::SAMImagePrediction 
 } // namespace
 
 SmartAnnotationController::SmartAnnotationController(QObject *parent)
-    : QObject(parent)
+    : SmartAnnotationController(ModelLoader{}, parent)
 {
+}
+
+SmartAnnotationController::SmartAnnotationController(ModelLoader model_loader, QObject *parent)
+    : QObject(parent)
+    , model_loader_(std::move(model_loader))
+{
+    if (!model_loader_)
+    {
+        model_loader_ = [](const QString &model_name, const QString &model_path,
+                           const irt::model::ModelRuntime &runtime,
+                           const irt::model::ModelPrecision precision)
+        {
+            return loadSmartPredictor(buildSmartModelLoadRequest(model_name, model_path, runtime, precision));
+        };
+    }
+
     auto *gs = dltool::settings::GlobalSettings::getInstance();
     enabled_ = gs->valueForField(dltool::settings::generated::field::SmartAnnotation::Key::Enabled, false).toBool();
 
@@ -731,6 +747,9 @@ void SmartAnnotationController::shutdown()
     if (shutting_down_.exchange(true, std::memory_order_acq_rel))
         return;
 
+    if (loading_cancellation_token_ != nullptr)
+        loading_cancellation_token_->store(true, std::memory_order_release);
+
     for (const QPointer<QThread> &thread_pointer : std::as_const(worker_threads_))
     {
         if (QThread *thread = thread_pointer.data(); thread != nullptr)
@@ -740,6 +759,7 @@ void SmartAnnotationController::shutdown()
         }
     }
     worker_threads_.clear();
+    loading_cancellation_token_.reset();
     loading_model_key_.clear();
     predictor_.reset();
     cached_model_key_.clear();
@@ -752,9 +772,12 @@ void SmartAnnotationController::clearCache()
 {
     if (shutting_down_.load(std::memory_order_acquire))
         return;
+    if (loading_cancellation_token_ != nullptr)
+        loading_cancellation_token_->store(true, std::memory_order_release);
     predictor_.reset();
     cached_model_key_.clear();
     loading_model_key_.clear();
+    loading_cancellation_token_.reset();
     setLoadingModel(false);
     setRunning(false);
 }
@@ -786,23 +809,30 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
     }
 
     loading_model_key_ = request.key;
+    if (loading_cancellation_token_ != nullptr)
+        loading_cancellation_token_->store(true, std::memory_order_release);
+    const auto loading_token = std::make_shared<std::atomic_bool>(false);
+    loading_cancellation_token_ = loading_token;
     setLastError(QString());
     setLoadingModel(true);
     setRunning(true);
 
     const auto controller = QPointer<SmartAnnotationController>(this);
-    const auto complete = [controller, request](
+    const auto complete = [controller, request, loading_token](
                                std::shared_ptr<std::unique_ptr<irt::features::SAMImagePredictor>> predictor_holder,
                                QString error, const bool success)
     {
-        if (!controller || controller->shutting_down_.load(std::memory_order_acquire))
+        if (!controller || !loading_token || loading_token->load(std::memory_order_acquire)
+            || controller->shutting_down_.load(std::memory_order_acquire))
             return;
 
         QMetaObject::invokeMethod(
             controller.data(),
-            [controller, request, predictor_holder, error = std::move(error), success]() mutable
+            [controller, request, loading_token, predictor_holder, error = std::move(error), success]() mutable
             {
-                if (!controller || controller->shutting_down_.load(std::memory_order_acquire))
+                if (!controller || !loading_token || loading_token->load(std::memory_order_acquire)
+                    || controller->shutting_down_.load(std::memory_order_acquire)
+                    || controller->loading_cancellation_token_ != loading_token)
                     return;
                 if (controller->loading_model_key_ != request.key)
                     return;
@@ -824,13 +854,15 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
 
                 controller->setLoadingModel(false);
                 controller->setRunning(false);
+                controller->loading_cancellation_token_.reset();
                 emit controller->modelLoadFinished(success);
             },
             Qt::QueuedConnection);
     };
 
+    const auto loader = model_loader_;
     QThread *work_thread = QThread::create(
-        [request, complete]()
+        [request, loader, complete]()
         {
             auto    predictor_holder = std::make_shared<std::unique_ptr<irt::features::SAMImagePredictor>>();
             QString error;
@@ -838,7 +870,8 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
 
             try
             {
-                *predictor_holder = loadSmartPredictor(request);
+                *predictor_holder = loader(request.model_name, request.absolute_model_path, request.runtime,
+                                           request.precision);
                 success           = true;
             }
             catch (const std::exception &e)
