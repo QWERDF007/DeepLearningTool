@@ -10,6 +10,7 @@
 #include <QTest>
 #include <QThread>
 
+#include <algorithm>
 #include <atomic>
 #include <utility>
 
@@ -64,6 +65,16 @@ public:
                         if (locked)
                             sqlite3_exec(database, "ROLLBACK;", nullptr, nullptr, nullptr);
                         sqlite3_close(database);
+                    });
+    }
+
+    void startCancellationNotification()
+    {
+        runInThread([this]()
+                    {
+                        while (!isCancelRequested())
+                            QThread::msleep(5);
+                        emit importFinished(true, {}, {});
                     });
     }
 
@@ -132,6 +143,120 @@ private slots:
         QVERIFY2(closed_project_info.value(QStringLiteral("mtime")).toString()
                      != QStringLiteral("1970/01/01 00:00"),
                  "项目关闭前的更新时间写入失败");
+    }
+
+    void rejectsNewDataWritesAfterProjectShutdownBegins()
+    {
+        QTemporaryDir project_directory;
+        QVERIFY(project_directory.isValid());
+
+        auto *manager = dltool::project::ProjectManager::getInstance();
+        QVERIFY(manager != nullptr);
+        if (manager->currentProject() != nullptr)
+            manager->closeProject();
+
+        const QString project_path = QDir(project_directory.path()).filePath(QStringLiteral("shutdown-gate.dlpro"));
+        auto *project = manager->createProject(
+            QStringLiteral("关闭闸门测试"),
+            static_cast<int>(dltool::core::DeepLearningMethod::AnomalyDetection),
+            project_path,
+            QStringLiteral("项目关闭闸门测试"),
+            project_directory.path());
+        QVERIFY(project != nullptr);
+        auto *data_manager = project->dataManager();
+        QVERIFY(data_manager != nullptr);
+
+        qRegisterMetaType<std::vector<int64_t>>();
+        qRegisterMetaType<std::vector<QString>>();
+        std::atomic_bool completion_attempted{false};
+        std::atomic_bool write_accepted{false};
+        auto *operation = new BlockingProjectDatabaseDataIO(project_path, data_manager);
+        connect(operation, &dltool::data::DataIO::importFinished, data_manager,
+                [data_manager, &completion_attempted, &write_accepted](bool, std::vector<int64_t>,
+                                                                         std::vector<int64_t>)
+                {
+                    completion_attempted.store(true, std::memory_order_release);
+                    int64_t dataset_id = -1;
+                    QString error;
+                    write_accepted.store(data_manager->ensureDataset(QStringLiteral("关闭期间不应创建"), dataset_id,
+                                                                     error),
+                                         std::memory_order_release);
+                },
+                Qt::QueuedConnection);
+        operation->startCancellationNotification();
+
+        manager->closeProject();
+
+        QVERIFY(completion_attempted.load(std::memory_order_acquire));
+        QVERIFY(!write_accepted.load(std::memory_order_acquire));
+
+        QString database_error;
+        QVariantMap project_info;
+        QVERIFY2(dltool::database::ProjectDataBase::getProjectInfo(project_path, project_info, database_error),
+                 qPrintable(database_error));
+        dltool::database::ProjectDataBase database(project_path);
+        std::vector<int64_t> dataset_ids;
+        std::vector<QString> dataset_names;
+        QVERIFY(database.getAllDatasets(dataset_ids, dataset_names, database_error));
+        QVERIFY(!std::any_of(dataset_names.cbegin(), dataset_names.cend(),
+                             [](const QString &name) { return name == QStringLiteral("关闭期间不应创建"); }));
+    }
+
+    void repeatedCloseAndSwitchProjectLeavesCleanState()
+    {
+        QTemporaryDir dir_a;
+        QVERIFY(dir_a.isValid());
+        QTemporaryDir dir_b;
+        QVERIFY(dir_b.isValid());
+
+        auto *manager = dltool::project::ProjectManager::getInstance();
+        QVERIFY(manager != nullptr);
+        if (manager->currentProject() != nullptr)
+            manager->closeProject();
+
+        const QString path_a = QDir(dir_a.path()).filePath(QStringLiteral("project-a.dlpro"));
+        auto *project_a = manager->createProject(
+            QStringLiteral("项目A"),
+            static_cast<int>(dltool::core::DeepLearningMethod::AnomalyDetection),
+            path_a,
+            QStringLiteral("描述A"),
+            dir_a.path());
+        QVERIFY(project_a != nullptr);
+
+        // 重复关闭安全幂等
+        manager->closeProject();
+        QVERIFY(manager->currentProject() == nullptr);
+        manager->closeProject();
+        QVERIFY(manager->currentProject() == nullptr);
+
+        // 切换创建项目B
+        const QString path_b = QDir(dir_b.path()).filePath(QStringLiteral("project-b.dlpro"));
+        auto *project_b = manager->createProject(
+            QStringLiteral("项目B"),
+            static_cast<int>(dltool::core::DeepLearningMethod::AnomalyDetection),
+            path_b,
+            QStringLiteral("描述B"),
+            dir_b.path());
+        QVERIFY(project_b != nullptr);
+        auto *data_b = project_b->dataManager();
+        QVERIFY(data_b != nullptr);
+
+        int64_t dataset_b_id = -1;
+        QString error;
+        QVERIFY(data_b->ensureDataset(QStringLiteral("数据集B"), dataset_b_id, error));
+        QVERIFY(dataset_b_id >= 0);
+
+        manager->closeProject();
+        QVERIFY(manager->currentProject() == nullptr);
+
+        // 重新打开项目B，验证状态干净且数据未受污染
+        auto *reopened_b = manager->openProject(path_b);
+        QVERIFY(reopened_b != nullptr);
+        auto *reopened_data_b = reopened_b->dataManager();
+        QVERIFY(reopened_data_b != nullptr);
+        QCOMPARE(reopened_data_b->getDatasetId(QStringLiteral("数据集B")), dataset_b_id);
+
+        manager->closeProject();
     }
 };
 

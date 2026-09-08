@@ -251,18 +251,21 @@ void DataManager::requestDataOperationCancel()
 
 void DataManager::cancelDataOperation()
 {
-    if (shutting_down_)
-    {
-        return;
-    }
+    requestDataOperationCancel();
+}
+
+void DataManager::beginShutdown()
+{
+    shutting_down_ = true;
     requestDataOperationCancel();
 }
 
 void DataManager::shutdown()
 {
-    if (shutting_down_)
-        return;
     shutting_down_ = true;
+    if (cleaned_up_)
+        return;
+    cleaned_up_ = true;
 
     // DataIO import/export workers can synchronously wait for a GUI-thread
     // batch callback.  Request cancellation first and keep the GUI event loop

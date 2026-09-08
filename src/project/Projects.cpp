@@ -99,12 +99,10 @@ void Project::shutdown()
         return;
     shutting_down_ = true;
 
-    // Downstream feature controllers wait for data operations to finish while
-    // they release their own workers.  Request cancellation before entering
-    // that wait; the DataManager remains alive and performs the full wait and
-    // rollback later in this same barrier.
+    // 进入关闭等待前立即关闭数据写入入口并发出取消请求，
+    // 确保等待期间不再接受新数据，并让下游 Feature/Model 释放期间能正确终止。
     if (data_manager_ != nullptr)
-        data_manager_->cancelDataOperation();
+        data_manager_->beginShutdown();
 
     // This is the only project-level shutdown order.  Earlier layers may
     // still need later layers while they stop (for example Feature uses

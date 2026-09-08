@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CategoryStatisticsModel.h"
 #include "DataIO.h"
@@ -69,6 +69,13 @@ public:
     DataManager(const int method, dltool::database::ProjectDataBase *database, const QString &project_dir,
                 QObject *parent = nullptr);
     ~DataManager();
+
+    /**
+     * @brief 关闭写入入口并向所有进行中的数据操作请求取消。
+     *
+     * 在项目开始关闭时立即调用，确保等待期间不再接受新数据或新任务。
+     */
+    void beginShutdown();
 
     /**
      * @brief 关闭项目数据工作区并等待所有后台操作退出。
@@ -499,6 +506,7 @@ private:
     bool data_operation_running_{false};
     std::vector<DataOperationWorkflow::HandlePtr> operation_handles_;
     bool                               shutting_down_{false};
+    bool                               cleaned_up_{false};
 };
 
 } // namespace dltool::data

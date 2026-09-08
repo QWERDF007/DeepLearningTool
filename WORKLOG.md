@@ -47,6 +47,27 @@
 
 ---
 
+## 2026-09-08 — 项目关闭等待期间拒绝新数据写入
+
+**目标**
+- 解决项目在关闭流程中，下游 Feature/Model 控制器等待耗时任务退出期间，排队的数据完成回调可能向数据库发起新写入（如 ensureDataset）污染数据的问题。
+- 确保关闭闸门在项目关闭启动瞬间立即生效，关闭过程幂等且彻底。
+
+**当前状态**
+- 已完成：在 `DataManager` 中提供 `beginShutdown()`，在 `Project::shutdown()` 进入下游等待前立即调用，提前设置 `shutting_down_ = true` 并向数据操作广播取消。
+- 已完成：`DataManager::shutdown()` 引入 `cleaned_up_` 标志保障清理过程幂等。
+- 已完成：在 `test_ProjectShutdown.cpp` 中新增集成测试 `rejectsNewDataWritesAfterProjectShutdownBegins` 和 `repeatedCloseAndSwitchProjectLeavesCleanState`，验证关闭等待期间写入被拒、关闭后数据库未被污染、反复关闭/切换项目状态干净。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_project_shutdown_test --parallel 4` → 构建通过。
+- `ctest --test-dir build -C Release -R '^dltool_model_project_shutdown_test$' -V` → 5/5 全部通过。
+
+**下一步**
+- 提交本阶段代码：`refactor: 项目关闭等待期间拒绝新数据写入`。
+- 推进 Ticket 04：收敛模型评估与聚合任务的取消与关闭。
+
+---
+
 ## 2026-09-08 — 统一数据操作提交后取消保留已提交结果
 
 **目标**
