@@ -145,7 +145,8 @@ protected:
     void finishSearch(const SearchResponse &response);
 
     static BuildProgressCallback createBuildProgressReporter(QPointer<SearchControllerBase> controller,
-                                                             size_t                         gallery_count);
+                                                             size_t                         gallery_count,
+                                                             std::shared_ptr<std::atomic_bool> cancellation_token);
 
     virtual void applyResults(const SearchResponse &response) = 0;
     virtual void clearProviderResults() = 0;

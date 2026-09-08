@@ -278,6 +278,8 @@ bool ImageClusterController::cluster(const QVariantList &dataset_ids)
 
     request.weights_file = QFileInfo(request.weights_file).absoluteFilePath();
     request.started_at   = std::chrono::steady_clock::now();
+    if (cancellation_token_ != nullptr)
+        cancellation_token_->store(true, std::memory_order_release);
     request.cancellation_token = std::make_shared<std::atomic_bool>(false);
     cancellation_token_        = request.cancellation_token;
 
@@ -285,16 +287,18 @@ bool ImageClusterController::cluster(const QVariantList &dataset_ids)
     startProgress(request);
 
     const auto controller = QPointer<ImageClusterController>(this);
-    const auto progress   = createProgressReporter(controller, request.items.size());
-    const auto complete   = [controller](const ClusterResponse &response)
+    const auto run_token = request.cancellation_token;
+    const auto progress  = createProgressReporter(controller, request.items.size(), run_token);
+    const auto complete  = [controller, run_token](const ClusterResponse &response)
     {
-        if (!controller)
+        if (!controller || !run_token || run_token->load(std::memory_order_acquire))
             return;
         QMetaObject::invokeMethod(
             controller.data(),
-            [controller, response]()
+            [controller, run_token, response]()
             {
-                if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
+                if (controller && run_token && !run_token->load(std::memory_order_acquire)
+                    && !controller->shutting_down_.load(std::memory_order_acquire))
                     controller->finishCluster(response);
             },
             Qt::QueuedConnection);
@@ -720,12 +724,17 @@ void ImageClusterController::finishCluster(const ClusterResponse &response)
 }
 
 irt::features::ImageClusterProgressCallback ImageClusterController::createProgressReporter(
-    QPointer<ImageClusterController> controller, size_t total_count)
+    QPointer<ImageClusterController> controller, const size_t total_count,
+    std::shared_ptr<std::atomic_bool> cancellation_token)
 {
-    return [controller, total_count](const irt::features::ImageClusterProgress &progress)
+    return [controller, total_count, cancellation_token](const irt::features::ImageClusterProgress &progress)
     {
-        if (progress.total_count > 0 && controller
-            && !controller->shutting_down_.load(std::memory_order_acquire))
+        if (!controller || !cancellation_token
+            || cancellation_token->load(std::memory_order_acquire)
+            || controller->shutting_down_.load(std::memory_order_acquire))
+            return;
+
+        if (progress.total_count > 0)
         {
             const int processed = static_cast<int>(
                 std::min<size_t>(progress.processed_count, static_cast<size_t>(std::numeric_limits<int>::max())));
@@ -733,29 +742,34 @@ irt::features::ImageClusterProgressCallback ImageClusterController::createProgre
                 std::min<size_t>(progress.total_count, static_cast<size_t>(std::numeric_limits<int>::max())));
             QMetaObject::invokeMethod(
                 controller.data(),
-                [controller, processed, total]()
+                [controller, cancellation_token, processed, total]()
                 {
-                    if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
+                    if (controller && cancellation_token
+                        && !cancellation_token->load(std::memory_order_acquire)
+                        && !controller->shutting_down_.load(std::memory_order_acquire))
                         emit controller->buildProgressChanged(processed, total);
                 },
                 Qt::QueuedConnection);
         }
 
         const int pct = imageClusterProgressPercent(progress, total_count);
-        if (pct >= 0 && controller && !controller->shutting_down_.load(std::memory_order_acquire))
+        if (pct >= 0)
         {
             QMetaObject::invokeMethod(
                 controller.data(),
-                [controller, pct]()
+                [controller, cancellation_token, pct]()
                 {
-                    if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
+                    if (controller && cancellation_token
+                        && !cancellation_token->load(std::memory_order_acquire)
+                        && !controller->shutting_down_.load(std::memory_order_acquire))
                         ui::ProgressManager::getInstance()->updateProgress(pct);
                 },
                 Qt::QueuedConnection);
         }
 
         const QString message = imageClusterProgressMessage(progress, total_count);
-        if (!message.isEmpty() && controller && !controller->shutting_down_.load(std::memory_order_acquire))
+        if (!message.isEmpty() && !cancellation_token->load(std::memory_order_acquire)
+            && !controller->shutting_down_.load(std::memory_order_acquire))
             addProgressMessage(spdlog::level::info, message);
     };
 }

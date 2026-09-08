@@ -185,6 +185,8 @@ bool SearchControllerBase::search(const QVariantList &ids, const QVariantList &s
 
     req.index_file = computeIndexPath(req);
     req.started_at = std::chrono::steady_clock::now();
+    if (cancellation_token_ != nullptr)
+        cancellation_token_->store(true, std::memory_order_release);
     req.cancellation_token = std::make_shared<std::atomic_bool>(false);
     cancellation_token_     = req.cancellation_token;
 
@@ -192,17 +194,22 @@ bool SearchControllerBase::search(const QVariantList &ids, const QVariantList &s
     startProgress(req);
 
     const auto controller = QPointer<SearchControllerBase>(this);
-    const auto progress   = createBuildProgressReporter(controller, galleryItemCount(req));
-    const auto complete   = [controller](const SearchResponse &response)
+    const auto run_token = req.cancellation_token;
+    const auto progress  = createBuildProgressReporter(controller, galleryItemCount(req), run_token);
+    const auto complete  = [controller, run_token](const SearchResponse &response)
     {
-        if (!controller)
+        if (!controller || !run_token || run_token->load(std::memory_order_acquire))
             return;
         QMetaObject::invokeMethod(
             controller.data(),
-            [controller, response]()
+            [controller, run_token, response]()
             {
-                if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
+                if (controller && run_token && !run_token->load(std::memory_order_acquire)
+                    && !controller->shutting_down_.load(std::memory_order_acquire))
+                {
                     controller->finishSearch(response);
+                    run_token->store(true, std::memory_order_release);
+                }
             },
             Qt::QueuedConnection);
     };
@@ -538,44 +545,55 @@ void SearchControllerBase::finishSearch(const SearchResponse &response)
 }
 
 SearchControllerBase::BuildProgressCallback SearchControllerBase::createBuildProgressReporter(
-    QPointer<SearchControllerBase> controller, size_t gallery_count)
+    QPointer<SearchControllerBase> controller, const size_t gallery_count,
+    std::shared_ptr<std::atomic_bool> cancellation_token)
 {
-    return [controller, gallery_count](const irt::features::ImageSearchBuildProgress &progress)
+    return [controller, gallery_count, cancellation_token](const irt::features::ImageSearchBuildProgress &progress)
     {
+        if (!controller || !cancellation_token
+            || cancellation_token->load(std::memory_order_acquire)
+            || controller->shutting_down_.load(std::memory_order_acquire))
+            return;
+
         size_t     resolved_processed = 0;
         size_t     resolved_total     = 0;
         const bool has_count = resolveProgressCount(progress, gallery_count, resolved_processed, resolved_total);
 
-        if (controller && !controller->shutting_down_.load(std::memory_order_acquire) && has_count)
+        if (has_count)
         {
             const int processed
                 = static_cast<int>(std::min<size_t>(resolved_processed, std::numeric_limits<int>::max()));
             const int total = static_cast<int>(std::min<size_t>(resolved_total, std::numeric_limits<int>::max()));
             QMetaObject::invokeMethod(
                 controller.data(),
-                [controller, processed, total]()
+                [controller, cancellation_token, processed, total]()
                 {
-                    if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
+                    if (controller && cancellation_token
+                        && !cancellation_token->load(std::memory_order_acquire)
+                        && !controller->shutting_down_.load(std::memory_order_acquire))
                         emit controller->buildProgressChanged(processed, total);
                 },
                 Qt::QueuedConnection);
         }
 
         const int pct = progressPercent(progress, gallery_count);
-        if (pct >= 0 && controller && !controller->shutting_down_.load(std::memory_order_acquire))
+        if (pct >= 0)
         {
             QMetaObject::invokeMethod(
                 controller.data(),
-                [controller, pct]()
+                [controller, cancellation_token, pct]()
                 {
-                    if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
+                    if (controller && cancellation_token
+                        && !cancellation_token->load(std::memory_order_acquire)
+                        && !controller->shutting_down_.load(std::memory_order_acquire))
                         ui::ProgressManager::getInstance()->updateProgress(pct);
                 },
                 Qt::QueuedConnection);
         }
 
         const QString message = formatBuildProgressMessage(progress, gallery_count);
-        if (!message.isEmpty() && controller && !controller->shutting_down_.load(std::memory_order_acquire))
+        if (!message.isEmpty() && !cancellation_token->load(std::memory_order_acquire)
+            && !controller->shutting_down_.load(std::memory_order_acquire))
             addProgressMessage(spdlog::level::info, message);
     };
 }

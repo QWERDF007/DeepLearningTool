@@ -154,7 +154,8 @@ private:
     void finishCluster(const ClusterResponse &response);
 
     static irt::features::ImageClusterProgressCallback createProgressReporter(
-        QPointer<ImageClusterController> controller, size_t total_count);
+        QPointer<ImageClusterController> controller, size_t total_count,
+        std::shared_ptr<std::atomic_bool> cancellation_token);
 
     void setRunning(bool running);
     void setLastError(const QString &last_error);

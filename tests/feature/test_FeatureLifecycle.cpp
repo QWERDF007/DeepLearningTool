@@ -16,12 +16,15 @@
 #include <QElapsedTimer>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QSignalSpy>
 #include <QThread>
 
 #include <atomic>
 #include <condition_variable>
+#include <functional>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -71,6 +74,22 @@ private:
 
 SearchExecutorGate search_executor_gate;
 std::atomic_bool   search_executor_saw_cancellation{false};
+std::atomic_bool   search_executor_delay_progress{false};
+std::mutex         delayed_search_progress_mutex;
+std::vector<std::function<void(const irt::features::ImageSearchBuildProgress &)>> delayed_search_progress;
+
+void clearDelayedSearchProgress()
+{
+    std::lock_guard lock(delayed_search_progress_mutex);
+    delayed_search_progress.clear();
+}
+
+std::function<void(const irt::features::ImageSearchBuildProgress &)> delayedSearchProgressAt(const size_t index)
+{
+    std::lock_guard lock(delayed_search_progress_mutex);
+    return index < delayed_search_progress.size() ? delayed_search_progress[index]
+                                                   : std::function<void(const irt::features::ImageSearchBuildProgress &)>{};
+}
 
 class SearchLifecycleProvider final : public dltool::feature::FeatureDataProvider
 {
@@ -142,7 +161,15 @@ private:
         build_progress.stage          = irt::features::ImageSearchBuildStage::LoadingModel;
         build_progress.processed_count = 1;
         build_progress.total_count     = 1;
-        progress(build_progress);
+        if (search_executor_delay_progress.load(std::memory_order_acquire))
+        {
+            std::lock_guard lock(delayed_search_progress_mutex);
+            delayed_search_progress.push_back(progress);
+        }
+        else
+        {
+            progress(build_progress);
+        }
 
         response.success = true;
         response.summary = QStringLiteral("测试搜索完成");
@@ -248,6 +275,7 @@ private slots:
     {
         search_executor_gate.reset();
         search_executor_saw_cancellation.store(false, std::memory_order_release);
+        search_executor_delay_progress.store(false, std::memory_order_release);
 
         SearchLifecycleProvider   provider;
         SearchLifecycleController controller(&provider);
@@ -270,6 +298,44 @@ private slots:
         QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
         QCOMPARE(progress->getMessage(), QString());
         QVERIFY(!controller.isRunning());
+    }
+
+    void staleSearchProgressCallbacksAreDiscardedAfterNextRunStarts()
+    {
+        clearDelayedSearchProgress();
+        search_executor_delay_progress.store(true, std::memory_order_release);
+
+        SearchLifecycleProvider   provider;
+        SearchLifecycleController controller(&provider);
+
+        search_executor_gate.reset();
+        QVERIFY(controller.search({QVariant(1)}, {}));
+        QTRY_VERIFY_WITH_TIMEOUT(search_executor_gate.started(), 2000);
+        search_executor_gate.release();
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.isRunning(), 2000);
+
+        const auto first_run_progress = delayedSearchProgressAt(0);
+        QVERIFY(first_run_progress != nullptr);
+
+        search_executor_gate.reset();
+        QVERIFY(controller.search({QVariant(1)}, {}));
+        QTRY_VERIFY_WITH_TIMEOUT(search_executor_gate.started(), 2000);
+        search_executor_gate.release();
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.isRunning(), 2000);
+
+        const auto second_run_progress = delayedSearchProgressAt(1);
+        QVERIFY(second_run_progress != nullptr);
+
+        QSignalSpy progress_spy(&controller, &SearchLifecycleController::buildProgressChanged);
+        irt::features::ImageSearchBuildProgress late_progress;
+        late_progress.stage           = irt::features::ImageSearchBuildStage::LoadingModel;
+        late_progress.processed_count = 1;
+        late_progress.total_count     = 1;
+        first_run_progress(late_progress);
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+
+        QCOMPARE(progress_spy.count(), 0);
+        search_executor_delay_progress.store(false, std::memory_order_release);
     }
 };
 

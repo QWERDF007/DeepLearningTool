@@ -115,7 +115,8 @@ private:
     void finishCluster(const Response &response);
 
     static irt::features::RoiClusterProgressCallback createProgressReporter(
-        QPointer<RoiClusterController> controller, size_t total_count);
+        QPointer<RoiClusterController> controller, size_t total_count,
+        std::shared_ptr<std::atomic_bool> cancellation_token);
 
     void setRunning(bool running);
     void setLastError(const QString &last_error);
