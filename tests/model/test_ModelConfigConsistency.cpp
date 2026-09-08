@@ -2,7 +2,10 @@
 
 #include "common/Utils.h"
 #include "common/YamlUtils.h"
+#include "core/CoreDef.h"
 #include "database/ModelDataBase.h"
+#include "database/ModelTaskDataBase.h"
+#include "model/ModelRegistry.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -419,6 +422,19 @@ void validateModelMetadata(QStringList &errors, const YAML::Node &model, const Q
             }
         }
     }
+}
+
+bool hasGroup(const YAML::Node &groups, const QString &name)
+{
+    if (!groups || !groups.IsSequence())
+        return false;
+    for (const YAML::Node &group : groups)
+    {
+        if (group && group.IsMap() && group["name_en"]
+            && QString::fromStdString(group["name_en"].as<std::string>()) == name)
+            return true;
+    }
+    return false;
 }
 
 bool hasParameter(const YAML::Node &group, const QString &name)
@@ -1065,8 +1081,298 @@ private slots:
         QCOMPARE(read_training.value(QStringLiteral("batch")).toInt(), 8);
         QCOMPARE(read_training.value(QStringLiteral("workers")).toInt(), 2);
     }
+
+    void anomalyAndInternalModelParametersMatchExecutionAndPersistenceContracts()
+    {
+        // 1. 验证 PatchCore 模型参数及执行链
+        const QString patchcore_file = dltool::common::runtimePath(
+            QStringLiteral("config/models/anomalib/patchcore.yaml"));
+        QVERIFY2(QFileInfo::exists(patchcore_file), "patchcore.yaml 不存在");
+        {
+            const YAML::Node root = dltool::common::yaml::loadFile(QFileInfo(patchcore_file));
+            const auto nodes = modelNodes(root, patchcore_file);
+            QCOMPARE(nodes.size(), 1);
+            const YAML::Node &model = nodes.front().second;
+            QCOMPARE(model["method"].as<std::string>(), std::string("AnomalyDetection"));
+            QCOMPARE(model["framework"].as<std::string>(), std::string("anomalib"));
+            QCOMPARE(model["model_architecture"].as<std::string>(), std::string("patchcore"));
+
+            const YAML::Node train_params = model["train_params"];
+            const YAML::Node network = findGroup(train_params, QStringLiteral("network"));
+            QVERIFY(network.IsDefined());
+            const YAML::Node training = findGroup(train_params, QStringLiteral("training"));
+            QVERIFY(training.IsDefined());
+
+            // network 参数核对
+            const YAML::Node image_size = findParameter(network, QStringLiteral("image_size"));
+            QVERIFY(image_size.IsDefined());
+            QCOMPARE(image_size["value_type"].as<std::string>(), std::string("int"));
+            QCOMPARE(image_size["value"].as<int>(), 256);
+
+            const YAML::Node backbone = findParameter(network, QStringLiteral("backbone"));
+            QVERIFY(backbone.IsDefined());
+            QCOMPARE(backbone["value"].as<std::string>(), std::string("wide_resnet50_2"));
+
+            const YAML::Node center_crop = findParameter(network, QStringLiteral("center_crop_size"));
+            QVERIFY(center_crop.IsDefined());
+            QCOMPARE(center_crop["value_type"].as<std::string>(), std::string("int"));
+            QCOMPARE(center_crop["value"].as<int>(), 0);
+
+            // training 必须保留产品默认：batch 8, workers 2 且范围 [0, 128, 1]
+            const YAML::Node batch = findParameter(training, QStringLiteral("batch_size"));
+            QVERIFY(batch.IsDefined());
+            QCOMPARE(batch["value"].as<int>(), 8);
+            const YAML::Node workers = findParameter(training, QStringLiteral("num_workers"));
+            QVERIFY(workers.IsDefined());
+            QCOMPARE(workers["value"].as<int>(), 2);
+            QCOMPARE(workers["value_range"][1].as<int>(), 128);
+
+            // test_params 分组与参数核对：inference vs evaluation
+            const YAML::Node test_params = model["test_params"];
+            const YAML::Node inference = findGroup(test_params, QStringLiteral("inference"));
+            QVERIFY(inference.IsDefined());
+            const YAML::Node evaluation = findGroup(test_params, QStringLiteral("evaluation"));
+            QVERIFY(evaluation.IsDefined());
+
+            // inference 必须有 batch_size, num_workers, checkpoint
+            QVERIFY(findParameter(inference, QStringLiteral("batch_size")).IsDefined());
+            QCOMPARE(findParameter(inference, QStringLiteral("batch_size"))["value"].as<int>(), 8);
+            QVERIFY(findParameter(inference, QStringLiteral("num_workers")).IsDefined());
+            QCOMPARE(findParameter(inference, QStringLiteral("num_workers"))["value"].as<int>(), 2);
+            const YAML::Node ckpt = findParameter(inference, QStringLiteral("checkpoint"));
+            QVERIFY(ckpt.IsDefined());
+            QCOMPARE(ckpt["model_param_name"].as<std::string>(), std::string("backbone"));
+
+            // evaluation 必须有 classification_threshold 和 heatmap_threshold，且类型与默认值正确
+            const YAML::Node cls_thresh = findParameter(evaluation, QStringLiteral("classification_threshold"));
+            QVERIFY(cls_thresh.IsDefined());
+            QCOMPARE(cls_thresh["value_type"].as<std::string>(), std::string("double"));
+            QCOMPARE(cls_thresh["value"].as<double>(), 0.5);
+
+            const YAML::Node heat_thresh = findParameter(evaluation, QStringLiteral("heatmap_threshold"));
+            QVERIFY(heat_thresh.IsDefined());
+            QCOMPARE(heat_thresh["value_type"].as<std::string>(), std::string("double"));
+            QCOMPARE(heat_thresh["value"].as<double>(), 1.0);
+        }
+
+        // 2. 验证 Anomalib Dinomaly2 模型参数
+        const QString anomalib_dinomaly_file = dltool::common::runtimePath(
+            QStringLiteral("config/models/anomalib/dinomaly2.yaml"));
+        QVERIFY2(QFileInfo::exists(anomalib_dinomaly_file), "anomalib/dinomaly2.yaml 不存在");
+        {
+            const YAML::Node root = dltool::common::yaml::loadFile(QFileInfo(anomalib_dinomaly_file));
+            const auto nodes = modelNodes(root, anomalib_dinomaly_file);
+            QCOMPARE(nodes.size(), 1);
+            const YAML::Node &model = nodes.front().second;
+            const YAML::Node train_params = model["train_params"];
+            const YAML::Node training = findGroup(train_params, QStringLiteral("training"));
+            QVERIFY(training.IsDefined());
+            QCOMPARE(findParameter(training, QStringLiteral("batch_size"))["value"].as<int>(), 8);
+            QCOMPARE(findParameter(training, QStringLiteral("num_workers"))["value"].as<int>(), 2);
+
+            const YAML::Node test_params = model["test_params"];
+            const YAML::Node evaluation = findGroup(test_params, QStringLiteral("evaluation"));
+            QVERIFY(evaluation.IsDefined());
+            QCOMPARE(findParameter(evaluation, QStringLiteral("classification_threshold"))["value"].as<double>(), 0.5);
+            QCOMPARE(findParameter(evaluation, QStringLiteral("heatmap_threshold"))["value"].as<double>(), 1.0);
+        }
+
+        // 3. 验证独立 Dinomaly2 (Mask 约束训练) 模型参数及 mask 组
+        const QString dinomaly_standalone_file = dltool::common::runtimePath(
+            QStringLiteral("config/models/dinomaly2/dinomaly2.yaml"));
+        QVERIFY2(QFileInfo::exists(dinomaly_standalone_file), "dinomaly2/dinomaly2.yaml 不存在");
+        {
+            const YAML::Node root = dltool::common::yaml::loadFile(QFileInfo(dinomaly_standalone_file));
+            const auto nodes = modelNodes(root, dinomaly_standalone_file);
+            QCOMPARE(nodes.size(), 1);
+            const YAML::Node &model = nodes.front().second;
+            const YAML::Node train_params = model["train_params"];
+            const YAML::Node training = findGroup(train_params, QStringLiteral("training"));
+            QVERIFY(training.IsDefined());
+            QCOMPARE(findParameter(training, QStringLiteral("batch_size"))["value"].as<int>(), 8);
+            QCOMPARE(findParameter(training, QStringLiteral("num_workers"))["value"].as<int>(), 2);
+
+            const YAML::Node mask_group = findGroup(train_params, QStringLiteral("mask"));
+            QVERIFY(mask_group.IsDefined());
+            const YAML::Node good_val = findParameter(mask_group, QStringLiteral("good_value"));
+            QVERIFY(good_val.IsDefined());
+            QCOMPARE(good_val["value_type"].as<std::string>(), std::string("string"));
+            QCOMPARE(good_val["value"].as<std::string>(), std::string("1"));
+
+            const YAML::Node anomaly_val = findParameter(mask_group, QStringLiteral("anomaly_value"));
+            QVERIFY(anomaly_val.IsDefined());
+            QCOMPARE(anomaly_val["value_type"].as<std::string>(), std::string("string"));
+            QCOMPARE(anomaly_val["value"].as<std::string>(), std::string("255"));
+
+            const YAML::Node ignore_val = findParameter(mask_group, QStringLiteral("ignore_value"));
+            QVERIFY(ignore_val.IsDefined());
+            QCOMPARE(ignore_val["value_type"].as<std::string>(), std::string("string"));
+            QCOMPARE(ignore_val["value"].as<std::string>(), std::string("254"));
+
+            const YAML::Node hflip = findParameter(mask_group, QStringLiteral("aug_hflip_prob"));
+            QVERIFY(hflip.IsDefined());
+            QCOMPARE(hflip["value_type"].as<std::string>(), std::string("double"));
+            QCOMPARE(hflip["value"].as<double>(), 0.0);
+
+            const YAML::Node test_params = model["test_params"];
+            const YAML::Node evaluation = findGroup(test_params, QStringLiteral("evaluation"));
+            QVERIFY(evaluation.IsDefined());
+            QCOMPARE(findParameter(evaluation, QStringLiteral("classification_threshold"))["value"].as<double>(), 0.5);
+            QCOMPARE(findParameter(evaluation, QStringLiteral("heatmap_threshold"))["value"].as<double>(), 1.0);
+        }
+
+        // 4. 验证 FS-SAM2 内部流程契约：无普通模型 evaluation 组，保持小样本能力位及内部流程
+        const QString fs_sam2_file = dltool::common::runtimePath(
+            QStringLiteral("config/models/FS-SAM2/FS-SAM2.yaml"));
+        QVERIFY2(QFileInfo::exists(fs_sam2_file), "FS-SAM2.yaml 不存在");
+        {
+            const YAML::Node root = dltool::common::yaml::loadFile(QFileInfo(fs_sam2_file));
+            const auto nodes = modelNodes(root, fs_sam2_file);
+            QCOMPARE(nodes.size(), 1);
+            const YAML::Node &model = nodes.front().second;
+            QCOMPARE(model["method"].as<std::string>(), std::string("FewShotLearning"));
+
+            const YAML::Node train_params = model["train_params"];
+            const YAML::Node training = findGroup(train_params, QStringLiteral("training"));
+            QVERIFY(training.IsDefined());
+            QCOMPARE(findParameter(training, QStringLiteral("batch_size"))["value"].as<int>(), 8);
+            QCOMPARE(findParameter(training, QStringLiteral("num_workers"))["value"].as<int>(), 2);
+
+            const YAML::Node test_params = model["test_params"];
+            QVERIFY(test_params.IsDefined());
+            // 验收条件 2: FS-SAM2 保持内部流程，不得定义普通模型 evaluation 组
+            QVERIFY(!hasGroup(test_params, QStringLiteral("evaluation")));
+            QVERIFY(hasGroup(test_params, QStringLiteral("inference")));
+            QVERIFY(hasGroup(test_params, QStringLiteral("model")));
+
+            // 验证 C++ ModelRegistry 中的 FS-SAM2 框架定义
+            const auto fs_sam2_framework = dltool::model::registeredFramework(
+                dltool::core::DeepLearningMethod::Detection, QStringLiteral("FS-SAM2"));
+            QVERIFY(fs_sam2_framework.isFewShot());
+            QVERIFY(!fs_sam2_framework.visible_for_model_creation);
+            QCOMPARE(fs_sam2_framework.default_test_task_directory, QStringLiteral("fs_sam2"));
+        }
+
+        // 5. 验证 Python 端消费契约与 evaluation 隔离契约
+        // Anomalib 的 dltool_common.py 中 load_database_config 严格隔离 evaluation，只传递 inference
+        const QString anomalib_common_path = dltool::common::runtimePath(
+            QStringLiteral("3rdparty/EasyTrain/src/python/open-edge-platform/anomalib/dltool_common.py"));
+        QFile anomalib_common_file(anomalib_common_path);
+        QVERIFY2(anomalib_common_file.open(QIODevice::ReadOnly), qPrintable(anomalib_common_file.errorString()));
+        const QString anomalib_common_content = QString::fromUtf8(anomalib_common_file.readAll());
+        anomalib_common_file.close();
+
+        QVERIFY2(anomalib_common_content.contains(
+                     QStringLiteral("test_params = {\"inference\": dict(group({\"test_params\": raw_test_params}, \"test_params\", \"inference\"))}")),
+                 "Anomalib Python 端必须严格隔离 evaluation 参数，仅接收 inference 参数");
+        QVERIFY2(anomalib_common_content.contains(
+                     QStringLiteral("batch_size = integer(runtime_params, \"batch_size\", 8)")),
+                 "Anomalib dataloader batch_size 默认值必须与产品默认 8 一致");
+        QVERIFY2(anomalib_common_content.contains(
+                     QStringLiteral("num_workers=integer(runtime_params, \"num_workers\", 2)")),
+                 "Anomalib dataloader num_workers 默认值必须与产品默认 2 一致");
+
+        // 独立 Dinomaly2 的 dltool_common.py 中同样严格隔离 evaluation
+        const QString dinomaly_common_path = dltool::common::runtimePath(
+            QStringLiteral("3rdparty/EasyTrain/src/python/guojiajeremy/Dinomaly2/dltool_common.py"));
+        QFile dinomaly_common_file(dinomaly_common_path);
+        QVERIFY2(dinomaly_common_file.open(QIODevice::ReadOnly), qPrintable(dinomaly_common_file.errorString()));
+        const QString dinomaly_common_content = QString::fromUtf8(dinomaly_common_file.readAll());
+        dinomaly_common_file.close();
+
+        QVERIFY2(dinomaly_common_content.contains(
+                     QStringLiteral("test_params = {\"inference\": dict(group({\"test_params\": raw_test_params}, \"test_params\", \"inference\"))}")),
+                 "Dinomaly2 Python 端必须严格隔离 evaluation 参数，仅接收 inference 参数");
+
+        // Dinomaly2 的 train_impl.py 和 predict_impl.py 中的 num_workers 默认值回退为 2
+        const QString dinomaly_train_path = dltool::common::runtimePath(
+            QStringLiteral("3rdparty/EasyTrain/src/python/guojiajeremy/Dinomaly2/train_impl.py"));
+        QFile dinomaly_train_file(dinomaly_train_path);
+        QVERIFY2(dinomaly_train_file.open(QIODevice::ReadOnly), qPrintable(dinomaly_train_file.errorString()));
+        const QString dinomaly_train_content = QString::fromUtf8(dinomaly_train_file.readAll());
+        dinomaly_train_file.close();
+        QVERIFY2(dinomaly_train_content.contains(
+                     QStringLiteral("num_workers = integer(training, \"num_workers\", 2)")),
+                 "Dinomaly2 train_impl.py num_workers 回退值必须与产品默认 2 一致");
+
+        const QString dinomaly_predict_path = dltool::common::runtimePath(
+            QStringLiteral("3rdparty/EasyTrain/src/python/guojiajeremy/Dinomaly2/predict_impl.py"));
+        QFile dinomaly_predict_file(dinomaly_predict_path);
+        QVERIFY2(dinomaly_predict_file.open(QIODevice::ReadOnly), qPrintable(dinomaly_predict_file.errorString()));
+        const QString dinomaly_predict_content = QString::fromUtf8(dinomaly_predict_file.readAll());
+        dinomaly_predict_file.close();
+        QVERIFY2(dinomaly_predict_content.contains(
+                     QStringLiteral("num_workers = integer(inference, \"num_workers\", 2)")),
+                 "Dinomaly2 predict_impl.py num_workers 回退值必须与产品默认 2 一致");
+
+        // 6. 验证持久化层 ModelDataBase 与 ModelTaskDataBase 对异常检测参数完整生命周期的支持
+        QTemporaryDir temp_dir;
+        QVERIFY(temp_dir.isValid());
+        const QString model_db_path = QDir(temp_dir.path()).filePath(QStringLiteral("model.db"));
+        const QString task_db_path = QDir(temp_dir.path()).filePath(QStringLiteral("task.db"));
+
+        // 6.1 ModelDataBase 存储与读取 train_params (含 network, training, mask)
+        dltool::database::ModelDataBase model_db(model_db_path);
+        QVariantMap train_params_map;
+        QVariantMap net_group;
+        net_group.insert(QStringLiteral("image_size"), 256);
+        net_group.insert(QStringLiteral("backbone"), QStringLiteral("wide_resnet50_2"));
+        train_params_map.insert(QStringLiteral("network"), net_group);
+
+        QVariantMap trn_group;
+        trn_group.insert(QStringLiteral("batch_size"), 8);
+        trn_group.insert(QStringLiteral("num_workers"), 2);
+        train_params_map.insert(QStringLiteral("training"), trn_group);
+
+        QVariantMap mask_grp;
+        mask_grp.insert(QStringLiteral("good_value"), QStringLiteral("1"));
+        mask_grp.insert(QStringLiteral("anomaly_value"), QStringLiteral("255"));
+        train_params_map.insert(QStringLiteral("mask"), mask_grp);
+
+        QString db_error;
+        QVERIFY2(model_db.replaceTrainParams(train_params_map, &db_error), qPrintable(db_error));
+
+        QVariantMap read_train;
+        QVERIFY2(model_db.readTrainParams(read_train, &db_error), qPrintable(db_error));
+        QCOMPARE(read_train.value(QStringLiteral("network")).toMap().value(QStringLiteral("image_size")).toInt(), 256);
+        QCOMPARE(read_train.value(QStringLiteral("network")).toMap().value(QStringLiteral("backbone")).toString(),
+                 QStringLiteral("wide_resnet50_2"));
+        QCOMPARE(read_train.value(QStringLiteral("training")).toMap().value(QStringLiteral("batch_size")).toInt(), 8);
+        QCOMPARE(read_train.value(QStringLiteral("training")).toMap().value(QStringLiteral("num_workers")).toInt(), 2);
+        QCOMPARE(read_train.value(QStringLiteral("mask")).toMap().value(QStringLiteral("good_value")).toString(),
+                 QStringLiteral("1"));
+        QCOMPARE(read_train.value(QStringLiteral("mask")).toMap().value(QStringLiteral("anomaly_value")).toString(),
+                 QStringLiteral("255"));
+
+        // 6.2 ModelTaskDataBase 存储与读取 test_params (含 inference 与 evaluation)
+        dltool::database::ModelTaskDataBase task_db(task_db_path);
+        QVariantMap test_params_map;
+        QVariantMap inf_group;
+        inf_group.insert(QStringLiteral("batch_size"), 8);
+        inf_group.insert(QStringLiteral("num_workers"), 2);
+        inf_group.insert(QStringLiteral("checkpoint"), QStringLiteral(""));
+        test_params_map.insert(QStringLiteral("inference"), inf_group);
+
+        QVariantMap eval_group;
+        eval_group.insert(QStringLiteral("classification_threshold"), 0.5);
+        eval_group.insert(QStringLiteral("heatmap_threshold"), 1.0);
+        test_params_map.insert(QStringLiteral("evaluation"), eval_group);
+
+        QVERIFY2(task_db.replaceTestParams(test_params_map, &db_error), qPrintable(db_error));
+
+        QVariantMap read_test;
+        QVERIFY2(task_db.readTestParams(read_test, &db_error), qPrintable(db_error));
+        const QVariantMap read_inf = read_test.value(QStringLiteral("inference")).toMap();
+        QCOMPARE(read_inf.value(QStringLiteral("batch_size")).toInt(), 8);
+        QCOMPARE(read_inf.value(QStringLiteral("num_workers")).toInt(), 2);
+
+        const QVariantMap read_eval = read_test.value(QStringLiteral("evaluation")).toMap();
+        QCOMPARE(read_eval.value(QStringLiteral("classification_threshold")).toDouble(), 0.5);
+        QCOMPARE(read_eval.value(QStringLiteral("heatmap_threshold")).toDouble(), 1.0);
+    }
 };
 
 REGISTER_TEST(ModelConfigConsistencyTest)
 
 #include "test_ModelConfigConsistency.moc"
+

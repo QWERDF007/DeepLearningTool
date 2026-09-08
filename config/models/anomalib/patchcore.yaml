@@ -178,7 +178,7 @@ test_params:
       - name_en: heatmap_threshold
         name_cn: 热力图阈值
         description: 仅用于实例图像热力图显示的全局异常分数归一化阈值，不影响评估指标。
-        value: 1
+        value: 1.0
         value_type: double
         value_range: [0.0001, 1000.0, 0.0001]
         display_type: spin

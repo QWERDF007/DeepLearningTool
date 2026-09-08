@@ -163,28 +163,28 @@ train_params:
       - name_en: good_value
         name_cn: Good 像素值
         description: 未由项目自动传递时使用的 Good 类别像素值列表（逗号分隔）。训练时项目会按数据管理中 Good 类别的类别值自动传递，此处仅在手动运行 Python 时作为默认值。
-        value: 1
+        value: "1"
         value_type: string
         display_type: text
 
       - name_en: anomaly_value
         name_cn: 异常像素值
         description: 未由项目自动传递时使用的异常类别像素值列表（逗号分隔）。训练时项目会按数据管理中 Anomaly 类别的类别值自动传递，此处仅在手动运行 Python 时作为默认值。
-        value: 255
+        value: "255"
         value_type: string
         display_type: text
 
       - name_en: ignore_value
         name_cn: 忽略像素值
         description: 未由项目自动传递时使用的忽略像素值列表（逗号分隔）。训练时项目会按数据管理中 Unlabeled 类别的类别值自动传递，这些像素不参与任何 Mask 约束损失。
-        value: 254
+        value: "254"
         value_type: string
         display_type: text
 
       - name_en: aug_hflip_prob
         name_cn: 随机水平翻转概率
         description: 训练时对图像与 Mask 同步随机水平翻转的概率，0 表示关闭。
-        value: 0
+        value: 0.0
         value_type: double
         value_range: [0.0, 1.0, 0.05]
         display_type: spin
@@ -192,7 +192,7 @@ train_params:
       - name_en: aug_brightness
         name_cn: 亮度抖动强度
         description: 训练时亮度抖动强度，0 表示关闭。
-        value: 0
+        value: 0.0
         value_type: double
         value_range: [0.0, 1.0, 0.05]
         display_type: spin
@@ -200,7 +200,7 @@ train_params:
       - name_en: aug_contrast
         name_cn: 对比度抖动强度
         description: 训练时对比度抖动强度，0 表示关闭。
-        value: 0
+        value: 0.0
         value_type: double
         value_range: [0.0, 1.0, 0.05]
         display_type: spin
@@ -208,7 +208,7 @@ train_params:
       - name_en: aug_hue
         name_cn: 色相抖动强度
         description: 训练时色相抖动强度（[0, 0.5]），0 表示关闭。
-        value: 0
+        value: 0.0
         value_type: double
         value_range: [0.0, 0.5, 0.05]
         display_type: spin
@@ -284,7 +284,7 @@ test_params:
       - name_en: heatmap_threshold
         name_cn: 热力图阈值
         description: 仅用于实例图像热力图显示的全局异常分数归一化阈值，不影响评估指标。
-        value: 1
+        value: 1.0
         value_type: double
         value_range: [0.0001, 1000.0, 0.0001]
         display_type: spin

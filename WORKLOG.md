@@ -41,6 +41,35 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 核对异常检测及内部模型参数执行链
+
+**目标**
+- 交付 Ticket 28：核对异常检测及内部模型参数执行链。
+- 逐项对照实际消费逻辑，修正猜测性说明和元数据漂移。
+- 保证普通模型 inference/evaluation 语义正确，FS-SAM2 保持内部流程。
+- 验证配置到运行的键值，保留明确产品默认（batch 8, workers 2 [0, 128, 1]），不仅做 YAML 文本比较。
+- 遵循 TDD，先编写失败/约束测试建立基线，再实现并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：逐项审查 PatchCore (`config/models/anomalib/patchcore.yaml`)、Anomalib Dinomaly2 (`config/models/anomalib/dinomaly2.yaml`)、独立 Dinomaly2 (`config/models/dinomaly2/dinomaly2.yaml`) 以及 FS-SAM2 (`config/models/FS-SAM2/FS-SAM2.yaml`) 全部参数定义与 Python 执行链（`open-edge-platform/anomalib`、`guojiajeremy/Dinomaly2`、`fornib/FS-SAM2`）。
+- 已完成：清理元数据漂移与字面量类型不匹配：
+  - 将 `patchcore.yaml`、`anomalib/dinomaly2.yaml`、`dinomaly2/dinomaly2.yaml` 中双精度参数 `heatmap_threshold` 的默认值标准化为 `1.0`。
+  - 将 `dinomaly2/dinomaly2.yaml` 中 `mask` 参数组的字符参数 `good_value`、`anomaly_value`、`ignore_value` 显式加引号为字符串 (`"1"`, `"255"`, `"254"`)；数据增强双精度浮点参数 `aug_hflip_prob`、`aug_brightness`、`aug_contrast`、`aug_hue` 标准化为浮点字面量 `0.0`。
+- 已完成：核对普通模型与内部模型任务语义隔离：
+  - 普通异常检测模型严格将 `test_params` 拆分为 `inference`（底层 Python 测试脚本执行消费，包含 `batch_size`、`num_workers`、`device`、`checkpoint`）与 `evaluation`（C++ 评估引擎消费，包含 `classification_threshold` 和 `heatmap_threshold`，Python 端通过 `load_database_config` 严格隔离排除）。
+  - FS-SAM2 确认不挂载普通模型 `evaluation` 适配器，维持专用内部小样本学习与标注辅助交互流程，`test_params` 仅包含 `model` 与 `inference`。
+- 已完成：修正 Python 脚本层数据加载进程与批处理默认回退值漂移：
+  - 在 `3rdparty/EasyTrain/src/python/open-edge-platform/anomalib/dltool_common.py` 中将 datamodule 回退值统一为产品默认 `batch_size: 8`、`num_workers: 2`（原为 32 与 8）。
+  - 在 `3rdparty/EasyTrain/src/python/guojiajeremy/Dinomaly2/train_impl.py` 与 `predict_impl.py` 中将 `num_workers` 回退值统一为产品默认 `2`（原为 4）。
+- 已完成：在 `tests/model/test_ModelConfigConsistency.cpp` 中新增 `hasGroup` 辅助函数及 `anomalyAndInternalModelParametersMatchExecutionAndPersistenceContracts` 单元测试，覆盖 YAML 规范、FS-SAM2 内部能力位、Python 隔离与回退契约、以及 `ModelDataBase` 和 `ModelTaskDataBase` 持久化读写回环。
+- 已完成：测试全量通过：
+  - `dltool_model_config_tests` 8/8 100% 通过
+  - `ctest -L "model"` 26/26 100% 通过（包含真实真实环境与数据资源测试）
+  - `ctest -L "ui|qml"` 22/22 100% 通过
+
+**下一步**
+- 继续推进 Ticket 29：让智能标注推理异步且可安全关闭 (`docs/refactor-tickets/29-async-smart-annotation.md`)。
+
 ## 2026-09-09 — 核对 Ultralytics 参数到实际执行链
 
 **目标**
