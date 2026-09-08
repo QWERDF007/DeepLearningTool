@@ -43,6 +43,31 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
+## 2026-09-08 — 让数据复制移动划分原子完成
+
+**目标**
+- 交付 Ticket 10：图片与关联记录一起提交或回滚，操作后可正确浏览。
+- 复制、移动、划分使用冻结选择和单库原子批量接口。
+- 关联记录写入中途失败不留半成品，不忽略补偿错误。
+- 提交后取消与重新打开均保持图片、标签、标注、数据集和展示一致。
+- 遵循 TDD，先增加约束和回滚集成测试，再实现单库原子方法，并删除旧的逐表写入与手动补偿逻辑。
+
+**当前状态**
+- 已完成：在 `ProjectDataBase` 接口中定义 `LabelSnapshot`、`ImageSnapshot`、`DatasetSplitTarget`、`AtomicCopyOutput`、`AtomicSplitOutput`，以及单库单事务原子操作 `copyImagesAtomic`、`splitDatasetAtomic`、`moveImagesAtomic`。
+- 已完成：在 `tests/project/test_DataSplit.cpp` 中新增 TDD 约束与集成测试：`copiesImagesWithLabelsAndTagsAtomically`、`movesImagesAtomicallyBetweenDatasets`、`atomicRollbackLeavesNoLeftoverRecords`，验证原子提交、直接重开核对一致性，以及中途取消时数据库 0 记录残留。
+- 已完成：在 `DataBase.cpp` 中实现 `copyImagesAtomic`、`splitDatasetAtomic`、`moveImagesAtomic`，在单一 `sqlpp::transaction_t` 中原子写入图片、extraData、标签、标注及关联 Tag，内置协作式取消检查，失败时全量回滚且不忽略任何错误。
+- 已完成：重构 `DataManager::copyToDatasetAsync`、`splitDataset`、`moveToDatasetAsync`，统一使用冻结快照与单库原子方法，彻底删除多表分步写库与 `deleteImages(..., ignored_error)` / `deleteDatasetsWithContents` 等脆弱的手工补偿代码。
+- 已完成：修复数据集名称生成中带括号非法字符的问题（格式统一为 `_` 命名后缀）。
+- 已完成：通过全部相关 Release 编译与 CTest 集成测试。
+
+**验证证据**
+- `ctest --test-dir build -C Release -R dltool_model_data_split_test -V` → 6 项测试全部通过（含 `createsStratifiedDatasetCopies`、`copiesImagesWithLabelsAndTagsAtomically`、`movesImagesAtomicallyBetweenDatasets`、`atomicRollbackLeavesNoLeftoverRecords`，耗时 0.50s）。
+- `ctest --test-dir build -C Release -R "(dltool_model_data_split_test|dltool_model_data_creation_test|dltool_model_data_import_test|dltool_model_data_export_test|dltool_model_data_roundtrip_test)" --output-on-failure` → 全部 5 项数据集成测试通过。
+- `ctest --test-dir build -C Release -R database --output-on-failure` → 数据库完整性与 Schema 校验测试通过。
+
+**下一步**
+- 检查并执行 Ticket 11 相关任务。
+
 ## 2026-09-08 — 让导入后台事务覆盖全部修改
 
 **目标**

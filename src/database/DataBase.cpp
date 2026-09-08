@@ -104,6 +104,46 @@ bool removeTagId(TagIds &tag_ids, const int64_t tag_id)
     return true;
 }
 
+void insertImageSnapshot(sqlpp::pooled_connection<sqlpp::sqlite3::connection_base> &db,
+                         const int64_t dataset_id,
+                         const ProjectDataBase::ImageSnapshot &image,
+                         int64_t &new_image_id,
+                         std::vector<int64_t> &new_label_ids)
+{
+    db(sqlpp::insert_into(ImagesTable)
+           .set(ImagesTable.datasetId = dataset_id,
+                ImagesTable.path      = image.path.toUtf8().constData(),
+                ImagesTable.extraData = image.extra_data));
+    new_image_id = static_cast<int64_t>(db.last_insert_id());
+
+    if (!image.tag_ids.empty())
+    {
+        db(sqlpp::insert_into(TagsTable)
+               .set(TagsTable.imageId = new_image_id,
+                    TagsTable.tagIds  = encodeTagIds(image.tag_ids),
+                    TagsTable.type    = kImageTagType));
+    }
+
+    for (const auto &label : image.labels)
+    {
+        db(sqlpp::insert_into(LabelsTable)
+               .set(LabelsTable.imageId      = new_image_id,
+                    LabelsTable.labelClassId = label.label_class_id,
+                    LabelsTable.regionType   = label.label_type,
+                    LabelsTable.region       = label.data));
+        const int64_t new_label_id = static_cast<int64_t>(db.last_insert_id());
+        new_label_ids.push_back(new_label_id);
+
+        if (!label.tag_ids.empty())
+        {
+            db(sqlpp::insert_into(TagsTable)
+                   .set(TagsTable.labelId = new_label_id,
+                        TagsTable.tagIds  = encodeTagIds(label.tag_ids),
+                        TagsTable.type    = kLabelTagType));
+        }
+    }
+}
+
 } // namespace
 
 DataBase::DataBase(const QString &path, QObject *parent)
@@ -778,26 +818,283 @@ bool ProjectDataBase::addImages(const std::vector<int64_t> &dataset_ids, const s
 bool ProjectDataBase::updateImagesDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id,
                                           QString &err_msg) const
 {
+    return moveImagesAtomic(image_ids, dataset_id, err_msg, nullptr);
+}
+
+bool ProjectDataBase::moveImagesAtomic(const std::vector<int64_t> &image_ids,
+                                       const int64_t target_dataset_id,
+                                       QString &err_msg,
+                                       const std::function<bool()> &is_cancelled) const
+{
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败: %1").arg(path_);
+        return false;
+    }
+    if (is_cancelled && is_cancelled())
+    {
+        err_msg = QStringLiteral("操作已取消");
+        return false;
+    }
+    if (image_ids.empty())
+    {
+        return true;
+    }
+
     try
     {
-        if (pool_ == nullptr)
+        auto db = pool_->get();
+
+        auto dataset_data = db(sqlpp::select(DatasetsTable.id)
+                                   .from(DatasetsTable)
+                                   .where(DatasetsTable.id == target_dataset_id));
+        if (dataset_data.empty())
         {
-            err_msg = QString("打开数据库失败: %1").arg(path_);
+            err_msg = QString("目标数据集不存在: %1").arg(target_dataset_id);
             return false;
         }
-        if (image_ids.empty())
+
+        auto tx = sqlpp::start_transaction(db);
+        try
         {
+            constexpr size_t kBatchSize = 500;
+            for (size_t i = 0; i < image_ids.size(); i += kBatchSize)
+            {
+                if (is_cancelled && is_cancelled())
+                {
+                    tx.rollback();
+                    err_msg = QStringLiteral("操作已取消");
+                    return false;
+                }
+                const size_t count = std::min(kBatchSize, image_ids.size() - i);
+                std::vector<int64_t> batch(image_ids.begin() + i, image_ids.begin() + i + count);
+                db(sqlpp::update(ImagesTable)
+                       .set(ImagesTable.datasetId = target_dataset_id)
+                       .where(ImagesTable.id.in(sqlpp::value_list(batch))));
+            }
+
+            if (is_cancelled && is_cancelled())
+            {
+                tx.rollback();
+                err_msg = QStringLiteral("操作已取消");
+                return false;
+            }
+
+            tx.commit();
             return true;
         }
-
-        auto db = pool_->get();
-        db(sqlpp::update(ImagesTable)
-               .set(ImagesTable.datasetId = dataset_id)
-               .where(ImagesTable.id.in(sqlpp::value_list(image_ids))));
-        return true;
+        catch (...)
+        {
+            tx.rollback();
+            throw;
+        }
     }
     catch (const std::exception &e)
     {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::copyImagesAtomic(const int64_t target_dataset_id,
+                                       const std::vector<ImageSnapshot> &images,
+                                       AtomicCopyOutput &output,
+                                       QString &err_msg,
+                                       const std::function<bool()> &is_cancelled) const
+{
+    output.image_ids.clear();
+    output.label_ids.clear();
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败: %1").arg(path_);
+        return false;
+    }
+    if (is_cancelled && is_cancelled())
+    {
+        err_msg = QStringLiteral("操作已取消");
+        return false;
+    }
+    if (images.empty())
+    {
+        return true;
+    }
+
+    try
+    {
+        auto db = pool_->get();
+
+        auto dataset_data = db(sqlpp::select(DatasetsTable.id)
+                                   .from(DatasetsTable)
+                                   .where(DatasetsTable.id == target_dataset_id));
+        if (dataset_data.empty())
+        {
+            err_msg = QString("目标数据集不存在: %1").arg(target_dataset_id);
+            return false;
+        }
+
+        auto tx = sqlpp::start_transaction(db);
+        try
+        {
+            output.image_ids.reserve(images.size());
+            for (const auto &image : images)
+            {
+                if (is_cancelled && is_cancelled())
+                {
+                    tx.rollback();
+                    output.image_ids.clear();
+                    output.label_ids.clear();
+                    err_msg = QStringLiteral("操作已取消");
+                    return false;
+                }
+
+                int64_t new_image_id = -1;
+                insertImageSnapshot(db, target_dataset_id, image, new_image_id, output.label_ids);
+                output.image_ids.push_back(new_image_id);
+            }
+
+            if (is_cancelled && is_cancelled())
+            {
+                tx.rollback();
+                output.image_ids.clear();
+                output.label_ids.clear();
+                err_msg = QStringLiteral("操作已取消");
+                return false;
+            }
+
+            tx.commit();
+            return true;
+        }
+        catch (...)
+        {
+            tx.rollback();
+            output.image_ids.clear();
+            output.label_ids.clear();
+            throw;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        output.image_ids.clear();
+        output.label_ids.clear();
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::splitDatasetAtomic(const std::vector<DatasetSplitTarget> &targets,
+                                         AtomicSplitOutput &output,
+                                         QString &err_msg,
+                                         const std::function<bool()> &is_cancelled) const
+{
+    output.dataset_ids.clear();
+    output.image_ids.clear();
+    output.label_ids.clear();
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败: %1").arg(path_);
+        return false;
+    }
+    if (is_cancelled && is_cancelled())
+    {
+        err_msg = QStringLiteral("操作已取消");
+        return false;
+    }
+    if (targets.empty())
+    {
+        return true;
+    }
+
+    try
+    {
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        try
+        {
+            output.dataset_ids.reserve(targets.size());
+            for (const auto &target : targets)
+            {
+                if (is_cancelled && is_cancelled())
+                {
+                    tx.rollback();
+                    output.dataset_ids.clear();
+                    output.image_ids.clear();
+                    output.label_ids.clear();
+                    err_msg = QStringLiteral("操作已取消");
+                    return false;
+                }
+
+                if (target.name.trimmed().isEmpty())
+                {
+                    tx.rollback();
+                    output.dataset_ids.clear();
+                    output.image_ids.clear();
+                    output.label_ids.clear();
+                    err_msg = QStringLiteral("子数据集名称不能为空");
+                    return false;
+                }
+
+                auto existing = db(sqlpp::select(DatasetsTable.id)
+                                      .from(DatasetsTable)
+                                      .where(DatasetsTable.name == target.name.toUtf8().constData()));
+                if (!existing.empty())
+                {
+                    tx.rollback();
+                    output.dataset_ids.clear();
+                    output.image_ids.clear();
+                    output.label_ids.clear();
+                    err_msg = QString("子数据集已存在: %1").arg(target.name);
+                    return false;
+                }
+
+                db(sqlpp::insert_into(DatasetsTable).set(DatasetsTable.name = target.name.toUtf8().constData()));
+                const int64_t new_dataset_id = static_cast<int64_t>(db.last_insert_id());
+                output.dataset_ids.push_back(new_dataset_id);
+
+                for (const auto &image : target.images)
+                {
+                    if (is_cancelled && is_cancelled())
+                    {
+                        tx.rollback();
+                        output.dataset_ids.clear();
+                        output.image_ids.clear();
+                        output.label_ids.clear();
+                        err_msg = QStringLiteral("操作已取消");
+                        return false;
+                    }
+
+                    int64_t new_image_id = -1;
+                    insertImageSnapshot(db, new_dataset_id, image, new_image_id, output.label_ids);
+                    output.image_ids.push_back(new_image_id);
+                }
+            }
+
+            if (is_cancelled && is_cancelled())
+            {
+                tx.rollback();
+                output.dataset_ids.clear();
+                output.image_ids.clear();
+                output.label_ids.clear();
+                err_msg = QStringLiteral("操作已取消");
+                return false;
+            }
+
+            tx.commit();
+            return true;
+        }
+        catch (...)
+        {
+            tx.rollback();
+            output.dataset_ids.clear();
+            output.image_ids.clear();
+            output.label_ids.clear();
+            throw;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        output.dataset_ids.clear();
+        output.image_ids.clear();
+        output.label_ids.clear();
         err_msg = e.what();
         return false;
     }

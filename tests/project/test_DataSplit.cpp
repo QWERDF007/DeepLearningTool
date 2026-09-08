@@ -21,7 +21,7 @@ QString nextDatasetName(const dltool::data::DataManager *data_manager, const QSt
     int     index     = 1;
     while (data_manager != nullptr && data_manager->getDatasetId(candidate) >= 0)
     {
-        candidate = QStringLiteral("%1(%2)").arg(base_name).arg(index++);
+        candidate = QStringLiteral("%1_%2").arg(base_name).arg(index++);
     }
     return candidate;
 }
@@ -165,6 +165,214 @@ private slots:
         QVERIFY(train_test.intersect(test_images).isEmpty());
         QVERIFY(val_test.intersect(test_images).isEmpty());
         QCOMPARE(source_images.size(), source_image_count);
+    }
+
+    void copiesImagesWithLabelsAndTagsAtomically()
+    {
+        PersistentProjectFixture fixture;
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        QVERIFY(fixture.dataManager() != nullptr);
+
+        const qint64 source_dataset_id
+            = fixture.dataManager()->getDatasetId(PersistentProjectFixture::datasetName());
+        QVERIFY(source_dataset_id >= 0);
+
+        QString error;
+        QSet<qint64> source_image_ids;
+        int source_label_count = 0;
+        QVERIFY2(imageIdsForDataset(PersistentProjectFixture::projectDatabasePath(), source_dataset_id,
+                                    &source_image_ids, &source_label_count, &error),
+                 qPrintable(error));
+        QVERIFY(!source_image_ids.isEmpty());
+
+        std::vector<int64_t> ids_to_copy;
+        for (const qint64 id : source_image_ids)
+        {
+            ids_to_copy.push_back(id);
+            if (ids_to_copy.size() == 3)
+                break;
+        }
+
+        const QString target_name = nextDatasetName(fixture.dataManager(), QStringLiteral("Copy-Atomic-Target"));
+        const qint64  target_id   = fixture.ensureDataset(target_name, &error);
+        QVERIFY2(target_id >= 0, qPrintable(error));
+
+        bool       finished = false;
+        bool       success  = false;
+        QString    message;
+        QEventLoop loop;
+        QTimer     timeout;
+        timeout.setSingleShot(true);
+
+        fixture.dataManager()->copyToDatasetAsync(
+            ids_to_copy, target_id, nullptr,
+            [&](const bool op_success, const QString &op_message)
+            {
+                finished = true;
+                success  = op_success;
+                message  = op_message;
+                loop.quit();
+            },
+            false);
+
+        QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+        timeout.start(30000);
+        if (!finished)
+            loop.exec();
+
+        QVERIFY2(finished, "复制图像操作超时");
+        QVERIFY2(success, qPrintable(message));
+
+        QSet<qint64> target_images;
+        int          target_labels = 0;
+        QVERIFY2(imageIdsForDataset(PersistentProjectFixture::projectDatabasePath(), target_id,
+                                    &target_images, &target_labels, &error),
+                 qPrintable(error));
+        QCOMPARE(target_images.size(), 3);
+
+        // Reopening database directly confirms committed records
+        {
+            dltool::database::ProjectDataBase reopened_db(PersistentProjectFixture::projectDatabasePath());
+            std::vector<int64_t> db_ids;
+            std::vector<QString> db_paths;
+            QString db_error;
+            QVERIFY(reopened_db.getImages(target_id, db_ids, db_paths, db_error));
+            QCOMPARE(db_ids.size(), static_cast<size_t>(3));
+        }
+    }
+
+    void movesImagesAtomicallyBetweenDatasets()
+    {
+        PersistentProjectFixture fixture;
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        QVERIFY(fixture.dataManager() != nullptr);
+
+        QString error;
+        const QString source_name = nextDatasetName(fixture.dataManager(), QStringLiteral("Move-Source"));
+        const qint64  source_id   = fixture.ensureDataset(source_name, &error);
+        QVERIFY2(source_id >= 0, qPrintable(error));
+
+        const QString target_name = nextDatasetName(fixture.dataManager(), QStringLiteral("Move-Target"));
+        const qint64  target_id   = fixture.ensureDataset(target_name, &error);
+        QVERIFY2(target_id >= 0, qPrintable(error));
+
+        // Copy 2 images into source_id first
+        const qint64 base_dataset_id = fixture.dataManager()->getDatasetId(PersistentProjectFixture::datasetName());
+        QSet<qint64> base_images;
+        QVERIFY(imageIdsForDataset(PersistentProjectFixture::projectDatabasePath(), base_dataset_id, &base_images, nullptr, &error));
+        std::vector<int64_t> to_copy;
+        for (const qint64 id : base_images)
+        {
+            to_copy.push_back(id);
+            if (to_copy.size() == 2)
+                break;
+        }
+
+        {
+            bool finished = false;
+            QEventLoop loop;
+            fixture.dataManager()->copyToDatasetAsync(to_copy, source_id, nullptr,
+                [&](bool, const QString &) { finished = true; loop.quit(); }, false);
+            if (!finished)
+                loop.exec();
+        }
+
+        QSet<qint64> source_images;
+        QVERIFY(imageIdsForDataset(PersistentProjectFixture::projectDatabasePath(), source_id, &source_images, nullptr, &error));
+        QCOMPARE(source_images.size(), 2);
+
+        std::vector<int64_t> to_move;
+        for (const qint64 id : source_images)
+            to_move.push_back(id);
+
+        // Move to target_id
+        bool       move_finished = false;
+        bool       move_success  = false;
+        QString    move_message;
+        QEventLoop move_loop;
+        fixture.dataManager()->moveToDatasetAsync(
+            to_move, target_id, nullptr,
+            [&](const bool op_success, const QString &op_message)
+            {
+                move_finished = true;
+                move_success  = op_success;
+                move_message  = op_message;
+                move_loop.quit();
+            },
+            false);
+        if (!move_finished)
+            move_loop.exec();
+
+        QVERIFY2(move_finished, "移动图像操作超时");
+        QVERIFY2(move_success, qPrintable(move_message));
+
+        QSet<qint64> source_after;
+        QSet<qint64> target_after;
+        QVERIFY(imageIdsForDataset(PersistentProjectFixture::projectDatabasePath(), source_id, &source_after, nullptr, &error));
+        QVERIFY(imageIdsForDataset(PersistentProjectFixture::projectDatabasePath(), target_id, &target_after, nullptr, &error));
+        QCOMPARE(source_after.size(), 0);
+        QCOMPARE(target_after.size(), 2);
+    }
+
+    void atomicRollbackLeavesNoLeftoverRecords()
+    {
+        dltool::database::ProjectDataBase db(PersistentProjectFixture::projectDatabasePath());
+
+        // 1. copyImagesAtomic with early cancellation: 0 records inserted
+        dltool::database::ProjectDataBase::ImageSnapshot snap;
+        snap.path = QStringLiteral("fictional/test/path.png");
+        snap.tag_ids = {1};
+        dltool::database::ProjectDataBase::LabelSnapshot lbl;
+        lbl.label_class_id = 1;
+        lbl.label_type = 1;
+        lbl.data = {1, 2, 3, 4};
+        snap.labels.push_back(lbl);
+
+        std::vector<int64_t> dataset_ids;
+        std::vector<QString> dataset_names;
+        QString err;
+        QVERIFY(db.getAllDatasets(dataset_ids, dataset_names, err));
+        QVERIFY(!dataset_ids.empty());
+        const int64_t test_dataset_id = dataset_ids.front();
+
+        int64_t count_before = db.getImagesCount(test_dataset_id);
+
+        dltool::database::ProjectDataBase::AtomicCopyOutput copy_out;
+        bool copy_ok = db.copyImagesAtomic(
+            test_dataset_id, {snap}, copy_out, err,
+            []() { return true; } /* cancel immediately */);
+        QVERIFY(!copy_ok);
+        QVERIFY(copy_out.image_ids.empty());
+        QVERIFY(copy_out.label_ids.empty());
+        QCOMPARE(db.getImagesCount(test_dataset_id), count_before);
+
+        // 2. splitDatasetAtomic with early cancellation: 0 datasets or images created
+        const QString phantom_dataset_name = QStringLiteral("Atomic-Rollback-Phantom-%1")
+                                                 .arg(QDateTime::currentMSecsSinceEpoch());
+        dltool::database::ProjectDataBase::DatasetSplitTarget target;
+        target.name = phantom_dataset_name;
+        target.images = {snap};
+
+        dltool::database::ProjectDataBase::AtomicSplitOutput split_out;
+        bool split_ok = db.splitDatasetAtomic(
+            {target}, split_out, err,
+            []() { return true; } /* cancel immediately */);
+        QVERIFY(!split_ok);
+        QVERIFY(split_out.dataset_ids.empty());
+        QVERIFY(split_out.image_ids.empty());
+
+        // Verify phantom dataset was rolled back completely
+        std::vector<int64_t> after_ids;
+        std::vector<QString> after_names;
+        QVERIFY(db.getAllDatasets(after_ids, after_names, err));
+        for (const QString &name : after_names)
+        {
+            QVERIFY2(name != phantom_dataset_name, "回滚失败：遗留了子数据集记录");
+        }
+
+        // 3. moveImagesAtomic with invalid target dataset: fails without moving
+        bool move_ok = db.moveImagesAtomic({1, 2}, -99999, err);
+        QVERIFY(!move_ok);
     }
 };
 

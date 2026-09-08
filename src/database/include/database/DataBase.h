@@ -9,6 +9,7 @@
 #include <QVariant>
 #include <QVariantList>
 #include <QVariantMap>
+#include <functional>
 #include <utility>
 #include <vector>
 
@@ -93,6 +94,66 @@ class DATABASE_API ProjectDataBase : public DataBase
 public:
     ProjectDataBase(const QString &path, QObject *parent = nullptr);
     ~ProjectDataBase();
+
+    struct LabelSnapshot
+    {
+        int64_t label_class_id{0};
+        int64_t label_type{0};
+        std::vector<uint8_t> data;
+        std::vector<int64_t> tag_ids;
+    };
+
+    struct ImageSnapshot
+    {
+        QString path;
+        std::vector<uint8_t> extra_data;
+        std::vector<int64_t> tag_ids;
+        std::vector<LabelSnapshot> labels;
+    };
+
+    struct DatasetSplitTarget
+    {
+        QString name;
+        std::vector<ImageSnapshot> images;
+    };
+
+    struct AtomicCopyOutput
+    {
+        std::vector<int64_t> image_ids;
+        std::vector<int64_t> label_ids;
+    };
+
+    struct AtomicSplitOutput
+    {
+        std::vector<int64_t> dataset_ids;
+        std::vector<int64_t> image_ids;
+        std::vector<int64_t> label_ids;
+    };
+
+    /**
+     * @brief 单库单事务原子复制图像及其标注与 Tag。
+     */
+    bool copyImagesAtomic(const int64_t target_dataset_id,
+                          const std::vector<ImageSnapshot> &images,
+                          AtomicCopyOutput &output,
+                          QString &err_msg,
+                          const std::function<bool()> &is_cancelled = nullptr) const;
+
+    /**
+     * @brief 单库单事务原子创建子数据集并写入划分后的图像、标注与 Tag。
+     */
+    bool splitDatasetAtomic(const std::vector<DatasetSplitTarget> &targets,
+                            AtomicSplitOutput &output,
+                            QString &err_msg,
+                            const std::function<bool()> &is_cancelled = nullptr) const;
+
+    /**
+     * @brief 单库单事务原子移动图像归属数据集。
+     */
+    bool moveImagesAtomic(const std::vector<int64_t> &image_ids,
+                          const int64_t target_dataset_id,
+                          QString &err_msg,
+                          const std::function<bool()> &is_cancelled = nullptr) const;
 
     /**
      * @brief 初始化项目数据库, 创建必要的表结构并插入项目基本信息。
