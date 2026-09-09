@@ -52,6 +52,21 @@ add_subdirectory(3rdparty EXCLUDE_FROM_ALL)
 
 add_subdirectory(src)
 
+# 安装配置与 Python 运行时
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/config"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    FILES_MATCHING
+        PATTERN "*.yaml"
+        PATTERN "*.json"
+)
+
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/EasyTrain/src/python"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    PATTERN "__pycache__" EXCLUDE
+    PATTERN "*.pyc" EXCLUDE
+    PATTERN "*.pyo" EXCLUDE
+)
+
 # 构建测试用例
 if(DLT_BUILD_TESTS)
     enable_testing()

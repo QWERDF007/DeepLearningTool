@@ -78,3 +78,22 @@ PRIVATE
     Qt6::Quick Qt6::Gui Qt6::Widgets Qt6::WebEngineQuick
     quickui dltool_common dltool_core dltool_ui dltool_project dltool_data dltool_feature dltool_model dltool_database dltool_settings
 )
+
+# 安装可执行文件
+install(TARGETS ${PROJECT_NAME}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    BUNDLE DESTINATION .
+)
+
+# 安装主程序 QML 模块
+install(
+    DIRECTORY "${QML_PLUGIN_DIRECTORY}/"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}/${PROJECT_NAME}/${PLUGIN_NAME}"
+    FILES_MATCHING
+        PATTERN "qmldir"
+        PATTERN "*.qml"
+        PATTERN "*.js"
+        PATTERN "*.qmltypes"
+        PATTERN "*.metatypes"
+)
+

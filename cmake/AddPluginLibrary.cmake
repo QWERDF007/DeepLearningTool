@@ -148,17 +148,17 @@ function(add_plugin_library PLUGIN_NAME)
     add_library(${PLUGIN_HEADER} INTERFACE)
     target_include_directories(${PLUGIN_HEADER}
         INTERFACE
-            ${CMAKE_CURRENT_SOURCE_DIR}/include
-            ${CMAKE_CURRENT_BINARY_DIR}/include
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     )
 
     target_link_libraries(${TARGET_NAME} PUBLIC ${PLUGIN_HEADER})
 
-    # DIRECTORY path/to/dir 会安装 dir 目录本身及其内容
     # DIRECTORY path/to/dir/ - 只安装 dir 目录的内容（不包含 dir 本身）
     install(
-        DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/${PROJECT_NAME}/${PLUGIN_NAME}/
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}/${PLUGIN_NAME}
+        DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         COMPONENT dev
         PATTERN "detail" EXCLUDE
     )
@@ -174,4 +174,18 @@ function(add_plugin_library PLUGIN_NAME)
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/${PROJECT_NAME}/${PLUGIN_NAME}/Export.h
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}/${PLUGIN_NAME}
             COMPONENT dev)
+
+    # 安装 QML 模块
+    if(NOT ARG_NO_QML_MODULE)
+        install(
+            DIRECTORY "${ARG_QML_PLUGIN_DIRECTORY}/"
+            DESTINATION "${CMAKE_INSTALL_BINDIR}/${PROJECT_NAME}/${PLUGIN_NAME}"
+            FILES_MATCHING
+                PATTERN "qmldir"
+                PATTERN "*.qml"
+                PATTERN "*.js"
+                PATTERN "*.qmltypes"
+                PATTERN "*.metatypes"
+        )
+    endif()
 endfunction()

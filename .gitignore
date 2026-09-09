@@ -45,3 +45,4 @@ __pycache__/
 docs/html/
 
 .kiro/
+logs/

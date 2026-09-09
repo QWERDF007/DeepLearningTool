@@ -41,6 +41,33 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 完成独立安装与运行包验证
+
+**目标**
+- 交付 Ticket 33：完成独立安装与运行包验证 (`docs/refactor-tickets/33-install-runtime.md`)。
+- 修正公开头布局和绝对路径泄漏，安装包含应用、库、QML、配置及必要运行时。
+- CMake 安装和运行包分别验证，缺依赖明确失败，不使用伪空 imported target。
+- 独立目录消费方及桌面烟测不依赖旧 DLL 或偶然 PATH，保留验证证据。
+- 遵循 TDD，建立失败与行为测试再实现，Release 构建与 CTest 通过，真实运行环境验证有证据。
+
+**当前状态**
+- 已完成：在 `tests/tools/test_dependency_defaults.py` 中新增 4 组测试：`test_plugin_library_install_rules_and_headers_have_no_absolute_path_leak`、`test_cmake_install_and_independent_consumer`、`test_runtime_package_verification_fails_on_missing_dependencies`、`test_desktop_smoke_test_with_smoke_test_flag`。
+- 已完成：重构 `cmake/AddPluginLibrary.cmake` 中的公开头安装与接口路径，修复原 `include/${PROJECT_NAME}/${PLUGIN_NAME}` 不存在的源目录导致 `cmake --install` 失败的问题；使用 `$<BUILD_INTERFACE:...>` 与 `$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>` 封装构建目录路径，彻底杜绝接口头绝对路径泄漏；并增加模块 QML 资源的安装规则。
+- 已完成：在 `src/tool/CMakeLists.txt` 中增加可执行程序 `install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})` 与主程序 QML 资源安装规则；在根 `CMakeLists.txt` 中安装 `config` 配置文件与 EasyTrain `python` 运行时环境。
+- 已完成：在 `src/tool/main.cpp` 中动态支持从程序同级及相对上级探测 `qml/` 导入目录，并增加 `--smoke-test` 命令行参数与 `DLT_SMOKE_TEST` 环境变量支持，通过 `QTimer::singleShot` 延迟 250ms 触发主事件循环退出，确保桌面烟测能在加载完整 GUI/QML 引擎后安全退出。
+- 已完成：验证独立目录外部消费者工程通过 CMake `find_package(Qt6)` 并在独立目录消费安装头文件成功编译链接；验证发布包校验在缺少依赖文件时明确报错抛出异常。
+- 已完成：验证桌面烟测在隔离 Qt 运行时与更新后项目 DLL 依赖下成功完成端到端启动与安全退出（returncode 0）。
+
+**验证证据**
+- `pytest tests/tools/test_dependency_defaults.py --basetemp=build/pytest-tools-tmp` → 16 passed in 58.46s
+- `cmake --build build --config Release --target dltool` → 编译链接成功 (0 错误)
+- `ctest --test-dir build -C Release -R "dltool_tools_tests|dltool_settings_save_behavior_tests|dltool_data_data_selection_tree_model_tests|dltool_feature_lifecycle_tests"` → 4/4 passed (63.40s)
+- 外部消费者工程编译：`cmake -S <consumer_src> -B <consumer_build> -DCMAKE_PREFIX_PATH=...` && `cmake --build <consumer_build> --config Release` → 成功生成 consumer.exe
+- 桌面烟测验证：`dltool.exe --smoke-test` (offscreen 模式) → 返回码 0，启动并安全退出
+
+**下一步**
+- 查看后续重构工单并继续推进。
+
 ## 2026-09-09 — 让测试环境与构建选项真正可配置
 
 **目标**

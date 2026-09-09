@@ -15,6 +15,7 @@
 #include <QRegularExpression>
 #include <QQmlApplicationEngine>
 #include <QStringList>
+#include <QTimer>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 
 namespace {
@@ -103,8 +104,12 @@ int main(int argc, char *argv[])
     engine.addImageProvider("evaluationthumbnail", new dltool::model::EvaluationThumbnailImageProvider());
     // qt_add_qml_module outputs the build-time modules below the build root
     // (for example, build/dltool/core), while quickui is emitted under build/qml.
+    engine.addImportPath(QCoreApplication::applicationDirPath());
+    engine.addImportPath(QCoreApplication::applicationDirPath() + QStringLiteral("/qml"));
+#ifdef DLTOOL_QML_BUILD_DIR
     engine.addImportPath(QStringLiteral(DLTOOL_QML_BUILD_DIR));
     engine.addImportPath(QStringLiteral(DLTOOL_QML_BUILD_DIR "/qml"));
+#endif
     engine.addImportPath(QCoreApplication::applicationDirPath() + QStringLiteral("/../qml"));
 
     // 将 QML 引擎设置到 ProjectManager（通过 QML 上下文属性）
@@ -128,6 +133,14 @@ int main(int argc, char *argv[])
         },
         Qt::QueuedConnection);
     engine.load(url);
+
+    const bool is_smoke_test
+        = app.arguments().contains(QStringLiteral("--smoke-test")) || qEnvironmentVariableIsSet("DLT_SMOKE_TEST");
+    if (is_smoke_test)
+    {
+        QTimer::singleShot(250, &app, &QCoreApplication::quit);
+    }
+
     const int exec = QGuiApplication::exec();
     spdlog::info("Bye!");
     return exec;

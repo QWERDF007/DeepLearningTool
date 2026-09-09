@@ -19,6 +19,7 @@ from tools.dependency_utils import (
     expand_dependency_pattern,
     load_dependencies,
     platform_key,
+    read_cmake_cache_value,
     resolve_dependency_root,
 )
 from tools.package_app import verify_package
@@ -346,4 +347,160 @@ def test_test_cmake_and_fixtures_have_no_hardcoded_developer_paths() -> None:
                     violations.append(f"{file_path.relative_to(ROOT)}:{line_no}: {line.strip()}")
 
     assert not violations, "Found hardcoded developer drive roots in test files:\n" + "\n".join(violations)
+
+
+def test_plugin_library_install_rules_and_headers_have_no_absolute_path_leak() -> None:
+    """Verify AddPluginLibrary installs headers without invalid source paths and without absolute path leaks."""
+    content = (ROOT / "cmake" / "AddPluginLibrary.cmake").read_text(encoding="utf-8")
+    assert "${CMAKE_CURRENT_SOURCE_DIR}/include/${PROJECT_NAME}/${PLUGIN_NAME}" not in content, (
+        "AddPluginLibrary.cmake must not attempt to install non-existent include/${PROJECT_NAME}/${PLUGIN_NAME}"
+    )
+    assert "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" in content, (
+        "PLUGIN_HEADER must protect build include paths using $<BUILD_INTERFACE:...>"
+    )
+    assert "$<INSTALL_INTERFACE:" in content, (
+        "PLUGIN_HEADER must provide $<INSTALL_INTERFACE:...>"
+    )
+
+    tool_cmake = (ROOT / "src" / "tool" / "CMakeLists.txt").read_text(encoding="utf-8")
+    assert "install(TARGETS" in tool_cmake or "install(\n    TARGETS" in tool_cmake, (
+        "src/tool/CMakeLists.txt must install the dltool executable"
+    )
+
+    root_cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    assert "install(DIRECTORY" in root_cmake, (
+        "Root CMakeLists.txt must install config and runtime directories"
+    )
+
+
+def test_cmake_install_and_independent_consumer(tmp_path: Path) -> None:
+    """Verify cmake --install produces valid layout and independent external consumer compiles."""
+    build_dir = ROOT / "build"
+    if not (build_dir / "CMakeCache.txt").is_file():
+        pytest.skip("CMake build directory is required")
+    cmake = shutil.which("cmake")
+    if cmake is None:
+        pytest.skip("CMake is required")
+
+    install_prefix = tmp_path / "installed"
+    subprocess.run(
+        [cmake, "--install", str(build_dir), "--prefix", str(install_prefix), "--config", "Release"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    exe_name = "dltool.exe" if os.name == "nt" else "dltool"
+    assert (install_prefix / "bin" / exe_name).is_file()
+    assert (install_prefix / "include" / "core" / "CoreDef.h").is_file()
+    assert (install_prefix / "include" / "dltool" / "core" / "Export.h").is_file()
+    assert (install_prefix / "bin" / "config" / "settings" / "SoftwareSetting.yaml").is_file()
+    assert (install_prefix / "bin" / "python").is_dir()
+
+    # Verify external consumer can include headers
+    consumer_src = tmp_path / "consumer_src"
+    consumer_build = tmp_path / "consumer_build"
+    consumer_src.mkdir()
+
+    (consumer_src / "main.cpp").write_text(
+        "#include <core/CoreDef.h>\n"
+        "#include <dltool/core/Export.h>\n"
+        "int main() {\n"
+        "    dltool::core::DeepLearningMethod::Method method = dltool::core::DeepLearningMethod::AnomalyDetection;\n"
+        "    return static_cast<int>(method) == 5 ? 0 : 1;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    qt6_core_dir = read_cmake_cache_value(build_dir / "CMakeCache.txt", "Qt6Core_DIR")
+    qt6_opt = []
+    if qt6_core_dir:
+        prefix = Path(qt6_core_dir).parents[2]
+        qt6_opt = [f"-DCMAKE_PREFIX_PATH={prefix.as_posix()}"]
+    else:
+        qt6_dir = read_cmake_cache_value(build_dir / "CMakeCache.txt", "Qt6_DIR")
+        if qt6_dir:
+            qt6_opt = [f"-DQt6_DIR={qt6_dir}"]
+
+    inc_dir = (install_prefix / "include").as_posix()
+    (consumer_src / "CMakeLists.txt").write_text(
+        "cmake_minimum_required(VERSION 3.22)\n"
+        "project(InstalledConsumer CXX)\n"
+        "set(CMAKE_CXX_STANDARD 20)\n"
+        "find_package(Qt6 REQUIRED COMPONENTS Core Qml)\n"
+        f'include_directories("{inc_dir}")\n'
+        "add_executable(consumer main.cpp)\n"
+        "target_link_libraries(consumer PRIVATE Qt6::Core Qt6::Qml)\n",
+        encoding="utf-8",
+    )
+
+    subprocess.run(
+        [cmake, "-S", str(consumer_src), "-B", str(consumer_build), *qt6_opt],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        [cmake, "--build", str(consumer_build), "--config", "Release"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    consumer_exe = consumer_build / ("Release/consumer.exe" if os.name == "nt" else "consumer")
+    if not consumer_exe.is_file():
+        consumer_exe = consumer_build / ("consumer.exe" if os.name == "nt" else "consumer")
+    assert consumer_exe.is_file()
+
+
+def test_runtime_package_verification_fails_on_missing_dependencies(tmp_path: Path) -> None:
+    """Verify runtime package verification clearly fails when dependencies or marker are missing."""
+    build_dir = ROOT / "build"
+    fake_install = tmp_path / "fake_install"
+    fake_install.mkdir()
+
+    # Empty package must fail verification
+    with pytest.raises(RuntimeError) as exc_info:
+        verify_package(fake_install, build_dir, require_qt_runtime=True, expected_version="0.0.2")
+    assert "missing files" in str(exc_info.value)
+
+    # Incomplete package with only executable must still fail on missing project and Qt DLLs
+    exe_name = "dltool.exe" if os.name == "nt" else "dltool"
+    (fake_install / exe_name).write_bytes(b"dummy_exe")
+    with pytest.raises(RuntimeError) as exc_info:
+        verify_package(fake_install, build_dir, require_qt_runtime=True, expected_version="0.0.2")
+    assert "missing files" in str(exc_info.value)
+
+
+def test_desktop_smoke_test_with_smoke_test_flag() -> None:
+    """Verify dltool starts and exits cleanly in offscreen mode with --smoke-test."""
+    build_dir = ROOT / "build"
+    exe_name = "dltool.exe" if os.name == "nt" else "dltool"
+    app_exe = build_dir / "bin" / exe_name
+    if not app_exe.is_file():
+        pytest.skip(f"{app_exe} is not built yet")
+
+    qt6_core_dir = read_cmake_cache_value(build_dir / "CMakeCache.txt", "Qt6Core_DIR")
+    qt_bin = ""
+    if qt6_core_dir:
+        qt_bin = str(Path(qt6_core_dir).parents[2] / "bin")
+
+    env = os.environ.copy()
+    if qt_bin:
+        env["PATH"] = f"{qt_bin};{app_exe.parent};" + env.get("PATH", "")
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    env["QT_QUICK_BACKEND"] = "software"
+    env["QSG_RHI_BACKEND"] = "software"
+    env["QML_DISABLE_DISK_CACHE"] = "1"
+
+    proc = subprocess.run(
+        [str(app_exe), "--smoke-test"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert proc.returncode == 0, f"App smoke test failed with code {proc.returncode}: {proc.stderr}"
+
+
+
 
