@@ -6,6 +6,8 @@
 
 #include <opencv2/imgproc.hpp>
 
+#include <QImageReader>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QPainter>
@@ -196,10 +198,44 @@ QImage EvaluationThumbnailImageProvider::requestImage(const QString &id, QSize *
                                           ? QString()
                                           : QLatin1Char('\x1f') + QString::number(requestedSize.width()) + QLatin1Char('x')
                                                 + QString::number(requestedSize.height()));
+
+    const QString image_path = query.queryItemValue(QStringLiteral("path"));
+    QImageReader reader(image_path);
+    const QSize natural_size = reader.size();
+    if (image_path.isEmpty() || !natural_size.isValid())
+        return {};
+    // Bound owned pixel buffers, including 64-bit source formats, conversion,
+    // crop and scaling copies. Codec-private allocations are not cache storage.
+    const auto bytes = [](QSize dimensions, qint64 pixel_bytes) -> qint64 {
+        return qint64(dimensions.width()) * dimensions.height() * pixel_bytes;
+    };
+    qint64 expected_cost = bytes(natural_size, 8) * 3;
+    if (heatmap)
+    {
+        const QString score_path = query.queryItemValue(QStringLiteral("scorePath"));
+        QImageReader score_reader(score_path);
+        const QSize model_size = score_reader.size();
+        if (!model_size.isValid())
+            return {};
+        const auto transform = AnomalyPreprocessingTransform::fromConfig(
+            natural_size, model_size, preprocessingConfig(query));
+        if (!transform.isValid())
+            return {};
+        // TIFF bytes, decoded doubles, stored scores, RGB transforms, normalized
+        // map, BGR/RGB coloring and ARGB output (RGB rows include alignment).
+        expected_cost += QFileInfo(score_path).size()
+            + bytes(model_size, 8 + 8 + 4 + 1 + 3 + 4 + 4)
+            + bytes(transform.resizedSize(), 4)
+            + bytes(transform.paddedSize(), 4)
+            + bytes(transform.cropRect().size(), 4);
+    }
+    if (expected_cost <= 0 || expected_cost > std::numeric_limits<int>::max())
+        return {};
+
     const QImage image = cache_->getOrCreate(cache_key, [this, id, requestedSize]
     {
         return loadImage(id, requestedSize);
-    });
+    }, static_cast<int>(expected_cost));
     if (size != nullptr)
         *size = image.size();
     if (image.isNull())

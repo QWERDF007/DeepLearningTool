@@ -207,8 +207,8 @@ void ModelEvaluationViewModel::beginShutdown()
 void ModelEvaluationViewModel::shutdown()
 {
     beginShutdown();
-    if (evaluation_pool_ != nullptr)
-        evaluation_pool_->waitForDone();
+    if (owned_evaluation_pool_ != nullptr)
+        owned_evaluation_pool_->waitForDone();
 }
 
 std::shared_ptr<std::atomic_bool> ModelEvaluationViewModel::activeAggregationCancelToken() const

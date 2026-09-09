@@ -6,6 +6,8 @@
 #include <QImage>
 #include <QSemaphore>
 #include <QTest>
+#include <QTemporaryDir>
+#include <QUrlQuery>
 
 #include <atomic>
 #include <barrier>
@@ -19,6 +21,55 @@ class EvaluationThumbnailImageProviderTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void providerRejectsGenerationWhoseWorkingBuffersExceedBudget()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("source.png"));
+        QImage image(16, 16, QImage::Format_ARGB32);
+        image.fill(Qt::red);
+        QVERIFY(image.save(path));
+        EvaluationThumbnailImageProvider provider;
+        provider.requestCache().setMaxCost(1024);
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("path"), path);
+        QVERIFY(provider.requestImage(QStringLiteral("budget?") + query.toString(), nullptr, {}).isNull());
+        QCOMPARE(provider.requestCache().pendingCount(), 0);
+    }
+
+    void shrinkingBudgetKeepsActiveReservationAndRejectsOversizedWork()
+    {
+        detail::EvaluationImageRequestCache cache(1024, 4);
+        QSemaphore entered;
+        QSemaphore release;
+        QImage result;
+        std::thread worker([&] {
+            result = cache.getOrCreate(QStringLiteral("active"), [&] {
+                QImage image(16, 8, QImage::Format_ARGB32);
+                entered.release();
+                release.acquire();
+                return image;
+            }, 512);
+        });
+        const bool started = entered.tryAcquire(1, 2000);
+        cache.setMaxCost(128);
+        const int during = cache.totalCost();
+        bool extra_loaded = false;
+        const QImage extra = cache.getOrCreate(QStringLiteral("extra"), [&] {
+            extra_loaded = true;
+            return QImage(8, 8, QImage::Format_ARGB32);
+        }, 256);
+        release.release();
+        worker.join();
+        QVERIFY(started);
+        QCOMPARE(during, 512);
+        QVERIFY(!extra_loaded);
+        QVERIFY(extra.isNull());
+        QVERIFY(!result.isNull());
+        QCOMPARE(cache.totalCost(), 0);
+        QCOMPARE(cache.maxCost(), 128);
+    }
+
     void concurrentRequestsShareSingleLoader()
     {
         constexpr int request_count = 8;

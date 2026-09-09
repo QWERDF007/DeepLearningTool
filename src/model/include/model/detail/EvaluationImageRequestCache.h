@@ -27,7 +27,7 @@ public:
 
     explicit EvaluationImageRequestCache(int max_cost = 64 * 1024 * 1024, int max_pending = 64);
 
-    QImage getOrCreate(const QString &key, const Loader &loader);
+    QImage getOrCreate(const QString &key, const Loader &loader, int expected_cost = 0);
 
     int  maxCost() const;
     void setMaxCost(int max_cost);

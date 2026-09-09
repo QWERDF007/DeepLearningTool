@@ -103,4 +103,42 @@ MODEL_API bool loadEvaluationPredictions(const QString &task_database_path, cons
                                          = std::numeric_limits<double>::quiet_NaN(),
                                          const std::shared_ptr<EvaluationArtifactCache> &artifact_cache = {});
 
+namespace evaluation {
+
+/**
+ * @brief 评估会话作用域内的文件读取入口计数器。
+ * 采用 thread_local 隔离，确保并发执行的多个评估任务互不干扰，准确统计当前会话执行的读取入口次数。
+ */
+class MODEL_API EvaluationIoScope
+{
+public:
+    EvaluationIoScope();
+    ~EvaluationIoScope();
+
+    EvaluationIoScope(const EvaluationIoScope &) = delete;
+    EvaluationIoScope &operator=(const EvaluationIoScope &) = delete;
+
+    qint64 readCount() const;
+
+private:
+    qint64 previous_count_{0};
+    bool   previous_active_{false};
+};
+
+/**
+ * @brief 真实评估文件读取入口 IO 监控器。
+ *
+ * 记录评估过程中从文件/数据库读取（CSV 图像列表、SQLite 数据集/项目库、TIFF 分数图、SQLite 预测库）的调用入口。
+ */
+class MODEL_API EvaluationDiskIoTracker
+{
+public:
+    static void   recordDiskRead(const QString &path = QString());
+    static qint64 totalDiskReadCount();
+    static qint64 threadDiskReadCount();
+    static void   reset();
+};
+
+} // namespace evaluation
+
 } // namespace dltool::model

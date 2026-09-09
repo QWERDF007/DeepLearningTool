@@ -29,12 +29,65 @@
 
 namespace dltool::model {
 
+namespace evaluation {
+
+namespace {
+std::atomic<qint64> g_total_disk_read_count{0};
+thread_local qint64 t_thread_disk_read_count{0};
+thread_local bool   t_thread_tracking_active{false};
+}
+
+void EvaluationDiskIoTracker::recordDiskRead(const QString &path)
+{
+    Q_UNUSED(path);
+    g_total_disk_read_count.fetch_add(1, std::memory_order_relaxed);
+    if (t_thread_tracking_active)
+        ++t_thread_disk_read_count;
+}
+
+qint64 EvaluationDiskIoTracker::totalDiskReadCount()
+{
+    return g_total_disk_read_count.load(std::memory_order_relaxed);
+}
+
+qint64 EvaluationDiskIoTracker::threadDiskReadCount()
+{
+    return t_thread_disk_read_count;
+}
+
+void EvaluationDiskIoTracker::reset()
+{
+    g_total_disk_read_count.store(0, std::memory_order_relaxed);
+    t_thread_disk_read_count = 0;
+}
+
+EvaluationIoScope::EvaluationIoScope()
+    : previous_count_(t_thread_disk_read_count)
+    , previous_active_(t_thread_tracking_active)
+{
+    t_thread_disk_read_count = 0;
+    t_thread_tracking_active = true;
+}
+
+EvaluationIoScope::~EvaluationIoScope()
+{
+    t_thread_disk_read_count = previous_count_;
+    t_thread_tracking_active = previous_active_;
+}
+
+qint64 EvaluationIoScope::readCount() const
+{
+    return t_thread_disk_read_count;
+}
+
+} // namespace evaluation
+
 namespace {
 
 /// 图像文件列表的文档大小上限。
 constexpr qint64      kMaxEvaluationFileBytes = 256LL * 1024LL * 1024LL;
-/// 预测/文件列表的记录数量上限。
 constexpr std::size_t kMaxEvaluationRecords = 5'000'000;
+
 
 /**
  * @brief 解析 CSV 行（支持引号转义）。
@@ -353,6 +406,7 @@ bool decodeEvaluationScoreMap(const QString &path, cv::Mat &decoded, QString *er
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
         return fail(QString("打开异常分数图失败: %1").arg(path));
+    evaluation::EvaluationDiskIoTracker::recordDiskRead(path);
     const QByteArray bytes = file.readAll();
     if (bytes.isEmpty())
         return fail(QString("异常分数图为空: %1").arg(path));
@@ -511,6 +565,7 @@ bool readEvaluationImageList(const QString &path, QList<QPair<qint64, QString>> 
             *err_msg = QString("打开图像文件列表失败: %1").arg(file.errorString());
         return false;
     }
+    evaluation::EvaluationDiskIoTracker::recordDiskRead(path);
     QTextStream  stream(&file);
     QSet<qint64> ids;
     bool         first = true;
@@ -602,6 +657,7 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
         return false;
     }
     database::ModelTaskDataBase             task_database(task_database_path);
+    evaluation::EvaluationDiskIoTracker::recordDiskRead(task_database_path);
     QList<database::DatasetSelectionRecord> selection_records;
     if (!task_database.readDatasets(selection_records, err_msg))
         return false;
@@ -621,7 +677,9 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
     }
 
     database::ProjectDataBase         project_database(project_database_path);
+    evaluation::EvaluationDiskIoTracker::recordDiskRead(project_database_path);
     QString                           database_error;
+
     std::vector<int64_t>              listed_image_ids;
     listed_image_ids.reserve(static_cast<std::size_t>(rows.size()));
     for (const auto &row : rows)
@@ -963,6 +1021,7 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
         return true;
 
     database::ModelTaskDataBase database(task_database_path);
+    evaluation::EvaluationDiskIoTracker::recordDiskRead(task_database_path);
     QHash<qint64, QVariant>     records;
     if (!database.readPredictions(records, err_msg))
         return false;

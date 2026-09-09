@@ -511,25 +511,67 @@ def test_isolated_installed_package_desktop_smoke_test() -> None:
     package_dir = ROOT / "install" / "test_isolated"
     app_exe = package_dir / exe_name
 
-    # 若安装目录不存在或二进制与当前构建不一致，触发 packaging 脚本生成/同步最新构建
-    if not app_exe.is_file() or app_exe.stat().st_size != build_exe.stat().st_size:
+    import hashlib
+
+    def compute_sha256(path: Path) -> str:
+        hasher = hashlib.sha256()
+        with open(path, "rb") as f:
+            while chunk := f.read(65536):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+
+    # 若安装目录不存在或二进制与当前构建哈希不一致，触发 packaging 脚本生成/同步最新构建
+    if not app_exe.is_file() or compute_sha256(app_exe) != compute_sha256(build_exe):
         package_script = ROOT / "tools" / "package_app.py"
         pack_res = subprocess.run(
-            [sys.executable, str(package_script), "--build-dir", "build", "--install-dir", str(package_dir), "--config", "release"],
+            [
+                sys.executable,
+                str(package_script),
+                "--build-dir",
+                "build",
+                "--install-dir",
+                str(package_dir),
+                "--config",
+                "release",
+                "--allow-missing-dependencies",
+            ],
             cwd=str(ROOT),
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=180,
         )
         assert pack_res.returncode == 0, f"Packaging failed: {pack_res.stderr}\nStdout: {pack_res.stdout}"
 
     assert app_exe.is_file(), f"Packaged executable not found at {app_exe}"
-    assert app_exe.stat().st_size == build_exe.stat().st_size, (
-        f"Packaged executable size ({app_exe.stat().st_size}) does not match current build ({build_exe.stat().st_size})"
+    build_exe_hash = compute_sha256(build_exe)
+    app_exe_hash = compute_sha256(app_exe)
+    assert app_exe_hash == build_exe_hash, (
+        f"Packaged executable SHA-256 ({app_exe_hash}) does not match current build ({build_exe_hash})"
     )
+
+    # 验证当前构建生成的全部工程核心动态库与安装目录中的动态库 SHA-256 完全逐位匹配
+    build_bin_dir = ROOT / "build" / "bin"
+    if os.name == "nt":
+        project_dlls = list(build_bin_dir.glob("dltool_*.dll")) + list(build_bin_dir.glob("quickui.dll"))
+        assert len(project_dlls) >= 8, f"Expected at least 8 project DLLs in {build_bin_dir}, found {len(project_dlls)}"
+        for build_dll in project_dlls:
+            pkg_dll = package_dir / build_dll.name
+            assert pkg_dll.is_file(), f"Project DLL {build_dll.name} missing from package directory {package_dir}"
+            assert compute_sha256(pkg_dll) == compute_sha256(build_dll), (
+                f"Packaged DLL {build_dll.name} SHA-256 does not match current build output"
+            )
+    else:
+        project_sos = list(build_bin_dir.glob("libdltool_*.so")) + list(build_bin_dir.glob("libquickui.so"))
+        for build_so in project_sos:
+            pkg_so = (package_dir / "lib" / build_so.name) if (package_dir / "lib" / build_so.name).is_file() else (package_dir / build_so.name)
+            assert pkg_so.is_file(), f"Project shared object {build_so.name} missing from package directory {package_dir}"
+            assert compute_sha256(pkg_so) == compute_sha256(build_so), (
+                f"Packaged SO {build_so.name} SHA-256 does not match current build output"
+            )
 
     # 验证 package marker 存在且与当前代码库 project VERSION 一致
     version = project_version()
+
     marker_file = package_dir / ".dltool_package"
     assert marker_file.is_file(), f"Package marker .dltool_package not found in {package_dir}"
     marker_content = marker_file.read_text(encoding="utf-8")

@@ -95,6 +95,8 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     if (err_msg != nullptr)
         err_msg->clear();
 
+    evaluation::EvaluationIoScope io_scope;
+
     // (a) 协作取消检查。
     if (cancelled(options.cancel_token))
         return fail(QString("评估已取消"));
@@ -268,7 +270,7 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     output.matrix           = scratch_.matrix;
     output.instance_records = scratch_.events;
     output.prediction_count = prediction_count;
-    output.disk_read_count  = 3 + (evaluation::isAnomaly(method()) ? static_cast<int>(images.size()) : 1);
+    output.disk_read_count  = static_cast<int>(io_scope.readCount());
 
     output.has_confusion_matrix = evaluation::hasConfusionMatrix(method());
     output.has_instance_metrics = evaluation::hasInstanceMetrics(method());

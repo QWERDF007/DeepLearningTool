@@ -429,7 +429,7 @@ void ModelTestTaskManager::enforceEvaluationCacheBudget()
         if (ModelEvaluationViewModel *vm = evaluation_cache_.take(evict_key))
         {
             pending_evaluation_notifications_.remove(evict_key);
-            vm->shutdown();
+            vm->beginShutdown();
             delete vm;
             ++evicted_evaluations_;
         }

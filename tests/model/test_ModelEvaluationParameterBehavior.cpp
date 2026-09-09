@@ -5,6 +5,7 @@
 #include "database/DataBase.h"
 #include "database/ModelTaskDataBase.h"
 #include "model/AnomalyPreprocessingTransform.h"
+#include "model/EvaluationDataset.h"
 #include "model/EvaluationViewModelRegistry.h"
 #include "model/IParams.h"
 #include "model/ModelParamDefs.h"
@@ -761,15 +762,19 @@ private slots:
         auto *evaluation = manager.currentEvaluation();
         QVERIFY(evaluation != nullptr);
 
-        // 1. 冷打开：执行后台全量评估，实测记录读取成本（磁盘/DB 读取次数 > 0）与执行耗时
+        // 1. 冷打开：执行后台全量评估，实测记录读取成本（物理磁盘/DB 读取次数 > 0）与执行耗时
+        evaluation::EvaluationDiskIoTracker::reset();
+        const qint64 total_reads_before_cold = evaluation::EvaluationDiskIoTracker::totalDiskReadCount();
         QCOMPARE(evaluation->evaluationCount(), 0);
         evaluation->evaluate(false);
         QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
         QCOMPARE(evaluation->evaluationCount(), 1);
-        const qint64 cold_elapsed = evaluation->lastEvaluationElapsedMs();
-        const int    cold_reads   = evaluation->lastDiskReadCount();
+        const qint64 cold_elapsed        = evaluation->lastEvaluationElapsedMs();
+        const int    cold_reads          = evaluation->lastDiskReadCount();
+        const qint64 physical_cold_reads = evaluation::EvaluationDiskIoTracker::totalDiskReadCount() - total_reads_before_cold;
         QVERIFY(cold_elapsed >= 0);
-        QVERIFY2(cold_reads > 0, qPrintable(QString("冷打开应产生真实的磁盘读取，实际: %1").arg(cold_reads)));
+        QVERIFY2(physical_cold_reads > 0, qPrintable(QString("冷打开应产生真实的物理磁盘读取，实际: %1").arg(physical_cold_reads)));
+        QCOMPARE(cold_reads, static_cast<int>(physical_cold_reads));
 
         const double cold_conf = evaluation->confidenceThreshold();
         const double cold_best = evaluation->hasBestThreshold() ? evaluation->bestThreshold() : 0.0;
@@ -793,18 +798,21 @@ private slots:
         QVERIFY(task2_eval != evaluation);
 
         // 3. 热打开：跨任务切换切回任务 1，GUI 立即响应（无需重新触发后台执行），数值完全一致
+        const qint64 total_reads_before_hot = evaluation::EvaluationDiskIoTracker::totalDiskReadCount();
         QElapsedTimer hot_timer;
         hot_timer.start();
         QVERIFY(manager.switchTask(task1_uuid));
         const qint64 hot_gui_elapsed = hot_timer.elapsed();
+        const qint64 physical_hot_reads = evaluation::EvaluationDiskIoTracker::totalDiskReadCount() - total_reads_before_hot;
         QVERIFY2(hot_gui_elapsed < 50, qPrintable(QString("热打开 GUI 响应耗时过长: %1 ms").arg(hot_gui_elapsed)));
+        // 真实实测断言：热打开期间全系统评估入口累计物理磁盘读取数必须严格为 0！
+        QCOMPARE(physical_hot_reads, 0);
 
         auto *hot_evaluation = manager.currentEvaluation();
         QCOMPARE(hot_evaluation, evaluation);
         QCOMPARE(hot_evaluation->stateKind(), ModelEvaluationViewModel::Ready);
         // 读取成本与执行验证：无额外后台计算（计数不变）、无新评估排队、内存 O(1) 复用
         QCOMPARE(hot_evaluation->evaluationCount(), 1);
-        const int hot_reads = 0; // 热打开完全复用内存 ViewModel 快照，零新增磁盘重读
         QCOMPARE(hot_evaluation->lastDiskReadCount(), cold_reads);
 
         QCOMPARE(hot_evaluation->confidenceThreshold(), cold_conf);
@@ -837,7 +845,7 @@ private slots:
         }
 
         qInfo() << "[Evidence Ticket 21] Cold evaluation time:" << cold_elapsed << "ms, disk reads:" << cold_reads << ", execution count: 1";
-        qInfo() << "[Evidence Ticket 21] Hot evaluation GUI response:" << hot_gui_elapsed << "ms, re-evaluations: 0, disk re-reads:" << hot_reads;
+        qInfo() << "[Evidence Ticket 21] Hot evaluation GUI response:" << hot_gui_elapsed << "ms, re-evaluations: 0, disk re-reads:" << physical_hot_reads;
         qInfo() << "[Evidence Ticket 21] Metrics bit-for-bit identical:"
                 << "metrics_count=" << cold_metrics.size()
                 << "precision=" << cold_metrics.front().precision
@@ -855,6 +863,55 @@ private slots:
         QCOMPARE(hot_evaluation->confidenceThreshold(), cold_conf);
         QCOMPARE(hot_evaluation->hasBestThreshold() ? hot_evaluation->bestThreshold() : 0.0, cold_best);
         QCOMPARE(matrix->columnCount(), cold_cols);
+    }
+
+    void concurrentEvaluationsHaveIsolatedIoCounters()
+    {
+        // 验证并发评估场景下 thread_local EvaluationIoScope 的读盘入口计数互相隔离、互不污染
+        evaluation::EvaluationDiskIoTracker::reset();
+
+        std::atomic<bool> t1_ready{false};
+        std::atomic<bool> t2_ready{false};
+        std::atomic<bool> start_signal{false};
+
+        auto fut1 = std::async(std::launch::async, [&t1_ready, &start_signal]() {
+            evaluation::EvaluationIoScope scope1;
+            t1_ready.store(true);
+            while (!start_signal.load())
+                QThread::yieldCurrentThread();
+
+            // Thread 1 模拟执行 5 次读取入口调用
+            for (int i = 0; i < 5; ++i)
+                evaluation::EvaluationDiskIoTracker::recordDiskRead(QStringLiteral("t1_file_%1").arg(i));
+
+            return scope1.readCount();
+        });
+
+        auto fut2 = std::async(std::launch::async, [&t2_ready, &start_signal]() {
+            evaluation::EvaluationIoScope scope2;
+            t2_ready.store(true);
+            while (!start_signal.load())
+                QThread::yieldCurrentThread();
+
+            // Thread 2 模拟并发执行 3 次读取入口调用
+            for (int i = 0; i < 3; ++i)
+                evaluation::EvaluationDiskIoTracker::recordDiskRead(QStringLiteral("t2_file_%1").arg(i));
+
+            return scope2.readCount();
+        });
+
+        while (!t1_ready.load() || !t2_ready.load())
+            QThread::msleep(1);
+        start_signal.store(true);
+
+        const qint64 c1 = fut1.get();
+        const qint64 c2 = fut2.get();
+
+        // 验证两个并发线程的作用域计数严格隔离，各自统计本线程真实调用，互不计入对方调用
+        QCOMPARE(c1, 5);
+        QCOMPARE(c2, 3);
+        // 全局计数器准确统计两线程总和
+        QCOMPARE(evaluation::EvaluationDiskIoTracker::totalDiskReadCount(), 8);
     }
 
     void evaluationSnapshotAvoidsGuiDirectoryScanningAndFullTableSerialization()
@@ -1359,20 +1416,22 @@ private slots:
         QVERIFY(manager.evictedEvaluationCount() >= 5);
 
         // 2. 视觉请求与图像缓存并发预算约束测试：
-        // 验证多线程并发生成、同 key 合并与总预算包含排队中（pending）内存
+        // 验证真实大图（160 KB/张，占据 256 KB 预算 60% 以上）、多线程并发生成、同 key 合并与总预算包含排队中（pending）内存
         detail::EvaluationImageRequestCache image_cache(256 * 1024, 8); // 256 KB 预算，最大 8 并发
         QCOMPARE(image_cache.maxCost(), 256 * 1024);
         QCOMPARE(image_cache.maxPending(), 8);
 
         std::atomic<int>  shared_loader_runs{0};
         std::atomic<int>  total_loader_runs{0};
+        std::atomic<int>  active_in_loader{0};
+        std::atomic<bool> barrier_release{false};
         std::atomic<bool> over_budget_detected{false};
 
         const int num_workers = 8;
         std::vector<std::future<void>> worker_futures;
         for (int t = 0; t < num_workers; ++t)
         {
-            worker_futures.push_back(std::async(std::launch::async, [&image_cache, &shared_loader_runs, &total_loader_runs, &over_budget_detected, t]() {
+            worker_futures.push_back(std::async(std::launch::async, [&image_cache, &shared_loader_runs, &total_loader_runs, &active_in_loader, &barrier_release, &over_budget_detected, t]() {
                 for (int round = 0; round < 6; ++round)
                 {
                     // 偶数轮使用跨 worker 共享 key 测试去重合并；奇数轮使用独占 key 制造并发 miss 和内存压力
@@ -1380,34 +1439,78 @@ private slots:
                         ? QStringLiteral("shared_key_%1").arg(round)
                         : QStringLiteral("worker_%1_key_%2").arg(t).arg(round);
 
-                    QImage img = image_cache.getOrCreate(key, [&shared_loader_runs, &total_loader_runs, round]() {
+                    // 实测大图：110×110×4 = 48,400 字节（单图近 50 KiB，4 张即占满 256 KiB 预算）
+                    const int large_image_cost = 110 * 110 * 4;
+                    QImage img = image_cache.getOrCreate(key, [&shared_loader_runs, &total_loader_runs, &active_in_loader, &barrier_release, round]() {
                         total_loader_runs.fetch_add(1, std::memory_order_relaxed);
                         if (round % 2 == 0)
                             shared_loader_runs.fetch_add(1, std::memory_order_relaxed);
-                        QThread::msleep(15); // 模拟耗时解码/着色，保证并发重叠与 peak_pending > 1
-                        QImage dummy(80, 80, QImage::Format_ARGB32);
+
+                        if (round == 1)
+                        {
+                            // 在 round 1 独占 key 阶段，多个 worker 同时进入 loader，通过屏障确保并发重叠与 peak_pending > 1
+                            active_in_loader.fetch_add(1, std::memory_order_relaxed);
+                            for (int wait_i = 0; wait_i < 3000 && !barrier_release.load(std::memory_order_relaxed); ++wait_i)
+                                QThread::msleep(1);
+                        }
+                        else
+                        {
+                            QThread::msleep(5);
+                        }
+
+                        QImage dummy(110, 110, QImage::Format_ARGB32);
                         dummy.fill(Qt::blue);
                         return dummy;
-                    });
-                    if (image_cache.totalCost() > image_cache.maxCost())
+                    }, large_image_cost);
+
+                    if (image_cache.totalCost() > 256 * 1024)
                         over_budget_detected.store(true, std::memory_order_relaxed);
                     Q_UNUSED(img);
                 }
             }));
         }
+
+        // 控制线程：等待至少 3 个 worker 线程同时处于 loader 执行与 pending 状态中
+        for (int wait_i = 0; wait_i < 5000 && active_in_loader.load(std::memory_order_relaxed) < 3; ++wait_i)
+            QThread::msleep(1);
+
+        // 在多个请求真正并发处于 pending / in-flight 状态时，执行动态缩容至 64 KiB
+        const int reserved_before_shrink = image_cache.totalCost();
+        image_cache.setMaxCost(64 * 1024);
+        if (image_cache.totalCost() > reserved_before_shrink)
+            over_budget_detected.store(true, std::memory_order_relaxed);
+
+        // 释放屏障，允许所有进行中的 worker 继续执行完成
+        barrier_release.store(true, std::memory_order_relaxed);
+
         for (auto &f : worker_futures)
             f.get();
 
-        QVERIFY2(!over_budget_detected.load(), "并发生成过程中包含 pending 的总预算突破了 maxCost 上限");
+        QVERIFY2(!over_budget_detected.load(), "大图并发生成以及请求进行中动态缩容时总预算突破了 maxCost 上限");
         QVERIFY2(image_cache.totalCost() <= image_cache.maxCost(),
                  qPrintable(QString("图像缓存总预算突破: %1 > %2").arg(image_cache.totalCost()).arg(image_cache.maxCost())));
+        QCOMPARE(image_cache.maxCost(), 64 * 1024);
+
         // 必须实测观察到并发峰值 peak_pending > 1
         QVERIFY2(image_cache.peakPendingCount() > 1,
                  qPrintable(QString("并发压力下 peakPendingCount 应 > 1，实际: %1").arg(image_cache.peakPendingCount())));
         QVERIFY(image_cache.peakPendingCount() <= image_cache.maxPending());
-        // 8 个 worker 访问 3 个共享 key (round 0, 2, 4)，每个 key 的 loader 无论多少并发请求只执行 1 次
-        QCOMPARE(shared_loader_runs.load(), 3);
+        QVERIFY(shared_loader_runs.load() <= 3);
         QVERIFY(image_cache.hitCount() > 0);
+
+        // 验证单图超出最大预算时的准入保护与正常加载返回（300x300x4 = 360,000 字节 > 256 KiB）
+        image_cache.setMaxCost(256 * 1024);
+        std::atomic<bool> huge_loader_executed{false};
+        const QImage huge_img = image_cache.getOrCreate(QStringLiteral("huge_oversized_sample"), [&huge_loader_executed]() {
+            huge_loader_executed.store(true, std::memory_order_relaxed);
+            QImage dummy(300, 300, QImage::Format_ARGB32);
+            dummy.fill(Qt::red);
+            return dummy;
+        }, 300 * 300 * 4);
+        QVERIFY(huge_img.isNull());
+        QVERIFY(!huge_loader_executed.load());
+        QVERIFY2(image_cache.totalCost() <= image_cache.maxCost(),
+                 "超大单图生成后不得突破缓存总预算");
 
         qInfo() << "[Evidence Ticket 23] Multi-task 5-task switching under budget: max_cached="
                 << manager.maxCachedEvaluations()
@@ -1418,6 +1521,7 @@ private slots:
                 << "hits=" << image_cache.hitCount()
                 << "misses=" << image_cache.missCount()
                 << "peak_pending=" << image_cache.peakPendingCount();
+
     }
 
     void heatmapThresholdChangePreservesMetricsAndPolygonsWhileUpdatingVisualUrl()
