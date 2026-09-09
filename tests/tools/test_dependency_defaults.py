@@ -22,7 +22,7 @@ from tools.dependency_utils import (
     read_cmake_cache_value,
     resolve_dependency_root,
 )
-from tools.package_app import project_version, verify_package
+from tools.package_app import copy_file, copy_yaml_dependencies, project_version, verify_package
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -374,7 +374,7 @@ def test_plugin_library_install_rules_and_headers_have_no_absolute_path_leak() -
 
 
 def test_cmake_install_and_independent_consumer(tmp_path: Path) -> None:
-    """Verify cmake --install produces valid layout and independent external consumer compiles."""
+    """Compile, link and run a public API consumer against the CMake installation."""
     build_dir = ROOT / "build"
     if not (build_dir / "CMakeCache.txt").is_file():
         pytest.skip("CMake build directory is required")
@@ -397,17 +397,18 @@ def test_cmake_install_and_independent_consumer(tmp_path: Path) -> None:
     assert (install_prefix / "bin" / "config" / "settings" / "SoftwareSetting.yaml").is_file()
     assert (install_prefix / "bin" / "python").is_dir()
 
-    # Verify external consumer can include headers
+    # Consume an exported function, not just header-only declarations.
     consumer_src = tmp_path / "consumer_src"
     consumer_build = tmp_path / "consumer_build"
     consumer_src.mkdir()
 
     (consumer_src / "main.cpp").write_text(
-        "#include <core/CoreDef.h>\n"
-        "#include <dltool/core/Export.h>\n"
+        "#include <common/GeometryKernel.h>\n"
+        "#include <vector>\n"
         "int main() {\n"
-        "    dltool::core::DeepLearningMethod::Method method = dltool::core::DeepLearningMethod::AnomalyDetection;\n"
-        "    return static_cast<int>(method) == 5 ? 0 : 1;\n"
+        "    const auto polygon = dltool::common::geometry::rectangleToPolygon({9, 8}, {1, 2});\n"
+        "    const std::vector<QPointF> expected{{1, 2}, {9, 2}, {9, 8}, {1, 8}};\n"
+        "    return polygon == expected ? 0 : 1;\n"
         "}\n",
         encoding="utf-8",
     )
@@ -427,10 +428,13 @@ def test_cmake_install_and_independent_consumer(tmp_path: Path) -> None:
         "cmake_minimum_required(VERSION 3.22)\n"
         "project(InstalledConsumer CXX)\n"
         "set(CMAKE_CXX_STANDARD 20)\n"
-        "find_package(Qt6 REQUIRED COMPONENTS Core Qml)\n"
+        "find_package(Qt6 REQUIRED COMPONENTS Core)\n"
         f'include_directories("{inc_dir}")\n'
         "add_executable(consumer main.cpp)\n"
-        "target_link_libraries(consumer PRIVATE Qt6::Core Qt6::Qml)\n",
+        f'find_library(COMMON_LIBRARY NAMES dltool_common PATHS "{install_prefix.as_posix()}/lib" NO_DEFAULT_PATH REQUIRED)\n'
+        "target_link_libraries(consumer PRIVATE Qt6::Core ${COMMON_LIBRARY})\n"
+        "enable_testing()\n"
+        "add_test(NAME installed_public_api COMMAND consumer)\n",
         encoding="utf-8",
     )
 
@@ -450,6 +454,33 @@ def test_cmake_install_and_independent_consumer(tmp_path: Path) -> None:
     if not consumer_exe.is_file():
         consumer_exe = consumer_build / ("consumer.exe" if os.name == "nt" else "consumer")
     assert consumer_exe.is_file()
+
+    runtime_dir = install_prefix / "bin"
+    env = os.environ.copy()
+    if os.name == "nt":
+        copy_yaml_dependencies(build_dir, runtime_dir, ROOT / "tools/dependencies.yaml", "release", allow_missing=True)
+        qt_bin = Path(qt6_core_dir).parents[2] / "bin"
+        for name in ("Qt6Core.dll", "Qt6Cored.dll"):
+            candidate = qt_bin / name
+            if candidate.is_file():
+                copy_file(candidate, runtime_dir / candidate.name)
+        system_root = os.environ["SystemRoot"]
+        env = {
+            "SystemRoot": system_root,
+            "PATH": os.pathsep.join((str(runtime_dir), str(Path(system_root) / "System32"), system_root)),
+        }
+    else:
+        env["LD_LIBRARY_PATH"] = str(install_prefix / "lib")
+    ctest = Path(cmake).with_name("ctest.exe" if os.name == "nt" else "ctest")
+    result = subprocess.run(
+        [str(ctest), "--test-dir", str(consumer_build), "-C", "Release", "--output-on-failure"],
+        cwd=runtime_dir,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_runtime_package_verification_fails_on_missing_dependencies(tmp_path: Path) -> None:

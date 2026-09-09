@@ -42,6 +42,23 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 分阶段提交缓存简化并执行普通回归
+
+**目标**
+- 按规格完成开发、验收及分阶段提交，规格与票据仅保留本地。
+
+**当前状态**
+- 已提交 `8084bb9 refactor: 简化评估图像缓存并保留 OpenCV 读取链路`。
+- 安装 consumer 测试修改尚未提交；未将规格、票据、依赖配置或 .gitignore 纳入提交。
+
+**验证证据**
+- `cmake --build build --config Release --parallel 4` → 成功。
+- `ctest --test-dir build -C Release -L ordinary --output-on-failure` → 会话 5484 已结束，51/51 passed，279.32 秒；工具测试内部 24 passed，200.06 秒。
+- `git ls-files -- docs/REFACTOR_SPEC.md docs/refactor-tickets` → 无输出，确认不在索引中。
+
+**下一步**
+- 普通回归已结束；提交安装 consumer 阶段，继续逐票验收及项目级验证，不能据局部通过声明整体完成。
+
 ## 2026-09-09 — 补齐安装库独立 consumer 验收
 
 **目标**
