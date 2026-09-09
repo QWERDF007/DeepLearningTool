@@ -1077,11 +1077,8 @@ private slots:
     void smartAnnotationRealModelInferenceVerification()
     {
         const QString real_model_path = QStringLiteral("F:/models/edgesam/edge_sam/edge_sam.wts");
-        if (!QFileInfo::exists(real_model_path))
-        {
-            qWarning() << "[Ticket 29] Real SAM model weights not found, skipping real inference test:" << real_model_path;
-            return;
-        }
+        QVERIFY2(QFileInfo::exists(real_model_path),
+                 qPrintable(QString("真实 SAM 模型权重文件必须存在以执行推理验证: %1").arg(real_model_path)));
 
         auto *settings = dltool::settings::GlobalSettings::getInstance();
         QVERIFY(settings != nullptr);

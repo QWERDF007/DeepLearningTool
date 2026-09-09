@@ -387,6 +387,11 @@ qint64 ModelEvaluationViewModel::lastEvaluationElapsedMs() const
     return last_evaluation_elapsed_ms_;
 }
 
+int ModelEvaluationViewModel::lastDiskReadCount() const
+{
+    return last_disk_read_count_;
+}
+
 EvaluationMetricModel *ModelEvaluationViewModel::instanceMetrics() const
 {
     return instance_metrics_;
@@ -480,6 +485,7 @@ void ModelEvaluationViewModel::clearEvaluation(const QString &error, const evalu
     metric_scope_description_.clear();
     image_metric_definition_.clear();
     prediction_snapshot_.clear();
+    last_disk_read_count_ = 0;
     threshold_search_ = {};
     confidence_threshold_ = 0.0;
     iou_threshold_        = 0.0;
@@ -714,6 +720,7 @@ void ModelEvaluationViewModel::startEvaluation(const bool notify)
                         return;
 
                     guard->last_evaluation_elapsed_ms_ = worker_elapsed;
+                    guard->last_disk_read_count_       = result ? result->disk_read_count : 0;
                     guard->evaluation_count_++;
                     guard->evaluation_worker_active_ = false;
                     guard->cancel_token_.reset();

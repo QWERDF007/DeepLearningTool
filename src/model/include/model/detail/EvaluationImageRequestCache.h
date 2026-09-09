@@ -46,8 +46,11 @@ private:
     struct PendingRequest;
 
     static int imageCost(const QImage &image);
+    int        estimatedPendingCost() const;
 
     mutable QMutex                                  mutex_;
+    int                                             max_cost_{64 * 1024 * 1024};
+    int                                             pending_cost_{0};
     QCache<QString, QImage>                         cache_;
     QHash<QString, std::shared_ptr<PendingRequest>> pending_;
     int                                             max_pending_{64};

@@ -396,6 +396,7 @@ void ModelTestTaskManager::enforceEvaluationCacheBudget()
     while (evaluation_cache_.size() > max_cached_evaluations_)
     {
         int evict_idx = -1;
+        // 第一轮：优先淘汰已空闲（非加载中）的非当前 VM
         for (int i = 0; i < evaluation_cache_lru_.size(); ++i)
         {
             const QString &key = evaluation_cache_lru_.at(i);
@@ -404,6 +405,21 @@ void ModelTestTaskManager::enforceEvaluationCacheBudget()
             {
                 evict_idx = i;
                 break;
+            }
+        }
+        // 第二轮：若所有非当前 VM 均在加载中，仍淘汰最久未使用的非当前 VM，
+        // 调用 shutdown() 协作取消其后台执行，确保多任务并发压力下缓存预算绝对受控。
+        if (evict_idx < 0)
+        {
+            for (int i = 0; i < evaluation_cache_lru_.size(); ++i)
+            {
+                const QString &key = evaluation_cache_lru_.at(i);
+                ModelEvaluationViewModel *vm = evaluation_cache_.value(key, nullptr);
+                if (vm != nullptr && vm != current_evaluation_)
+                {
+                    evict_idx = i;
+                    break;
+                }
             }
         }
         if (evict_idx < 0)
@@ -1260,6 +1276,10 @@ void ModelTestTaskManager::bindCurrentObjects()
             evaluation_cache_.insert(cache_key, current_evaluation_);
             connect(current_evaluation_, &ModelEvaluationViewModel::loadingChanged, this,
                     &ModelTestTaskManager::taskStateChanged);
+            connect(current_evaluation_, &ModelEvaluationViewModel::loadingChanged, this,
+                    &ModelTestTaskManager::enforceEvaluationCacheBudget);
+            connect(current_evaluation_, &ModelEvaluationViewModel::evaluationCompleted, this,
+                    &ModelTestTaskManager::enforceEvaluationCacheBudget);
             connect(current_evaluation_, &ModelEvaluationViewModel::evaluationCompleted, this,
                     [this, cache_key]() { handleEvaluationCompleted(cache_key); });
         }

@@ -42,6 +42,7 @@ struct MODEL_API EvaluationResult
     QVector<EvaluationInstanceRecord> instance_records; ///< 实例事件值对象。
 
     int  prediction_count{0};         ///< 参与评估的预测总数。
+    int  disk_read_count{0};          ///< 评估过程实际发生的磁盘/数据库读取次数。
     bool has_confusion_matrix{false}; ///< 当前方法是否产出矩阵。
     bool has_instance_metrics{false}; ///< 是否产出实例级指标。
     bool has_image_metrics{false};    ///< 是否产出图像级指标。

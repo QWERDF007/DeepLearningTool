@@ -9,31 +9,42 @@ struct EvaluationImageRequestCache::PendingRequest
 {
     QWaitCondition condition;
     QImage         image;
+    int            reserved_cost{0};
     bool           completed{false};
 };
 
 EvaluationImageRequestCache::EvaluationImageRequestCache(const int max_cost, const int max_pending)
-    : cache_(std::max(0, max_cost))
+    : max_cost_(std::max(0, max_cost))
+    , cache_(std::max(0, max_cost))
     , max_pending_(std::max(0, max_pending))
 {
+}
+
+int EvaluationImageRequestCache::estimatedPendingCost() const
+{
+    if (max_cost_ <= 0)
+        return 0;
+    const int effective_pending = std::max(1, max_pending_);
+    return std::max(1, std::min(max_cost_ / effective_pending, 64 * 1024));
 }
 
 int EvaluationImageRequestCache::maxCost() const
 {
     QMutexLocker locker(&mutex_);
-    return cache_.maxCost();
+    return max_cost_;
 }
 
 void EvaluationImageRequestCache::setMaxCost(const int max_cost)
 {
     QMutexLocker locker(&mutex_);
-    cache_.setMaxCost(std::max(0, max_cost));
+    max_cost_ = std::max(0, max_cost);
+    cache_.setMaxCost(std::max(0, max_cost_ - pending_cost_));
 }
 
 int EvaluationImageRequestCache::totalCost() const
 {
     QMutexLocker locker(&mutex_);
-    return cache_.totalCost();
+    return cache_.totalCost() + pending_cost_;
 }
 
 int EvaluationImageRequestCache::maxPending() const
@@ -99,20 +110,29 @@ QImage EvaluationImageRequestCache::getOrCreate(const QString &key, const Loader
             return *cached;
         }
 
-        ++miss_count_;
         const auto pending_it = pending_.constFind(key);
         if (pending_it != pending_.cend())
         {
+            ++hit_count_;
             pending = pending_it.value();
         }
         else
         {
+            ++miss_count_;
             if (max_pending_ > 0 && static_cast<int>(pending_.size()) >= max_pending_)
                 return {};
 
-            pending          = std::make_shared<PendingRequest>();
-            pending_[key]    = pending;
-            owns_generation  = true;
+            const int estimated = estimatedPendingCost();
+            if (max_cost_ > 0 && pending_cost_ + estimated > max_cost_)
+                return {};
+
+            pending                = std::make_shared<PendingRequest>();
+            pending->reserved_cost = estimated;
+            pending_cost_         += estimated;
+            cache_.setMaxCost(std::max(0, max_cost_ - pending_cost_));
+
+            pending_[key]   = pending;
+            owns_generation = true;
             if (static_cast<int>(pending_.size()) > peak_pending_count_)
                 peak_pending_count_ = static_cast<int>(pending_.size());
         }
@@ -133,6 +153,8 @@ QImage EvaluationImageRequestCache::getOrCreate(const QString &key, const Loader
     catch (...)
     {
         QMutexLocker locker(&mutex_);
+        pending_cost_ = std::max(0, pending_cost_ - pending->reserved_cost);
+        cache_.setMaxCost(std::max(0, max_cost_ - pending_cost_));
         pending->completed = true;
         pending_.remove(key);
         pending->condition.wakeAll();
@@ -141,6 +163,8 @@ QImage EvaluationImageRequestCache::getOrCreate(const QString &key, const Loader
 
     {
         QMutexLocker locker(&mutex_);
+        pending_cost_ = std::max(0, pending_cost_ - pending->reserved_cost);
+        cache_.setMaxCost(std::max(0, max_cost_ - pending_cost_));
         if (!image.isNull())
             cache_.insert(key, new QImage(image), imageCost(image));
         pending->image     = image;

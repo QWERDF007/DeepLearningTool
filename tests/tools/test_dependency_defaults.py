@@ -22,7 +22,7 @@ from tools.dependency_utils import (
     read_cmake_cache_value,
     resolve_dependency_root,
 )
-from tools.package_app import verify_package
+from tools.package_app import project_version, verify_package
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -503,50 +503,65 @@ def test_desktop_smoke_test_with_smoke_test_flag() -> None:
 
 
 def test_isolated_installed_package_desktop_smoke_test() -> None:
-    """Verify dltool packaged into an isolated directory starts and exits cleanly without build tree in PATH."""
-    install_candidates = [
-        ROOT / "install" / "test_isolated",
-        ROOT / "install" / "release",
-        ROOT / "install",
-    ]
-    package_dir: Path | None = None
+    """Verify dltool packaged into an isolated directory matches current build and executes cleanly in a pure environment."""
     exe_name = "dltool.exe" if os.name == "nt" else "dltool"
-    for candidate in install_candidates:
-        if (candidate / exe_name).is_file() and (candidate / "Qt6Core.dll").is_file():
-            package_dir = candidate
-            break
+    build_exe = ROOT / "build" / "bin" / exe_name
+    assert build_exe.is_file(), f"Build binary must exist at {build_exe}; build project before running isolated package test"
 
-    if package_dir is None:
-        pytest.skip("Packaged runtime not found in install directories; run tools/package_app.py first")
-
+    package_dir = ROOT / "install" / "test_isolated"
     app_exe = package_dir / exe_name
 
-    # Strictly isolate PATH: only the isolated package directory and Windows System32
-    env = os.environ.copy()
+    # 若安装目录不存在或二进制与当前构建不一致，触发 packaging 脚本生成/同步最新构建
+    if not app_exe.is_file() or app_exe.stat().st_size != build_exe.stat().st_size:
+        package_script = ROOT / "tools" / "package_app.py"
+        pack_res = subprocess.run(
+            [sys.executable, str(package_script), "--build-dir", "build", "--install-dir", str(package_dir), "--config", "release"],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert pack_res.returncode == 0, f"Packaging failed: {pack_res.stderr}\nStdout: {pack_res.stdout}"
+
+    assert app_exe.is_file(), f"Packaged executable not found at {app_exe}"
+    assert app_exe.stat().st_size == build_exe.stat().st_size, (
+        f"Packaged executable size ({app_exe.stat().st_size}) does not match current build ({build_exe.stat().st_size})"
+    )
+
+    # 验证 package marker 存在且与当前代码库 project VERSION 一致
+    version = project_version()
+    marker_file = package_dir / ".dltool_package"
+    assert marker_file.is_file(), f"Package marker .dltool_package not found in {package_dir}"
+    marker_content = marker_file.read_text(encoding="utf-8")
+    assert f"version={version}" in marker_content, f"Marker version does not match project version {version}"
+    assert "config=release" in marker_content
+
+    # 构造完全纯净的环境变量：彻底排除构建树、外部 Python、源码树与无关 PATH
+    clean_env: dict[str, str] = {}
     if os.name == "nt":
-        sys32 = os.environ.get("SystemRoot", r"C:\Windows") + r"\System32"
         sys_root = os.environ.get("SystemRoot", r"C:\Windows")
-        env["PATH"] = f"{package_dir};{sys32};{sys_root}"
-        env.pop("QT_QPA_PLATFORM", None)
+        sys32 = os.path.join(sys_root, "System32")
+        clean_env["SystemRoot"] = sys_root
+        clean_env["PATH"] = f"{package_dir};{sys32};{sys_root}"
+        clean_env["QT_QUICK_BACKEND"] = "software"
+        clean_env["QSG_RHI_BACKEND"] = "software"
+        clean_env["QML_DISABLE_DISK_CACHE"] = "1"
     else:
-        env["PATH"] = f"{package_dir}:/usr/bin:/bin"
-        env["LD_LIBRARY_PATH"] = f"{package_dir}:{package_dir / 'lib'}"
-        env["QT_QPA_PLATFORM"] = "offscreen"
+        clean_env["PATH"] = f"{package_dir}:/usr/bin:/bin"
+        clean_env["LD_LIBRARY_PATH"] = f"{package_dir}:{package_dir / 'lib'}"
+        clean_env["QT_QPA_PLATFORM"] = "offscreen"
+        clean_env["QML_DISABLE_DISK_CACHE"] = "1"
 
-    env["QML_DISABLE_DISK_CACHE"] = "1"
-
+    # 以 package_dir 作为独立 cwd 启动烟测，验证应用在完全隔离环境下正常加载 QML/数据库并安全退出
     proc = subprocess.run(
         [str(app_exe), "--smoke-test"],
-        env=env,
+        cwd=str(package_dir),
+        env=clean_env,
         capture_output=True,
         text=True,
-        timeout=20,
+        timeout=25,
     )
     assert proc.returncode == 0, (
         f"Isolated package smoke test failed with code {proc.returncode}: {proc.stderr}\n"
         f"Stdout: {proc.stdout}"
     )
-
-
-
-

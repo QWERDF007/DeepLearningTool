@@ -161,6 +161,8 @@ public:
     int         evaluationCount() const;
     /** @brief 获取最近一次后台评估计算耗时（毫秒）。 */
     qint64      lastEvaluationElapsedMs() const;
+    /** @brief 获取最近一次后台评估实际读取的磁盘/数据库次数（冷启动>0，热打开=0）。 */
+    int         lastDiskReadCount() const;
 
     /** @brief 获取实例级总体指标模型。 */
     EvaluationMetricModel            *instanceMetrics() const;
@@ -415,6 +417,7 @@ private:
     std::shared_ptr<EvaluationArtifactCache> evaluation_artifact_cache_;
     int                               evaluation_count_{0};
     qint64                            last_evaluation_elapsed_ms_{0};
+    int                               last_disk_read_count_{0};
 };
 
 } // namespace dltool::model

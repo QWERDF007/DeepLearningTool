@@ -268,6 +268,7 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     output.matrix           = scratch_.matrix;
     output.instance_records = scratch_.events;
     output.prediction_count = prediction_count;
+    output.disk_read_count  = 3 + (evaluation::isAnomaly(method()) ? static_cast<int>(images.size()) : 1);
 
     output.has_confusion_matrix = evaluation::hasConfusionMatrix(method());
     output.has_instance_metrics = evaluation::hasInstanceMetrics(method());

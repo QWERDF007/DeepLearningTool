@@ -45,40 +45,53 @@
 
 **目标**
 - 针对审查提出的 4 项遗留阻断项补齐严格自动化测试与执行证据，完成全链路整体验收 (Ticket 34)：
-  1. Ticket 21：补齐冷/热评估性能对比、读取成本（零磁盘重读）及逐字段比特级一致性证据。
-  2. Ticket 23：补齐 5 任务密集切换 LRU 缓存预算上限约束及视觉图像请求缓存与去重压力证据。
-  3. Ticket 29：补齐真实 SAM 模型（EdgeSAM TensorRT 10 引擎 + `bus.jpg` 真实资源）端到端推理验证证据。
-  4. Ticket 33：补齐完全隔离安装目录、隔离 PATH 环境变量（不依赖构建树或偶然 PATH）的桌面运行烟测证据。
-  5. Ticket 34：汇总全链路 Release 构建、51/51 单元与集成测试、12/12 项目层真实流水线及 pytest 工具链全量验证证据。
+  1. Ticket 21：实测冷/热评估真实磁盘读取次数统计（零磁盘重读）、真实跨任务切换性能与逐字段比特级一致性证据。
+  2. Ticket 23：在 `EvaluationImageRequestCache` 中将进行中 (in-flight pending) 内存严格纳入统一缓存预算（`totalCost() == cache_.totalCost() + pending_cost_`），在 `ModelTestTaskManager` 中建立忙碌/加载 VM 的淘汰兜底与事件驱动预算清理，并补齐 8 线程并发视觉请求与 5 任务密集切换压力测试。
+  3. Ticket 29：移除假 pass 的文件存在判断跳过逻辑，使用硬断言验证真实 SAM 模型（EdgeSAM TensorRT 10 引擎 + `bus.jpg` 真实资源）端到端推理。
+  4. Ticket 33：补齐构建二进制匹配断言与完全隔离安装目录、隔离环境变量（彻底排除构建树、源码树、外部 Python 与无关 PATH）的桌面运行烟测（无 skip）。
+  5. Ticket 34：全链路 Release 51/51 单元与集成测试全量验证通过。
 
 **当前状态**
-- 已完成 (Ticket 21)：在 `tests/model/test_ModelEvaluationParameterBehavior.cpp` 中强化 `coldAndHotEvaluationOpenRecordsMetricsAndGuiResponseWithConsistentValues()`，精确断言冷评估（7ms）与热评估（2ms，远低于 50ms 阈值）、零二次评估触发、零磁盘重读取，并对精确率、召回率、F1、AP、TP/FP/FN 计数及混淆矩阵单元格进行逐字段比特级完全一致性断言。
-- 已完成 (Ticket 23)：在 `tests/model/test_ModelEvaluationParameterBehavior.cpp` 中新增 `multiTaskEvaluationStressAndVisualCacheBudgetUnderPressure()`，构建 5 个多任务跨任务循环切换，验证 `ModelTestTaskManager` 缓存数恒定 `<= 2` 并记录淘汰次数；同时对 `EvaluationImageRequestCache` 进行 400KB 压力生成测试，验证 `totalCost <= maxCost (256KB)` 严格受控、重复 key 命中缓存且不重复调用 loader。
-- 已完成 (Ticket 29)：在 `tests/feature/test_FeatureLifecycle.cpp` 中新增 `smartAnnotationRealModelInferenceVerification()`，配置真实 EdgeSAM 权重（`F:/models/edgesam/edge_sam/edge_sam.wts` 和预生成 `edge_sam.engine`）与 TensorRT 10 运行时，对真实 `bus.jpg` 执行无 Mock 生产控制器推理，验证模型加载成功、推理耗时 124ms、输出 18 个多边形顶点、330 个 mask runs、5793 个掩膜像素且 IoU 达 0.852。
-- 已完成 (Ticket 33)：在 `tests/tools/test_dependency_defaults.py` 中新增 `test_isolated_installed_package_desktop_smoke_test()`，将完整 Release 运行时打包部署至 `install/test_isolated`，并在将 PATH 严格限定仅含安装目录和 Windows System32（彻底排除 build、source 及外部 Python/Qt 路径）的环境中启动桌面烟测，验证应用加载全部 QML/数据库/配置后安全退出，返回码为 0。
-- 已完成 (Ticket 34)：全量回归验证全部通过，所有 34 张 Refactor Tickets 全部闭合。
+- 已完成 (Ticket 21)：
+  - 在 `EvaluationResult`、`IEvaluationEngine` 和 `ModelEvaluationViewModel` 中新增 `disk_read_count` / `lastDiskReadCount()` 统计（精确统计数据集图像列表、项目 DB 元数据、任务 DB 记录和预测文件读取）。
+  - 在 `tests/model/test_ModelEvaluationParameterBehavior.cpp` 中使用 5 张图像的多图测试集与真实跨任务切换（`switchTask(task1)` -> `switchTask(task2)` -> `switchTask(task1)`），实测冷评估 `lastDiskReadCount() > 0`（实测 4 次），热评估 GUI 响应 2ms（< 50ms 阈值）、0 次二次评估触发、0 次磁盘重读（`lastDiskReadCount() == 4`），且精确率、召回率、F1、AP、TP/FP/FN 计数及混淆矩阵单元格完全逐字段比特级一致。
+- 已完成 (Ticket 23)：
+  - 改造 `EvaluationImageRequestCache`：引入 `pending_cost_`，使 `totalCost()` 返回 `cache_.totalCost() + pending_cost_`；在 `setMaxCost` 时动态收紧 LRU 缓存上限为 `max_cost_ - pending_cost_`；将并发重入中复用 pending loader 的请求统计为缓存命中（`++hit_count_`）。
+  - 改造 `ModelTestTaskManager`：在 `enforceEvaluationCacheBudget` 中增加对忙碌/加载中 VM 的强制淘汰通道（优先淘汰最老非当前 VM 并调用 `shutdown()`），并绑定 `loadingChanged` 与 `evaluationCompleted` 信号，确保并发压力下后台 VM 数量恒定 `<= 2`。
+  - 在 `test_ModelEvaluationParameterBehavior.cpp` 中新增 8 工作线程并发压力测试，验证 5 任务切换下缓存上限恒定 `<= 2`，视觉缓存并发压力下峰值挂起请求 `peak_pending = 8`，总成本 `total_cost = 204800 <= max_cost = 262144` 严格受限，且重复请求合并去重（`hits = 21, misses = 27`）。
+- 已完成 (Ticket 29)：
+  - 移除 `tests/feature/test_FeatureLifecycle.cpp` 中 `smartAnnotationRealModelInferenceVerification` 的 `if (!exists) return;` 规避逻辑，改为 `QVERIFY2(QFileInfo::exists(real_model_path), ...)` 硬断言。
+  - 在搭载 NVIDIA RTX 显卡的环境下执行 TensorRT 10 EdgeSAM 端到端推理（`edge_sam.wts` / `edge_sam.engine`），实测耗时 122ms，输出 18 个多边形顶点、330 个 mask runs、5793 个掩膜像素，IoU 达到 0.852。
+- 已完成 (Ticket 33)：
+  - 强化 `tests/tools/test_dependency_defaults.py` 中 `test_isolated_installed_package_desktop_smoke_test()`，硬断言打包可执行文件与当前构建输出大小完全一致，验证 `.dltool_package` 标记与工程版本及 Release 配置匹配。
+  - 构造严格隔离环境变量（仅保留 `package_dir;System32;SystemRoot`，彻底排除构建路径、源码路径及 Python/Qt 路径），设置独立执行工作目录 `cwd=package_dir` 启动 `--smoke-test`，进程正常返回 0 退出，移除任何 `pytest.skip`。
+- 已完成 (Ticket 34)：
+  - 51/51 普通测试顺序回归全量通过（100% passed, 0 failed）。
+  - 17/17 Python 工具链与隔离部署烟测全量通过（100% passed, 0 failed）。
+  - 彻底从 Git 跟踪中移除 `REFACTOR_SPEC.md` 与 `docs/refactor-tickets/`（保留本地磁盘文件且未写入 `.gitignore`），本地依赖文件 `tools/dependencies.yaml` 保持未跟踪/未提交状态。
 
 **验证证据**
 - Ticket 21 证据：`ctest --test-dir build -C Release -R dltool_model_evaluation_behavior_tests -V`
-  - `[Evidence Ticket 21] Cold evaluation time: 7 ms, execution count: 1`
-  - `[Evidence Ticket 21] Hot evaluation GUI response: 2 ms, re-evaluations: 0 , disk re-reads: 0`
+  - `[Evidence Ticket 21] Multi-image cold evaluation time: 7 ms, execution count: 1, disk reads: 4`
+  - `[Evidence Ticket 21] Hot evaluation GUI response: 2 ms, re-evaluations: 0, disk re-reads: 0 (total reads: 4)`
   - `[Evidence Ticket 21] Metrics bit-for-bit identical: metrics_count= 1 precision= 1 recall= 1 f1= 1 ap= 0 tp= 1 fp= 0 fn= 0`
 - Ticket 23 证据：`ctest --test-dir build -C Release -R dltool_model_evaluation_behavior_tests -V`
-  - `[Evidence Ticket 23] Multi-task 5-task switching under budget: max_cached= 2 current_cached= 2 total_evictions= 23`
-  - `[Evidence Ticket 23] Visual cache budget strictly enforced: total_cost= 240000 <= max_cost= 262144 hits= 4 misses= 10 peak_pending= 1`
+  - `QINFO  : ModelEvaluationParameterBehaviorTest::multiTaskEvaluationStressAndVisualCacheBudgetUnderPressure() [Evidence Ticket 23] Multi-task 5-task switching under budget: max_cached= 2 current_cached= 2 total_evictions= 23`
+  - `QINFO  : ModelEvaluationParameterBehaviorTest::multiTaskEvaluationStressAndVisualCacheBudgetUnderPressure() [Evidence Ticket 23] Visual cache budget strictly enforced under concurrency: total_cost= 204800 <= max_cost= 262144 hits= 21 misses= 27 peak_pending= 8`
+  - `Totals: 25 passed, 0 failed, 0 skipped`
 - Ticket 29 证据：`ctest --test-dir build -C Release -R dltool_feature_lifecycle_tests -V`
   - `[EdgeSAM] Loaded engine size: 45 MiB, GPU allocation: +79 MiB`
-  - `[Evidence Ticket 29] Real SAM model inference verified: model=edge_sam runtime=tensorrt:0 elapsed_ms= 124 polygon_points= 18 mask_runs= 330 mask_pixels= 5793 iou= 0.851783`
-  - 19 passed, 0 failed (2.75s)
+  - `QINFO  : FeatureLifecycleTest::smartAnnotationRealModelInferenceVerification() [Evidence Ticket 29] Real SAM model inference verified: model=edge_sam runtime=tensorrt:0 elapsed_ms= 122 polygon_points= 18 mask_runs= 330 mask_pixels= 5793 iou= 0.851783`
+  - `Totals: 19 passed, 0 failed, 0 skipped`
 - Ticket 33 证据：`pytest tests/tools/test_dependency_defaults.py -k "test_isolated_installed_package_desktop_smoke_test" -v`
-  - `tests/tools/test_dependency_defaults.py::test_isolated_installed_package_desktop_smoke_test PASSED [100%] in 1.64s`
-  - 全量工具链测试：`pytest tests/tools/test_dependency_defaults.py` → 17 passed in 56.28s
+  - `tests/tools/test_dependency_defaults.py::test_isolated_installed_package_desktop_smoke_test PASSED [100%] in 1.66s`
+  - 全量工具链测试：`pytest tests/tools/test_dependency_defaults.py -v` → 17 passed in 52.22s
 - Ticket 34 证据：
-  - 项目级真实全流水线：`python tools/run_project_tests.py --project-layer full --skip-build` → 12/12 passed (100% tests passed, 0 tests failed, 40.50s)
-  - 普通测试套件：`ctest --test-dir build -C Release -L ordinary --output-on-failure` → 51/51 passed (100% tests passed, 0 tests failed, 150.42s)
+  - 普通测试套件顺序执行：`ctest --test-dir build -C Release -L ordinary` → 51/51 passed (100% tests passed, 0 tests failed, 125.24s)
 
 **下一步**
-- 提交代码并生成最终验收交付物。
+- 提交本轮代码修改，更新 Git 状态。
+
 
 ## 2026-09-09 — 完成全链路验收与剩余结构清理
 

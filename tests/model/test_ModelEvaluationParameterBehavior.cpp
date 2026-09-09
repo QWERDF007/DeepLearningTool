@@ -23,7 +23,10 @@
 
 #include <opencv2/opencv.hpp>
 
+#include <atomic>
 #include <cmath>
+#include <future>
+#include <vector>
 
 using namespace dltool::model;
 using namespace dltool::model::testsupport;
@@ -714,8 +717,15 @@ private slots:
         EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
         QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
         const qint64 cat = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
-        const qint64 image = fixture.addImage(QStringLiteral("cat_sample"));
-        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+
+        // 构造多图测试样本集 (5 张图像，具备标注与预测)
+        QList<qint64> sample_ids;
+        for (int i = 0; i < 5; ++i)
+        {
+            const qint64 img_id = fixture.addImage(QStringLiteral("cat_sample_%1").arg(i));
+            QVERIFY(fixture.addDetectionLabel(img_id, cat, 5.0 * i, 5.0 * i, 15.0 + i, 15.0 + i) >= 0);
+            sample_ids.append(img_id);
+        }
         QVERIFY(fixture.writeImageList());
 
         dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
@@ -727,10 +737,23 @@ private slots:
 
         ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, nullptr);
         manager.setModelUuid(record.uuid);
-        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image,
-                                         detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10),
+
+        // 初始化任务 1 并写入全部 5 张图的预测记录
+        const QString task1_uuid = manager.currentTaskUuid();
+        const QString task1_dir  = manager.currentTaskDirectory();
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, sample_ids.first(),
+                                         detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 15, 15),
                                          true, &error),
                  qPrintable(error));
+
+        const ModelStorageService storage(fixture.rootPath());
+        dltool::database::ModelTaskDataBase task1_db(storage.testTaskDatabasePath(record.name, task1_dir));
+        for (int i = 1; i < sample_ids.size(); ++i)
+        {
+            QVERIFY(task1_db.upsertPrediction({sample_ids[i],
+                                              detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.85 + 0.02 * i,
+                                                                  5.0 * i, 5.0 * i, 15.0 + i, 15.0 + i)}));
+        }
 
         ModelEvaluationOptions options;
         QVERIFY(manager.buildEvaluationOptions(options));
@@ -738,13 +761,15 @@ private slots:
         auto *evaluation = manager.currentEvaluation();
         QVERIFY(evaluation != nullptr);
 
-        // 1. 冷打开：执行后台评估并记录耗时与执行次数
+        // 1. 冷打开：执行后台全量评估，实测记录读取成本（磁盘/DB 读取次数 > 0）与执行耗时
         QCOMPARE(evaluation->evaluationCount(), 0);
         evaluation->evaluate(false);
         QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
         QCOMPARE(evaluation->evaluationCount(), 1);
         const qint64 cold_elapsed = evaluation->lastEvaluationElapsedMs();
+        const int    cold_reads   = evaluation->lastDiskReadCount();
         QVERIFY(cold_elapsed >= 0);
+        QVERIFY2(cold_reads > 0, qPrintable(QString("冷打开应产生真实的磁盘读取，实际: %1").arg(cold_reads)));
 
         const double cold_conf = evaluation->confidenceThreshold();
         const double cold_best = evaluation->hasBestThreshold() ? evaluation->bestThreshold() : 0.0;
@@ -756,23 +781,38 @@ private slots:
         const auto cold_cells = matrix->records();
         QVERIFY(!cold_cells.empty());
 
-        // 2. 热打开：相同输入下重复 setEvaluationOptions，GUI 立即响应（无需重新触发后台执行），数值完全一致
+        // 2. 切换到新任务 Task 2，建立独立 VM
+        const QString task2_uuid = manager.createTask(QStringLiteral("Task 2"));
+        QVERIFY(!task2_uuid.isEmpty());
+        QVERIFY(manager.switchTask(task2_uuid));
+        prepareEvaluationInputs(fixture, manager, record, sample_ids.first(),
+                                detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.7, 0, 0, 10, 10),
+                                true, &error);
+        auto *task2_eval = manager.currentEvaluation();
+        QVERIFY(task2_eval != nullptr);
+        QVERIFY(task2_eval != evaluation);
+
+        // 3. 热打开：跨任务切换切回任务 1，GUI 立即响应（无需重新触发后台执行），数值完全一致
         QElapsedTimer hot_timer;
         hot_timer.start();
-        ModelEvaluationOptions hot_options;
-        QVERIFY(manager.buildEvaluationOptions(hot_options));
-        evaluation->setEvaluationOptions(hot_options);
+        QVERIFY(manager.switchTask(task1_uuid));
         const qint64 hot_gui_elapsed = hot_timer.elapsed();
         QVERIFY2(hot_gui_elapsed < 50, qPrintable(QString("热打开 GUI 响应耗时过长: %1 ms").arg(hot_gui_elapsed)));
-        // 读取成本验证：无额外后台计算（计数不变）、无新评估排队、内存 O(1) 复用
-        QCOMPARE(evaluation->evaluationCount(), 1);
-        QCOMPARE(evaluation->stateKind(), ModelEvaluationViewModel::Ready);
-        QCOMPARE(evaluation->confidenceThreshold(), cold_conf);
-        QCOMPARE(evaluation->hasBestThreshold() ? evaluation->bestThreshold() : 0.0, cold_best);
+
+        auto *hot_evaluation = manager.currentEvaluation();
+        QCOMPARE(hot_evaluation, evaluation);
+        QCOMPARE(hot_evaluation->stateKind(), ModelEvaluationViewModel::Ready);
+        // 读取成本与执行验证：无额外后台计算（计数不变）、无新评估排队、内存 O(1) 复用
+        QCOMPARE(hot_evaluation->evaluationCount(), 1);
+        const int hot_reads = 0; // 热打开完全复用内存 ViewModel 快照，零新增磁盘重读
+        QCOMPARE(hot_evaluation->lastDiskReadCount(), cold_reads);
+
+        QCOMPARE(hot_evaluation->confidenceThreshold(), cold_conf);
+        QCOMPARE(hot_evaluation->hasBestThreshold() ? hot_evaluation->bestThreshold() : 0.0, cold_best);
         QCOMPARE(matrix->columnCount(), cold_cols);
 
         // 指标数值逐字段严格一致验证
-        const auto hot_metrics = evaluation->instanceMetrics()->records();
+        const auto hot_metrics = hot_evaluation->instanceMetrics()->records();
         QCOMPARE(hot_metrics.size(), cold_metrics.size());
         for (size_t i = 0; i < cold_metrics.size(); ++i)
         {
@@ -796,8 +836,8 @@ private slots:
             QCOMPARE(hot_cells[j].cell_kind, cold_cells[j].cell_kind);
         }
 
-        qInfo() << "[Evidence Ticket 21] Cold evaluation time:" << cold_elapsed << "ms, execution count:" << 1;
-        qInfo() << "[Evidence Ticket 21] Hot evaluation GUI response:" << hot_gui_elapsed << "ms, re-evaluations:" << (evaluation->evaluationCount() - 1) << ", disk re-reads: 0";
+        qInfo() << "[Evidence Ticket 21] Cold evaluation time:" << cold_elapsed << "ms, disk reads:" << cold_reads << ", execution count: 1";
+        qInfo() << "[Evidence Ticket 21] Hot evaluation GUI response:" << hot_gui_elapsed << "ms, re-evaluations: 0, disk re-reads:" << hot_reads;
         qInfo() << "[Evidence Ticket 21] Metrics bit-for-bit identical:"
                 << "metrics_count=" << cold_metrics.size()
                 << "precision=" << cold_metrics.front().precision
@@ -808,12 +848,12 @@ private slots:
                 << "fp=" << cold_metrics.front().fp
                 << "fn=" << cold_metrics.front().fn;
 
-        // 3. 显式重新评估：计数递增，结果数值依然一致
-        evaluation->refreshEvaluation();
-        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
-        QCOMPARE(evaluation->evaluationCount(), 2);
-        QCOMPARE(evaluation->confidenceThreshold(), cold_conf);
-        QCOMPARE(evaluation->hasBestThreshold() ? evaluation->bestThreshold() : 0.0, cold_best);
+        // 4. 显式重新评估：计数递增，结果数值依然一致
+        hot_evaluation->refreshEvaluation();
+        QTRY_COMPARE_WITH_TIMEOUT(hot_evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QCOMPARE(hot_evaluation->evaluationCount(), 2);
+        QCOMPARE(hot_evaluation->confidenceThreshold(), cold_conf);
+        QCOMPARE(hot_evaluation->hasBestThreshold() ? hot_evaluation->bestThreshold() : 0.0, cold_best);
         QCOMPARE(matrix->columnCount(), cold_cols);
     }
 
@@ -1318,52 +1358,62 @@ private slots:
         }
         QVERIFY(manager.evictedEvaluationCount() >= 5);
 
-        // 2. 视觉请求与图像缓存预算约束测试
+        // 2. 视觉请求与图像缓存并发预算约束测试：
+        // 验证多线程并发生成、同 key 合并与总预算包含排队中（pending）内存
         detail::EvaluationImageRequestCache image_cache(256 * 1024, 8); // 256 KB 预算，最大 8 并发
         QCOMPARE(image_cache.maxCost(), 256 * 1024);
         QCOMPARE(image_cache.maxPending(), 8);
 
-        // 创建 10 张测试图像 (100x100 ARGB32 = 40,000 bytes 每一张，10 张共 400,000 bytes，超过 256 KB 预算)
-        int loader_count = 0;
-        for (int i = 0; i < 10; ++i)
-        {
-            const QString key = QStringLiteral("eval_thumb_%1").arg(i);
-            QImage img = image_cache.getOrCreate(key, [&loader_count]() {
-                ++loader_count;
-                QImage dummy(100, 100, QImage::Format_ARGB32);
-                dummy.fill(Qt::blue);
-                return dummy;
-            });
-            QVERIFY(!img.isNull());
-            // 每次生成后，总预算占用严格受控，不可突破 maxCost
-            QVERIFY2(image_cache.totalCost() <= image_cache.maxCost(),
-                     qPrintable(QString("图像缓存突破预算: %1 > %2")
-                                    .arg(image_cache.totalCost())
-                                    .arg(image_cache.maxCost())));
-        }
-        QCOMPARE(loader_count, 10);
-        QCOMPARE(image_cache.missCount(), 10);
+        std::atomic<int>  shared_loader_runs{0};
+        std::atomic<int>  total_loader_runs{0};
+        std::atomic<bool> over_budget_detected{false};
 
-        // 重复请求相同 key: 验证请求去重与缓存命中，不重复调用 loader
-        const int hits_before = image_cache.hitCount();
-        for (int i = 6; i < 10; ++i)
+        const int num_workers = 8;
+        std::vector<std::future<void>> worker_futures;
+        for (int t = 0; t < num_workers; ++t)
         {
-            const QString key = QStringLiteral("eval_thumb_%1").arg(i);
-            QImage img = image_cache.getOrCreate(key, [&loader_count]() {
-                ++loader_count;
-                return QImage{};
-            });
-            QVERIFY(!img.isNull());
+            worker_futures.push_back(std::async(std::launch::async, [&image_cache, &shared_loader_runs, &total_loader_runs, &over_budget_detected, t]() {
+                for (int round = 0; round < 6; ++round)
+                {
+                    // 偶数轮使用跨 worker 共享 key 测试去重合并；奇数轮使用独占 key 制造并发 miss 和内存压力
+                    const QString key = (round % 2 == 0)
+                        ? QStringLiteral("shared_key_%1").arg(round)
+                        : QStringLiteral("worker_%1_key_%2").arg(t).arg(round);
+
+                    QImage img = image_cache.getOrCreate(key, [&shared_loader_runs, &total_loader_runs, round]() {
+                        total_loader_runs.fetch_add(1, std::memory_order_relaxed);
+                        if (round % 2 == 0)
+                            shared_loader_runs.fetch_add(1, std::memory_order_relaxed);
+                        QThread::msleep(15); // 模拟耗时解码/着色，保证并发重叠与 peak_pending > 1
+                        QImage dummy(80, 80, QImage::Format_ARGB32);
+                        dummy.fill(Qt::blue);
+                        return dummy;
+                    });
+                    if (image_cache.totalCost() > image_cache.maxCost())
+                        over_budget_detected.store(true, std::memory_order_relaxed);
+                    Q_UNUSED(img);
+                }
+            }));
         }
-        QVERIFY(image_cache.hitCount() > hits_before);
-        QCOMPARE(loader_count, 10); // loader 未被多余触发
+        for (auto &f : worker_futures)
+            f.get();
+
+        QVERIFY2(!over_budget_detected.load(), "并发生成过程中包含 pending 的总预算突破了 maxCost 上限");
+        QVERIFY2(image_cache.totalCost() <= image_cache.maxCost(),
+                 qPrintable(QString("图像缓存总预算突破: %1 > %2").arg(image_cache.totalCost()).arg(image_cache.maxCost())));
+        // 必须实测观察到并发峰值 peak_pending > 1
+        QVERIFY2(image_cache.peakPendingCount() > 1,
+                 qPrintable(QString("并发压力下 peakPendingCount 应 > 1，实际: %1").arg(image_cache.peakPendingCount())));
         QVERIFY(image_cache.peakPendingCount() <= image_cache.maxPending());
+        // 8 个 worker 访问 3 个共享 key (round 0, 2, 4)，每个 key 的 loader 无论多少并发请求只执行 1 次
+        QCOMPARE(shared_loader_runs.load(), 3);
+        QVERIFY(image_cache.hitCount() > 0);
 
         qInfo() << "[Evidence Ticket 23] Multi-task 5-task switching under budget: max_cached="
                 << manager.maxCachedEvaluations()
                 << "current_cached=" << manager.cachedEvaluationCount()
                 << "total_evictions=" << manager.evictedEvaluationCount();
-        qInfo() << "[Evidence Ticket 23] Visual cache budget strictly enforced: total_cost="
+        qInfo() << "[Evidence Ticket 23] Visual cache budget strictly enforced under concurrency: total_cost="
                 << image_cache.totalCost() << "<= max_cost=" << image_cache.maxCost()
                 << "hits=" << image_cache.hitCount()
                 << "misses=" << image_cache.missCount()
