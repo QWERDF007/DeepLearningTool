@@ -406,6 +406,26 @@ private slots:
         QVERIFY(reopened.getAllDatasets(after_ids, after_names, err));
         QVERIFY(std::find(after_names.begin(), after_names.end(), phantom_dataset_name) == after_names.end());
 
+        // moveImagesAtomic: update is performed, then cancellation must roll it back.
+        const QString source_name = QStringLiteral("Move-Rollback-Source-%1").arg(QDateTime::currentMSecsSinceEpoch());
+        const QString target_name = QStringLiteral("Move-Rollback-Target-%1").arg(QDateTime::currentMSecsSinceEpoch());
+        int64_t source_id = -1;
+        int64_t target_id = -1;
+        QVERIFY(db.addDataset(source_name, source_id, err));
+        QVERIFY(db.addDataset(target_name, target_id, err));
+        std::vector<int64_t> movable_ids;
+        QVERIFY(db.copyImagesAtomic(source_id, {valid_snapshot}, copy_out, err));
+        movable_ids = copy_out.image_ids;
+        int callback_count = 0;
+        QVERIFY(!db.moveImagesAtomic(movable_ids, target_id, err, [&]() { return ++callback_count > 2; }));
+        QCOMPARE(callback_count, 3);
+        QSet<qint64> source_after_move;
+        QVERIFY(imageIdsForDataset(PersistentProjectFixture::projectDatabasePath(), source_id, &source_after_move, nullptr, &err));
+        QCOMPARE(source_after_move.size(), 1);
+        QVERIFY(source_after_move.contains(movable_ids.front()));
+        QCOMPARE(reopened.getImagesCount(target_id), 0);
+        QVERIFY(db.deleteDatasetsWithContents({source_id, target_id}, err));
+
         // 3. moveImagesAtomic with invalid target dataset: fails without moving
         bool move_ok = db.moveImagesAtomic({1, 2}, -99999, err);
         QVERIFY(!move_ok);

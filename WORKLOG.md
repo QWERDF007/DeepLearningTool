@@ -44,6 +44,38 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 验证移动写入后取消回滚
+
+**目标**
+- 补齐 Ticket 10 移动图像 UPDATE 后、提交前取消的行为验证。
+
+**当前状态**
+- 修正测试调用为现有 addDataset/deleteDatasetsWithContents；取消改为第三次检查（UPDATE 后），验证原图 ID 仍在源数据集、目标无图片。
+- 生产实现未修改；Ticket 10 的关联标注/标签覆盖以及其他已记录阻断仍待验收，不据单层通过声明整体完成。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_data_split_test --parallel 4` → 成功。
+- 提权 py312 执行 `tools/run_project_tests.py --project-layer data-split --project-root F:/tmp/dltool-negative-final-20260909 --skip-build` → CTest 1/1 passed，0.54 秒。
+- 此前无输出期间未发现 CTest 子进程，不能归因于数据库死锁；提权执行正常。
+
+**下一步**
+- 继续核对关联记录回滚，并闭合项目统一取消/等待、导出恢复失败及 Schema 验证缺口。
+
+## 2026-09-09 — 核对重构规格验收状态
+
+**目标**
+- 根据当前代码、`docs/REFACTOR_SPEC.md` 和 `docs/refactor-tickets/` 核对验收条件。
+
+**当前状态**
+- 未满足整体验收：Ticket 01、03/04、06/07、Schema 回滚验证仍有缺口；新增的移动中途取消测试尚未编译通过。
+- 规格文档及票据保持本地未跟踪，不纳入 Git 索引。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_data_split_test --parallel 4` → 失败；`ProjectDataBase` 不存在测试使用的 `createDataset`、`deleteDatasets` 接口（`tests/project/test_DataSplit.cpp`）。
+
+**下一步**
+- 按现有公开数据库接口修正移动取消测试，重新通过 CTest 验证；随后继续补齐关闭时序、导出恢复失败和 Schema DDL 失败注入证据。
+
 ## 2026-09-09 — 核对复制划分事务回滚覆盖
 
 **目标**
