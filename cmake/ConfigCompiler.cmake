@@ -62,26 +62,31 @@ check_ipo_supported(RESULT LTO_SUPPORTED)
 set(LTO_ENABLED ON)
 
 
-# 定义 ENABLE_SANITIZER 且编译器是 GCC, 开启 sanitizer 来检测代码问题
-if(ENABLE_SANITIZER AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-# -fsanitize=address：检测内存泄漏和越界访问。
-# -fsanitize-address-use-after-scope：检测使用已经超出作用域的栈内存。
-# -fsanitize=leak：检测内存泄漏。
-# -fsanitize=undefined：检测未定义行为。
-# -fno-sanitize-recover=all：禁用所有 sanitizer 的恢复机制。
-# -static-liblsan 和 -static-libubsan：静态链接 liblsan 和 libubsan 库。
-    set(COMPILER_SANITIZER_FLAGS
-        -fsanitize=address
-        -fsanitize-address-use-after-scope
-        -fsanitize=leak
-        -fsanitize=undefined
-        -fno-sanitize-recover=all
-        # not properly supported, see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=64234
-        #-static-libasan
-        -static-liblsan
-        -static-libubsan)
-    string(REPLACE ";" " " COMPILER_SANITIZER_FLAGS "${COMPILER_SANITIZER_FLAGS}" )
+# 开启 sanitizer 来检测代码问题 (支持 ENABLE_SANITIZER 与 DLT_ENABLE_SANITIZER)
+if(ENABLE_SANITIZER OR DLT_ENABLE_SANITIZER)
+    set(ENABLE_SANITIZER ON CACHE BOOL "Enabled sanitized build" FORCE)
+    set(DLT_ENABLE_SANITIZER ON CACHE BOOL "Enabled sanitized build" FORCE)
 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMPILER_SANITIZER_FLAGS}")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMPILER_SANITIZER_FLAGS}")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(_sanitizer_compile_flags
+            "-fsanitize=address -fsanitize-address-use-after-scope -fsanitize=leak -fsanitize=undefined -fno-sanitize-recover=all")
+        set(_sanitizer_link_flags "-fsanitize=address -fsanitize=undefined")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_sanitizer_compile_flags}")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_sanitizer_compile_flags}")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${_sanitizer_link_flags}")
+        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${_sanitizer_link_flags}")
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(_sanitizer_compile_flags
+            "-fsanitize=address -fsanitize-address-use-after-scope -fsanitize=undefined -fno-sanitize-recover=all")
+        set(_sanitizer_link_flags "-fsanitize=address -fsanitize=undefined")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_sanitizer_compile_flags}")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_sanitizer_compile_flags}")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${_sanitizer_link_flags}")
+        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${_sanitizer_link_flags}")
+    elseif(MSVC)
+        set(_sanitizer_compile_flags "/fsanitize=address")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_sanitizer_compile_flags}")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_sanitizer_compile_flags}")
+    endif()
 endif()
+

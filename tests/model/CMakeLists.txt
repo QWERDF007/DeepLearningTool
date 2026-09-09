@@ -68,7 +68,6 @@ set(_model_test_path_updates
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_core>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_model>"
     "DLT_RUNTIME_ROOT=set:${CMAKE_SOURCE_DIR}"
-    "DLT_TEST_TMP_ROOT=set:F:/tmp"
 )
 
 function(add_model_cpp_test TARGET_NAME)

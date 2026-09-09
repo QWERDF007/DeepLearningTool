@@ -36,6 +36,20 @@
 
 namespace {
 
+QString busImagePath()
+{
+    const QString env_path = qEnvironmentVariable("DLT_TEST_BUS_IMAGE").trimmed();
+    if (!env_path.isEmpty() && QFileInfo::exists(env_path))
+        return env_path;
+#ifdef DLT_SOURCE_DIR
+    const QString candidate = QDir(QStringLiteral(DLT_SOURCE_DIR))
+        .filePath(QStringLiteral("3rdparty/EasyTrain/src/python/ultralytics/ultralytics/ultralytics/assets/bus.jpg"));
+    if (QFileInfo::exists(candidate))
+        return candidate;
+#endif
+    return QString();
+}
+
 class SearchExecutorGate final
 {
 public:
@@ -322,7 +336,7 @@ struct ClusterTestFixture
         if (!database->addDataset(QStringLiteral("train_set"), dataset_id, err))
             return false;
 
-        const QString real_bus = QStringLiteral("F:/Projects/DeepLearningTool/3rdparty/EasyTrain/src/python/ultralytics/ultralytics/ultralytics/assets/bus.jpg");
+        const QString real_bus = busImagePath();
         for (int i = 0; i < image_count; ++i)
         {
             const QString img_path = QDir(dir.path()).filePath(QString("bus_%1.jpg").arg(i));
@@ -672,7 +686,7 @@ private slots:
         point.insert(QStringLiteral("label"), 1);
         const QVariantList prompt_points{point};
 
-        const QString image_path = QStringLiteral("F:/Projects/DeepLearningTool/3rdparty/EasyTrain/src/python/ultralytics/ultralytics/ultralytics/assets/bus.jpg");
+        const QString image_path = busImagePath();
         QVERIFY(QFileInfo::exists(image_path));
 
         // First call loads model asynchronously
@@ -756,7 +770,7 @@ private slots:
         QSignalSpy load_spy(&controller, &dltool::feature::SmartAnnotationController::modelLoadFinished);
         QSignalSpy infer_spy(&controller, &dltool::feature::SmartAnnotationController::inferFinished);
 
-        const QString image_path = QStringLiteral("F:/Projects/DeepLearningTool/3rdparty/EasyTrain/src/python/ultralytics/ultralytics/ultralytics/assets/bus.jpg");
+        const QString image_path = busImagePath();
 
         QVariantMap point1;
         point1.insert(QStringLiteral("x"), 20.0);
@@ -842,7 +856,7 @@ private slots:
         QSignalSpy load_spy(&controller, &dltool::feature::SmartAnnotationController::modelLoadFinished);
         QSignalSpy infer_spy(&controller, &dltool::feature::SmartAnnotationController::inferFinished);
 
-        const QString image_path = QStringLiteral("F:/Projects/DeepLearningTool/3rdparty/EasyTrain/src/python/ultralytics/ultralytics/ultralytics/assets/bus.jpg");
+        const QString image_path = busImagePath();
         QVariantMap point;
         point.insert(QStringLiteral("x"), 20.0);
         point.insert(QStringLiteral("y"), 20.0);
@@ -918,7 +932,7 @@ private slots:
         QSignalSpy load_spy(&controller, &dltool::feature::SmartAnnotationController::modelLoadFinished);
         QSignalSpy infer_spy(&controller, &dltool::feature::SmartAnnotationController::inferFinished);
 
-        const QString image_path = QStringLiteral("F:/Projects/DeepLearningTool/3rdparty/EasyTrain/src/python/ultralytics/ultralytics/ultralytics/assets/bus.jpg");
+        const QString image_path = busImagePath();
         QVariantMap point;
         point.insert(QStringLiteral("x"), 20.0);
         point.insert(QStringLiteral("y"), 20.0);
@@ -1001,7 +1015,7 @@ private slots:
         QSignalSpy load_spy(&controller, &dltool::feature::SmartAnnotationController::modelLoadFinished);
         QSignalSpy infer_spy(&controller, &dltool::feature::SmartAnnotationController::inferFinished);
 
-        const QString real_image_path = QStringLiteral("F:/Projects/DeepLearningTool/3rdparty/EasyTrain/src/python/ultralytics/ultralytics/ultralytics/assets/bus.jpg");
+        const QString real_image_path = busImagePath();
         QVERIFY2(QFileInfo::exists(real_image_path), qPrintable(real_image_path));
         const QImage real_image(real_image_path);
         QVERIFY(!real_image.isNull());

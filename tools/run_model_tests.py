@@ -7,6 +7,7 @@ import argparse
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -70,7 +71,7 @@ def main() -> int:
             "QT_QUICK_BACKEND": "software",
             "QSG_RHI_BACKEND": "software",
             "QML_DISABLE_DISK_CACHE": "1",
-            "DLT_TEST_TMP_ROOT": "F:/tmp",
+            "DLT_TEST_TMP_ROOT": os.environ.get("DLT_TEST_TMP_ROOT", str(Path(tempfile.gettempdir()) / "dlt_test_tmp")),
         }
     )
 

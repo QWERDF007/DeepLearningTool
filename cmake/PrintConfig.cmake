@@ -21,6 +21,13 @@ else()
     message(STATUS "    DLT_BUILD_DOCS           : OFF")
 endif()
 
+if(ENABLE_SANITIZER OR DLT_ENABLE_SANITIZER)
+    message(STATUS "    ENABLE_SANITIZER         : ON")
+else()
+    message(STATUS "    ENABLE_SANITIZER         : OFF")
+endif()
+
+
 
 # Compilation
 

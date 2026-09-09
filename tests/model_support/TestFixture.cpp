@@ -25,9 +25,15 @@ namespace {
 
 QString temporaryRoot()
 {
-    const QString root = qEnvironmentVariable("DLT_TEST_TMP_ROOT", QStringLiteral("F:/tmp"));
-    QDir().mkpath(root);
-    return QDir::cleanPath(root);
+    const QString configured = qEnvironmentVariable("DLT_TEST_TMP_ROOT").trimmed();
+    if (!configured.isEmpty())
+    {
+        QDir().mkpath(configured);
+        return QDir::cleanPath(configured);
+    }
+    const QString fallback = QDir(QDir::tempPath()).filePath(QStringLiteral("dlt_test_tmp"));
+    QDir().mkpath(fallback);
+    return QDir::cleanPath(fallback);
 }
 
 std::vector<uint8_t> jsonBytes(const QJsonObject &object)

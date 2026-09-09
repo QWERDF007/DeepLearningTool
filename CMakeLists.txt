@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.22)
 
 
 set(PROJECT_NAME "dltool")
@@ -28,6 +28,12 @@ endif()
 option(DLT_BUILD_TESTS "Enable testsuite" ON)
 option(DLT_BUILD_DOCS "Build Docs" OFF)
 option(DLT_ENABLE_SANITIZER "Enabled sanitized build" OFF)
+option(ENABLE_SANITIZER "Enabled sanitized build" OFF)
+if(ENABLE_SANITIZER)
+    set(DLT_ENABLE_SANITIZER ON CACHE BOOL "Enabled sanitized build" FORCE)
+elseif(DLT_ENABLE_SANITIZER)
+    set(ENABLE_SANITIZER ON CACHE BOOL "Enabled sanitized build" FORCE)
+endif()
 
 # 配置构建树
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" )

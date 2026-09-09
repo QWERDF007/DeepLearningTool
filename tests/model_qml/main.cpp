@@ -7,6 +7,7 @@
 #include <QByteArray>
 #include <QFileInfo>
 #include <QDir>
+#include <QCoreApplication>
 #include <QtQml/qqml.h>
 #include <QQmlEngine>
 
@@ -28,10 +29,17 @@ public slots:
 
 int main(int argc, char **argv)
 {
-    // Release 构建产物中的 QML 模块目录；Windows 路径列表分隔符为分号。
-    const QString build_root = QStringLiteral("F:/Projects/DeepLearningTool/build");
-    const QString import_paths = build_root + QLatin1Char(';') + build_root + QStringLiteral("/qml");
-    qputenv("QML2_IMPORT_PATH", import_paths.toUtf8());
+    const QString existing = QString::fromLocal8Bit(qgetenv("QML2_IMPORT_PATH")).trimmed();
+    if (existing.isEmpty())
+    {
+#ifdef DLT_BUILD_DIR
+        const QString build_root = QStringLiteral(DLT_BUILD_DIR);
+#else
+        const QString build_root = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral(".."));
+#endif
+        const QString import_paths = build_root + QDir::listSeparator() + build_root + QStringLiteral("/qml");
+        qputenv("QML2_IMPORT_PATH", import_paths.toLocal8Bit());
+    }
 
     qmlRegisterType<dltool::model::testsupport::QmlModelFixture>("dltool.modeltest", 1, 0,
                                                                   "ModelTestFixture");

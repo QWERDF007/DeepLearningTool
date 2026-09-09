@@ -20,8 +20,18 @@ set(_settings_test_environment
     "PATH=path_list_prepend:${CUDAToolkit_BIN_DIR}"
     "PATH=path_list_prepend:${TRT_ROOT}/bin"
     "PATH=path_list_prepend:${ONNXRUNTIME_ROOT}/lib"
-    "PATH=path_list_prepend:F:/Github/faiss/install/bin"
-    "PATH=path_list_prepend:D:/Software/dev/mkl/mkl/bin"
+)
+
+if(DEFINED Faiss_BIN_DIR AND NOT Faiss_BIN_DIR STREQUAL "")
+    list(APPEND _settings_test_environment "PATH=path_list_prepend:${Faiss_BIN_DIR}")
+elseif(DEFINED Faiss_HOME AND NOT Faiss_HOME STREQUAL "")
+    list(APPEND _settings_test_environment "PATH=path_list_prepend:${Faiss_HOME}/bin")
+endif()
+if(DEFINED MKL_ROOT AND NOT MKL_ROOT STREQUAL "")
+    list(APPEND _settings_test_environment "PATH=path_list_prepend:${MKL_ROOT}/bin")
+endif()
+
+list(APPEND _settings_test_environment
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_common>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_core>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_parameter>"

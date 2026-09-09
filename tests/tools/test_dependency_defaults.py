@@ -255,3 +255,95 @@ def test_dependency_utils_resolve_platform_specific_default(tmp_path: Path) -> N
 
     assert resolve_dependency_root(dep, build_dir, repo_root=tmp_path, platform="linux") == linux_root.resolve()
     assert resolve_dependency_root(dep, build_dir, repo_root=tmp_path, platform="windows") == windows_root.resolve()
+
+
+def test_cmake_minimum_required_supports_environment_modification() -> None:
+    """Verify root CMakeLists.txt requires CMake >= 3.22 for ENVIRONMENT_MODIFICATION support."""
+    content = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    match = re.search(r"cmake_minimum_required\s*\(\s*VERSION\s+([0-9.]+)\s*\)", content)
+    assert match is not None, "Missing cmake_minimum_required in root CMakeLists.txt"
+    version_str = match.group(1)
+    version_tuple = tuple(int(x) for x in version_str.split("."))
+    assert version_tuple >= (3, 22), (
+        f"cmake_minimum_required version {version_str} is less than 3.22, "
+        "which is required for test ENVIRONMENT_MODIFICATION properties."
+    )
+
+
+def test_sanitizer_options_drive_compiler_and_linker_flags(tmp_path: Path) -> None:
+    """Verify ENABLE_SANITIZER and DLT_ENABLE_SANITIZER options set compiler and linker flags."""
+    if shutil.which("cmake") is None:
+        pytest.skip("CMake is required")
+
+    config_compiler = (ROOT / "cmake" / "ConfigCompiler.cmake").as_posix()
+
+    for opt in ["-DENABLE_SANITIZER=ON", "-DDLT_ENABLE_SANITIZER=ON"]:
+        opt_name = opt.replace("=", "_").replace("-", "").replace("D", "", 1)
+        source = tmp_path / f"source_{opt_name}"
+        build = tmp_path / f"build_{opt_name}"
+        source.mkdir(parents=True)
+
+        (source / "CMakeLists.txt").write_text(
+            "cmake_minimum_required(VERSION 3.22)\n"
+            "project(SanitizerProbe CXX C)\n"
+            f'include("{config_compiler}")\n'
+            'file(WRITE "${CMAKE_BINARY_DIR}/flags.txt" '
+            '"CXX_FLAGS=${CMAKE_CXX_FLAGS}\\n"'
+            '"EXE_LINKER_FLAGS=${CMAKE_EXE_LINKER_FLAGS}\\n"'
+            '"COMPILER_ID=${CMAKE_CXX_COMPILER_ID}\\n")\n',
+            encoding="utf-8",
+        )
+
+        subprocess.run(
+            ["cmake", "-S", str(source), "-B", str(build), opt],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        flags_content = (build / "flags.txt").read_text(encoding="utf-8")
+        flags_dict = dict(line.split("=", 1) for line in flags_content.splitlines() if "=" in line)
+        compiler_id = flags_dict.get("COMPILER_ID", "")
+        cxx_flags = flags_dict.get("CXX_FLAGS", "")
+        linker_flags = flags_dict.get("EXE_LINKER_FLAGS", "")
+
+        if "MSVC" in compiler_id:
+            assert "/fsanitize=address" in cxx_flags, f"Expected /fsanitize=address in CXX_FLAGS for MSVC, got: {cxx_flags}"
+        elif "Clang" in compiler_id or "GNU" in compiler_id:
+            assert "-fsanitize=address" in cxx_flags, f"Expected -fsanitize=address in CXX_FLAGS, got: {cxx_flags}"
+            assert "-fsanitize=address" in linker_flags, f"Expected -fsanitize=address in EXE_LINKER_FLAGS, got: {linker_flags}"
+
+
+def test_test_cmake_and_fixtures_have_no_hardcoded_developer_paths() -> None:
+    """Verify test fixtures, test CMakeLists, and test runners contain no hardcoded developer drive roots."""
+    files_to_check = [
+        ROOT / "tests" / "settings" / "CMakeLists.txt",
+        ROOT / "tests" / "feature" / "CMakeLists.txt",
+        ROOT / "tests" / "model" / "CMakeLists.txt",
+        ROOT / "tests" / "model_qml" / "CMakeLists.txt",
+        ROOT / "tests" / "model_support" / "TestFixture.cpp",
+        ROOT / "tests" / "project" / "PersistentProjectFixture.cpp",
+        ROOT / "tests" / "model_qml" / "main.cpp",
+        ROOT / "tests" / "feature" / "test_FeatureLifecycle.cpp",
+        ROOT / "tools" / "run_project_tests.py",
+        ROOT / "tools" / "run_model_tests.py",
+    ]
+
+    forbidden_patterns = [
+        r"F:/tmp\b",
+        r"F:/Github\b",
+        r"D:/Software/dev\b",
+        r"F:/Projects/DeepLearningTool\b",
+    ]
+
+    violations = []
+    for file_path in files_to_check:
+        assert file_path.exists(), f"File {file_path} does not exist"
+        content = file_path.read_text(encoding="utf-8")
+        for line_no, line in enumerate(content.splitlines(), start=1):
+            for pattern in forbidden_patterns:
+                if re.search(pattern, line, re.IGNORECASE):
+                    violations.append(f"{file_path.relative_to(ROOT)}:{line_no}: {line.strip()}")
+
+    assert not violations, "Found hardcoded developer drive roots in test files:\n" + "\n".join(violations)
+

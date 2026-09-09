@@ -26,6 +26,8 @@ dlt_add_test_executable(${TEST_TARGET_NAME}
         ${CMAKE_SOURCE_DIR}/src/model/include
         ${CMAKE_SOURCE_DIR}/src/core/include
         ${CMAKE_SOURCE_DIR}/tests/model_support
+    COMPILE_DEFINITIONS
+        DLT_BUILD_DIR="${CMAKE_BINARY_DIR}"
 )
 
 set(_evaluation_refactor_cases
@@ -68,7 +70,6 @@ set(_test_path_updates
     "DLT_RUNTIME_ROOT=set:${CMAKE_SOURCE_DIR}"
     "QML2_IMPORT_PATH=path_list_prepend:${CMAKE_BINARY_DIR}"
     "QML2_IMPORT_PATH=path_list_prepend:${CMAKE_BINARY_DIR}/qml"
-    "DLT_TEST_TMP_ROOT=set:F:/tmp"
 )
 
 foreach(_case IN LISTS _evaluation_refactor_cases)

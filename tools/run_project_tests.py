@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -38,7 +39,10 @@ PROJECT_LAYER_REGEX = {
 }
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PYTHON_ENV = r"D:/Software/anaconda3/envs/py312"
-DEFAULT_PROJECT_ROOT = r"F:/tmp/pro"
+DEFAULT_PROJECT_ROOT = os.environ.get(
+    "DLT_TEST_PROJECT_ROOT",
+    str(Path(tempfile.gettempdir()) / "dlt_test_pro"),
+)
 DEFAULT_PROJECT_NAME = "测试项目"
 DEFAULT_DATASET_NAME = "测试数据集"
 
@@ -112,7 +116,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--project-root",
         default=os.environ.get("DLT_TEST_PROJECT_ROOT", DEFAULT_PROJECT_ROOT),
-        help="Project test directory (default: F:/tmp/pro)",
+        help=f"Project test directory (default: {DEFAULT_PROJECT_ROOT})",
     )
     parser.add_argument(
         "--project-name",
@@ -145,7 +149,7 @@ def main() -> int:
             "QT_QUICK_BACKEND": "software",
             "QSG_RHI_BACKEND": "software",
             "QML_DISABLE_DISK_CACHE": "1",
-            "DLT_TEST_TMP_ROOT": "F:/tmp",
+            "DLT_TEST_TMP_ROOT": os.environ.get("DLT_TEST_TMP_ROOT", str(Path(tempfile.gettempdir()) / "dlt_test_tmp")),
             "DLT_TEST_PYTHON_ENV": str(args.python_env),
             "DLT_TEST_PROJECT_ROOT": str(args.project_root),
             "DLT_TEST_PROJECT_NAME": str(args.project_name),

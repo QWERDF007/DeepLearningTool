@@ -172,7 +172,11 @@ QString PythonEnvironmentScope::path() const
 
 QString PersistentProjectFixture::projectRoot()
 {
-    return cleanAbsolutePath(qEnvironmentVariable("DLT_TEST_PROJECT_ROOT", QStringLiteral("F:/tmp/pro")));
+    const QString configured = qEnvironmentVariable("DLT_TEST_PROJECT_ROOT").trimmed();
+    if (!configured.isEmpty())
+        return cleanAbsolutePath(configured);
+    const QString fallback = QDir(QDir::tempPath()).filePath(QStringLiteral("dlt_test_pro"));
+    return cleanAbsolutePath(fallback);
 }
 
 QString PersistentProjectFixture::projectName()

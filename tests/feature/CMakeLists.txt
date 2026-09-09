@@ -20,8 +20,18 @@ set(_feature_test_environment
     "PATH=path_list_prepend:${CUDAToolkit_BIN_DIR}"
     "PATH=path_list_prepend:${TRT_ROOT}/bin"
     "PATH=path_list_prepend:${ONNXRUNTIME_ROOT}/lib"
-    "PATH=path_list_prepend:F:/Github/faiss/install/bin"
-    "PATH=path_list_prepend:D:/Software/dev/mkl/mkl/bin"
+)
+
+if(DEFINED Faiss_BIN_DIR AND NOT Faiss_BIN_DIR STREQUAL "")
+    list(APPEND _feature_test_environment "PATH=path_list_prepend:${Faiss_BIN_DIR}")
+elseif(DEFINED Faiss_HOME AND NOT Faiss_HOME STREQUAL "")
+    list(APPEND _feature_test_environment "PATH=path_list_prepend:${Faiss_HOME}/bin")
+endif()
+if(DEFINED MKL_ROOT AND NOT MKL_ROOT STREQUAL "")
+    list(APPEND _feature_test_environment "PATH=path_list_prepend:${MKL_ROOT}/bin")
+endif()
+
+list(APPEND _feature_test_environment
     # CTest applies ENVIRONMENT_MODIFICATION entries in order.  The module
     # directories are repeated after the shared runtime root so every current
     # build-tree DLL wins over a stale copy in build/bin.
@@ -63,6 +73,8 @@ dlt_add_test_executable(dltool_feature_lifecycle_tests
         ${CMAKE_SOURCE_DIR}/src/core/include
         ${CMAKE_SOURCE_DIR}/src/common/include
         ${CMAKE_SOURCE_DIR}/src/ui/include
+    COMPILE_DEFINITIONS
+        DLT_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     LABELS "ordinary;feature"
     ENVIRONMENT_MODIFICATION "${_feature_test_environment}"
 )

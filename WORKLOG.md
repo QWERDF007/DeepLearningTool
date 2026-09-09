@@ -41,6 +41,36 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 让测试环境与构建选项真正可配置
+
+**目标**
+- 交付 Ticket 32：让测试环境与构建选项真正可配置 (`docs/refactor-tickets/32-portable-tests.md`)。
+- 临时目录尊重环境并可使用系统目录，不强制开发机盘符。
+- sanitizer 同名选项驱动真实编译链接参数，flags 按编译器限定。
+- 最低 CMake 能力匹配测试环境属性；真实 target 消费验证依赖，单层缺前置直接失败。
+- 遵循 TDD，建立约束测试再实现，Release 构建与 CTest 通过，真实环境验证有证据。
+
+**当前状态**
+- 已完成：在 `tests/tools/test_dependency_defaults.py` 中新增 3 组约束与行为测试：`test_cmake_minimum_required_supports_environment_modification`、`test_sanitizer_options_drive_compiler_and_linker_flags`、`test_test_cmake_and_fixtures_have_no_hardcoded_developer_paths`。
+- 已完成：根 `CMakeLists.txt` 中将 `cmake_minimum_required` 升级为 3.22，匹配 `ENVIRONMENT_MODIFICATION` 测试环境修改属性能力。
+- 已完成：根 `CMakeLists.txt` 中同步 `ENABLE_SANITIZER` 与 `DLT_ENABLE_SANITIZER`，并在 `cmake/ConfigCompiler.cmake` 中按 GNU/Clang/MSVC 编译器细分编译与链接参数（GCC/Clang 补充 `-fsanitize=address -fsanitize=undefined` 链接参数，MSVC 设置 `/fsanitize=address`），在 `cmake/PrintConfig.cmake` 中输出状态。
+- 已完成：重构 `tests/model_support/TestFixture.cpp`、`tests/project/PersistentProjectFixture.cpp`、`tools/run_project_tests.py`、`tools/run_model_tests.py`，未设置环境变量时回退到系统临时目录（`QDir::tempPath()` / `tempfile.gettempdir()`），彻底移除强制 `F:/tmp` 开发机盘符。
+- 已完成：清理 `tests/model/CMakeLists.txt` 与 `tests/model_qml/CMakeLists.txt` 中的硬编码 `DLT_TEST_TMP_ROOT=set:F:/tmp`；`tests/model_qml/main.cpp` 动态判断或从编译宏 `DLT_BUILD_DIR` 派生 QML import path，消除硬编码 build 路径。
+- 已完成：清理 `tests/settings/CMakeLists.txt` 与 `tests/feature/CMakeLists.txt` 中的硬编码 Faiss 与 MKL 路径，改为消费 CMake 依赖发现的 `Faiss_BIN_DIR` / `Faiss_HOME` 与 `MKL_ROOT`。
+- 已完成：`tests/feature/test_FeatureLifecycle.cpp` 中采用动态宏 `DLT_SOURCE_DIR` / 环境变量探测 `bus.jpg` 路径，消除硬编码源代码路径。
+- 已完成：验证单层测试在缺少前置时直接失败（`dltool_model_patchcore_predict_test` 独立运行时因前置数据库/模型缺失立即断言失败）。
+
+**验证证据**
+- `pytest tests/tools/test_dependency_defaults.py --basetemp=build/pytest-tools-tmp` → 12 passed in 19.63s
+- `cmake --build build --config Release --target dltool_feature_lifecycle_tests dltool_settings_save_behavior_tests dltool_data_data_selection_tree_model_tests tst_dltool_model_qml` → 编译链接成功 (0 错误)
+- `ctest --test-dir build -C Release -R "dltool_tools_tests|dltool_settings_save_behavior_tests|dltool_data_data_selection_tree_model_tests"` → 3/3 passed (28.82s)
+- `ctest --test-dir build -C Release -R "^dltool_feature_lifecycle_tests$"` → 1/1 passed (2.38s)
+- `ctest --test-dir build -C Release -R "^tst_dltool_model_qml" -L "qml"` → 21/21 passed (5.50s)
+- `$env:DLT_TEST_PROJECT_ROOT="build/nonexistent_test_pro"; ctest --test-dir build -C Release -R "^dltool_model_patchcore_predict_test$" --fixture-exclude-any ".*"` → Failed with `fixture.isValid() returned FALSE. (项目不存在，请先运行项目创建测试)` (验证单层缺前置直接失败)
+
+**下一步**
+- 推进 Ticket 33：`docs/refactor-tickets/33-install-runtime.md`（安装产物与运行期依赖自洽）。
+
 ## 2026-09-09 — 让数据树增量刷新并保留选择
 
 **目标**
