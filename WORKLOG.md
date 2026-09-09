@@ -6,7 +6,6 @@
 
 <!-- 没有待裁决事项时保持本节为空。 -->
 
-- 2026-09-09：Ticket 01 测试边界——是否同意将 DataIO 内部 parallelFor 提取为生产与测试共用的并行执行组件？TDD 技能要求新增边界先确认；现测试自建线程循环无法覆盖生产回归。详见“逐票审查发现数据并发验收覆盖缺口”。
 
 
 ---
@@ -43,6 +42,39 @@
 **干到哪了**：
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
+
+## 2026-09-09 — 实施导出恢复故障测试
+
+**目标**
+- 通过真实目录及可控重命名失败验证 Ticket 06；后续闭合 Ticket 01。
+
+**当前状态**
+- 用户已确认导出修正方案及 parallelFor 生产/测试共用组件方案，不再等待裁决。
+- SafeExportScope 增加可注入重命名操作；故障测试先复现备份丢失，随后移除跨目录暂存与复制发布兜底、删除无调用复制函数。恢复失败保留备份并报告路径。相关故障测试已转绿，其他发布路径和真实导出仍待扩展验证，尚未提交。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_data_data_io_tests --parallel 4` → 成功，句柄 2043 已结束。
+- `ctest --test-dir build -C Release -R '^dltool_data_data_io_tests$' -V`（TTY）→ 4 passed、1 failed；failedExportRestorePreservesBackup 的 saved.open(ReadOnly) 失败，错误仍称已恢复。测试真实执行了备份重命名、发布失败与恢复失败，验证发现最后备份已丢失。
+
+**下一步**
+- 已补正常新建/覆盖、备份失败、发布失败恢复成功与重复发布的数据驱动测试，校验真实文件字节和暂存/备份残留。`cmake --build build --config Release --target dltool_data_data_io_tests dltool_data_data_ioexport_tests --parallel 4` 成功；`ctest --test-dir build -C Release -R '^dltool_data_data_io(export)?_tests$' --output-on-failure` → 2/2 通过，0.95 秒。
+- 项目级验证：`cmake --build build --config Release --target dltool_model_data_export_test --parallel 4` 成功；提权 py312 执行 `tools/run_project_tests.py --project-layer data-export --project-root F:/tmp/dltool-negative-final-20260909 --skip-build` → CTest 1/1 通过，2.31 秒，覆盖真实 Mask/LabelMe/COCO 导出及批量取消。
+- 下一步：提交本轮导出修复后提取 parallelFor；UNC 实际共享资源等更广边界仍不能据本地测试宣称完成。整体验收仍未完成。
+
+## 2026-09-09 — 确认导出恢复修正方案
+
+**目标**
+- 闭合 Ticket 06 覆盖导出失败时保留既有成果的验收。
+
+**当前状态**
+- 本轮仅审查，未修改代码、未运行故障测试；修正方案已向用户提出，等待开发前确认。
+
+**验证证据**
+- 阅读 `src/data/DataIO.cpp` 中 SafeExportScope::publish：恢复 rename 失败后忽略复制返回值，无条件删除 backup 并报告已恢复。当前无可控文件操作故障注入接口。
+- 此为静态风险证据，尚未通过真实故障测试复现。
+
+**下一步**
+- 用户确认后，沿 SafeExportScope 公开接口补失败测试，采用同级暂存与 rename 发布，恢复失败保留备份并准确报错；执行相关 Release 构建和 CTest，分阶段提交。
 
 ## 2026-09-09 — 验证移动写入后取消回滚
 

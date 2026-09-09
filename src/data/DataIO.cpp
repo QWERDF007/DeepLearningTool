@@ -1001,58 +1001,12 @@ bool DataIO::validateExportOutput(const int data_format, const ExportDataset &da
     }
 }
 
-static bool copyDirectoryRecursively(const QString &source_dir, const QString &target_dir, QString &err_msg)
-{
-    QDir source(source_dir);
-    if (!source.exists())
-    {
-        err_msg = QString("源目录不存在: %1").arg(source_dir);
-        return false;
-    }
-    if (!QDir().mkpath(target_dir))
-    {
-        err_msg = QString("无法创建目标目录: %1").arg(target_dir);
-        return false;
-    }
 
-    QDirIterator it(source_dir, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
-    while (it.hasNext())
-    {
-        it.next();
-        const QString relative    = source.relativeFilePath(it.filePath());
-        const QString target_path = QDir(target_dir).filePath(relative);
-        if (it.fileInfo().isDir())
-        {
-            if (!QDir().mkpath(target_path))
-            {
-                err_msg = QString("无法创建子目录: %1").arg(target_path);
-                return false;
-            }
-        }
-        else
-        {
-            QFileInfo target_fi(target_path);
-            if (!QDir().mkpath(target_fi.dir().path()))
-            {
-                err_msg = QString("无法创建子目录: %1").arg(target_fi.dir().path());
-                return false;
-            }
-            if (QFile::exists(target_path))
-            {
-                QFile::remove(target_path);
-            }
-            if (!QFile::copy(it.filePath(), target_path))
-            {
-                err_msg = QString("复制文件失败: %1 -> %2").arg(it.filePath(), target_path);
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-SafeExportScope::SafeExportScope(const QString &target_dir)
-    : target_dir_(common::cleanPath(target_dir))
+SafeExportScope::SafeExportScope(const QString &target_dir, RenameDirectory rename_directory)
+    : rename_directory_(rename_directory ? std::move(rename_directory)
+                                        : RenameDirectory([](const QString &from, const QString &to)
+                                                          { return QDir().rename(from, to); }))
+    , target_dir_(common::cleanPath(target_dir))
 {
     if (target_dir_.isEmpty())
     {
@@ -1073,19 +1027,7 @@ SafeExportScope::SafeExportScope(const QString &target_dir)
     }
     else
     {
-        const QString fallback_staging = QDir(QDir::tempPath())
-                                             .filePath(QStringLiteral("dltool_staging_%1_%2")
-                                                           .arg(target_fi.fileName())
-                                                           .arg(common::uuid()));
-        if (common::ensureDirectory(fallback_staging, &dir_err))
-        {
-            staging_dir_ = fallback_staging;
-            valid_       = true;
-        }
-        else
-        {
-            error_ = QStringLiteral("无法创建导出暂存目录: %1").arg(dir_err);
-        }
+        error_ = QStringLiteral("无法创建导出暂存目录: %1").arg(dir_err);
     }
 }
 
@@ -1127,20 +1069,13 @@ bool SafeExportScope::publish(QString &err_msg)
         if (!common::ensureDirectory(parent_dir.path(), &err_msg))
             return false;
 
-        if (QDir().rename(staging_dir_, target_dir_))
+        if (rename_directory_(staging_dir_, target_dir_))
         {
             published_ = true;
             return true;
         }
 
-        if (copyDirectoryRecursively(staging_dir_, target_dir_, err_msg))
-        {
-            QDir(staging_dir_).removeRecursively();
-            published_ = true;
-            return true;
-        }
-
-        QDir(target_dir_).removeRecursively();
+        err_msg = QStringLiteral("发布暂存导出失败: %1 -> %2").arg(staging_dir_, target_dir_);
         return false;
     }
 
@@ -1148,37 +1083,21 @@ bool SafeExportScope::publish(QString &err_msg)
     const QString backup_dir = parent_dir.filePath(
         QStringLiteral(".backup_%1_%2").arg(target_fi.fileName()).arg(common::uuid()));
 
-    bool backed_up = QDir().rename(target_dir_, backup_dir);
-    if (!backed_up)
+    if (!rename_directory_(target_dir_, backup_dir))
     {
-        backed_up = copyDirectoryRecursively(target_dir_, backup_dir, err_msg);
-        if (backed_up)
-        {
-            QDir(target_dir_).removeRecursively();
-        }
-        else
-        {
-            err_msg = QStringLiteral("无法备份既有目标目录: %1").arg(target_dir_);
-            return false;
-        }
+        err_msg = QStringLiteral("无法备份既有目标目录: %1").arg(target_dir_);
+        return false;
     }
 
     // Now move staging_dir_ to target_dir_
-    bool publish_success = QDir().rename(staging_dir_, target_dir_);
-    if (!publish_success)
+    if (!rename_directory_(staging_dir_, target_dir_))
     {
-        publish_success = copyDirectoryRecursively(staging_dir_, target_dir_, err_msg);
-    }
-
-    if (!publish_success)
-    {
-        // Rollback! Restore original target from backup
-        QDir(target_dir_).removeRecursively();
-        if (!QDir().rename(backup_dir, target_dir_))
+        if (!rename_directory_(backup_dir, target_dir_))
         {
-            copyDirectoryRecursively(backup_dir, target_dir_, err_msg);
+            err_msg = QStringLiteral("发布暂存导出失败，恢复原目标失败: %1；原内容保留在: %2")
+                          .arg(target_dir_, backup_dir);
+            return false;
         }
-        QDir(backup_dir).removeRecursively();
         err_msg = QStringLiteral("发布暂存导出失败，已恢复原目标内容: %1").arg(target_dir_);
         return false;
     }

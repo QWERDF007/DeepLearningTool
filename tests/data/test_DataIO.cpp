@@ -4,6 +4,9 @@
 #include <QEventLoop>
 #include <QTest>
 #include <QThread>
+#include <QDir>
+#include <QFile>
+#include <QTemporaryDir>
 
 #include <atomic>
 
@@ -65,6 +68,113 @@ class DataIOTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void exportPublication_data()
+    {
+        QTest::addColumn<bool>("existing");
+        QTest::addColumn<int>("failed_rename");
+        QTest::newRow("new-target") << false << 0;
+        QTest::newRow("replace-target") << true << 0;
+        QTest::newRow("new-publish-fails") << false << 1;
+        QTest::newRow("backup-fails") << true << 1;
+        QTest::newRow("publish-fails-restores-original") << true << 2;
+    }
+
+    void exportPublication()
+    {
+        QFETCH(bool, existing);
+        QFETCH(int, failed_rename);
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString target = directory.filePath(QStringLiteral("export"));
+        if (existing)
+        {
+            QVERIFY(QDir().mkpath(target));
+            QFile original(QDir(target).filePath(QStringLiteral("value.txt")));
+            QVERIFY(original.open(QIODevice::WriteOnly));
+            QCOMPARE(original.write("original"), qint64(8));
+        }
+        QString staging;
+        QString error;
+        int calls = 0;
+        {
+            dltool::data::SafeExportScope scope(target,
+                [&](const QString &from, const QString &to)
+                {
+                    return ++calls != failed_rename && QDir().rename(from, to);
+                });
+            QVERIFY(scope.isValid());
+            staging = scope.stagingDir();
+            QCOMPARE(QFileInfo(staging).absolutePath(), directory.path());
+            QFile replacement(QDir(staging).filePath(QStringLiteral("value.txt")));
+            QVERIFY(replacement.open(QIODevice::WriteOnly));
+            QCOMPARE(replacement.write("replacement"), qint64(11));
+            replacement.close();
+            QCOMPARE(scope.publish(error), failed_rename == 0);
+            if (failed_rename == 0)
+            {
+                const int published_calls = calls;
+                QVERIFY(scope.publish(error));
+                QCOMPARE(calls, published_calls);
+            }
+            else
+                QVERIFY(!error.isEmpty());
+        }
+        QVERIFY(!QFileInfo::exists(staging));
+        if (existing || failed_rename == 0)
+        {
+            QFile result(QDir(target).filePath(QStringLiteral("value.txt")));
+            QVERIFY(result.open(QIODevice::ReadOnly));
+            QCOMPARE(result.readAll(), failed_rename == 0 ? QByteArray("replacement") : QByteArray("original"));
+        }
+        else
+            QVERIFY(!QFileInfo::exists(target));
+        QVERIFY(QDir(directory.path()).entryList({QStringLiteral(".backup_*")},
+                    QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot).isEmpty());
+    }
+
+    void failedExportRestorePreservesBackup()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString target = directory.filePath(QStringLiteral("export"));
+        QVERIFY(QDir().mkpath(target));
+        QFile original(QDir(target).filePath(QStringLiteral("original.txt")));
+        QVERIFY(original.open(QIODevice::WriteOnly));
+        QCOMPARE(original.write("original"), qint64(8));
+        original.close();
+        QString backup;
+        QString error;
+        {
+            dltool::data::SafeExportScope scope(target,
+                [&](const QString &from, const QString &to)
+                {
+                    if (from == target)
+                    {
+                        backup = to;
+                        return QDir().rename(from, to);
+                    }
+                    // Remove only this test's staging to force the legacy copy fallback to fail too.
+                    if (from != backup)
+                        QDir(from).removeRecursively();
+                    else
+                    {
+                        QFile blocker(target);
+                        if (!blocker.open(QIODevice::WriteOnly))
+                            return false;
+                        blocker.write("concurrent target");
+                    }
+                    return false;
+                });
+            QVERIFY(scope.isValid());
+            QVERIFY(!scope.publish(error));
+        }
+        QFile saved(QDir(backup).filePath(QStringLiteral("original.txt")));
+        QVERIFY2(saved.open(QIODevice::ReadOnly), qPrintable(error));
+        QCOMPARE(saved.readAll(), QByteArray("original"));
+        QVERIFY(error.contains(backup));
+        QVERIFY(!error.contains(QStringLiteral("已恢复")));
+    }
+
     void reusedOperationClearsPreviousCancellation()
     {
         ReusableDataIO      io;

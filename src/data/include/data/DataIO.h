@@ -28,7 +28,8 @@ struct DATA_API ImportedLabel
 class DATA_API SafeExportScope
 {
 public:
-    explicit SafeExportScope(const QString &target_dir);
+    using RenameDirectory = std::function<bool(const QString &, const QString &)>;
+    explicit SafeExportScope(const QString &target_dir, RenameDirectory rename_directory = {});
     ~SafeExportScope();
 
     SafeExportScope(const SafeExportScope &) = delete;
@@ -43,6 +44,7 @@ public:
     void discard();
 
 private:
+    RenameDirectory rename_directory_;
     QString target_dir_;
     QString staging_dir_;
     QString error_;
