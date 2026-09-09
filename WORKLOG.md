@@ -44,6 +44,23 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 补充真实提交后取消的导入测试
+
+**目标**
+- Ticket 02：通过 DataManager 真实导入验证提交后、GUI 完成发布前取消。
+
+**当前状态**
+- test_DataImport.cpp 新增 cancellationAfterCommitPreservesSuccessAndReopenedImages：等待 DataIO worker 退出而不处理 GUI 队列，确认完成信号尚未送达，调用公开取消入口后验证成功及重开库仍有 1 张图片。
+- 生产代码未保留修改；已完成退化敏感性验证，新增测试准确捕获提交后取消误报失败。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_data_import_test --parallel 4` → 成功。
+- py312 运行 `tools/run_project_tests.py --project-layer data-import --project-root F:/tmp/dltool-negative-final-20260909 --skip-build` → CTest 1/1 passed，0.93 秒。
+- 临时将 DataManager 完成信号改为取消时返回失败，新增用例在 success 断言失败（数据库实际已导入 1 张图）；恢复生产语义并重建，相同 CTest 1/1 passed，0.94 秒。临时改动未保留。
+
+**下一步**
+- 提交测试与证据；继续处理已记录的并行测试覆盖、项目关闭顺序及导出恢复问题，不据此声明整体完成。
+
 ## 2026-09-09 — 校验唯一索引的字符比较规则
 
 **目标**
@@ -55,9 +72,11 @@
 
 **验证证据**
 - 定向 Release 构建成功；`ctest --test-dir build -C Release -R '^dltool_database_database_schema_tests$' --output-on-failure` → 新测试先失败，修复后 1/1 passed，0.22 秒。
+- 关联回归 `ctest --test-dir build -C Release -R '^(dltool_database_database_schema_tests|dltool_model_storage_params_tests|dltool_model_tasks_tests|dltool_settings_save_behavior_tests)$' --output-on-failure` → 4/4 passed，42.46 秒；核对 tests/model/CMakeLists.txt 优先加载当前构建数据库 DLL。
 
 **下一步**
 - 继续收敛 schema 读取重复逻辑并核对其余约束；导出安全和项目关闭等已记录问题仍未闭合。
+- 源码审查另见 deriveCanonicalTablesFor/settingsTableSpec 忽略执行 DDL 的失败、可能缓存不完整基准；需按实际错误传播处理，尚未实测故障，不宣称已修复。
 
 ## 2026-09-09 — 修复部分索引冒充全表唯一约束
 
@@ -134,6 +153,7 @@
 - Ticket 02：test_DataOperationWorkflow.cpp:81 只将 result.success 设为 true 后取消，没有真实数据库提交与重开验证，尚不足以覆盖票据完整要求。
 - 本轮仅审查并记录，不修改生产实现，不宣称这两票已闭合。
 - 进一步读取 DataOperationWorkflow.cpp:150，成功结果不会被取消请求覆盖；test_DataSplit.cpp 的复制重开验证未注入取消，test_DataImport.cpp 的批次取消验证提交前回滚，均不能替代提交后取消的验收。
+- Ticket 02 已找到无需新增生产接口的实测窗口：ImportDatabaseWriter.cpp 提交 tx 后 emit finished；DataManager.cpp:1595 以 QueuedConnection 接收。可在 writer finished 的同步观察回调仅设置 importer 取消标志，确保 GUI 发布尚未执行，再验证 dataImportFinished 成功和数据库重开一致。不要从 worker 调用 GUI DataManager 的取消槽。
 - Ticket 03 的真实关闭测试已核对：test_ProjectShutdown.cpp 覆盖 queued 写入拒绝、数据库重开无新增数据、重复关闭及切换重开；本轮此前 3/3 项目补测已执行这些断言。全执行者取消顺序仍需另核对：Project::shutdown 目前只先 beginShutdown 数据层，再顺序调用 Feature/Model shutdown，不应由数据闸门测试推导全部执行者提前取消。
 - 已确认项目级顺序缺陷：SmartAnnotationController::shutdown 同步 executor_thread_->wait，FewShotLearningController::shutdown 等待数据操作，均早于 Project::shutdown 后续 ModelTestTaskManager 的取消。后者内部对全部评估先 beginShutdown 再 waitForDone 是正确的，但不能补偿项目层先等待 Feature 的问题。
 - Ticket 04 的 test_ModelTestTaskManager.cpp:244 已完整核对：两个实际 VM 使用可控评估引擎同时进入，断言两个取消均被观察、active=0、无可用迟到结果。测试直接调用 manager.shutdown，因此覆盖管理器内部共享池，不覆盖 ProjectManager 关闭时 Feature 与 Model 的广播顺序。

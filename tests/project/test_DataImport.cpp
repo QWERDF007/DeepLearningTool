@@ -13,6 +13,7 @@
 #include <QJsonObject>
 #include <QMap>
 #include <QSet>
+#include <QSignalSpy>
 #include <QDir>
 #include <QEventLoop>
 #include <QTemporaryDir>
@@ -212,6 +213,46 @@ class DataImportIntegrationTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void cancellationAfterCommitPreservesSuccessAndReopenedImages()
+    {
+        QTemporaryDir input;
+        QVERIFY(input.isValid());
+        QImage image(16, 16, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        const QString image_path = input.filePath(QStringLiteral("committed.png"));
+        QVERIFY(image.save(image_path));
+        qint64 dataset_id = -1;
+        {
+            PersistentProjectFixture fixture;
+            QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+            QString error;
+            dataset_id = fixture.ensureDataset(QStringLiteral("post-commit-%1").arg(QCoreApplication::applicationPid()), &error);
+            QVERIFY2(dataset_id >= 0, qPrintable(error));
+            auto *manager = fixture.dataManager();
+            QSignalSpy finished(manager, &dltool::data::DataManager::dataImportFinished);
+            manager->importDataWithLabelClassGroups(dataset_id, dltool::data::DataFormat::Folder, input.path(), {}, {});
+            auto *importer = manager->findChild<dltool::data::DataIO *>();
+            QVERIFY(importer != nullptr);
+            QVERIFY(importer->waitForDone(10000));
+            QCOMPARE(finished.count(), 0);
+            manager->cancelDataOperation();
+            QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 5000);
+            QVERIFY2(finished.at(0).at(0).toBool(), qPrintable(finished.at(0).at(1).toString()));
+            int images = 0;
+            int labels = 0;
+            QVERIFY2(fixture.datasetCounts(dataset_id, &images, &labels, &error), qPrintable(error));
+            QCOMPARE(images, 1);
+            QCOMPARE(labels, 0);
+        }
+        dltool::database::ProjectDataBase reopened(PersistentProjectFixture::projectDatabasePath());
+        std::vector<int64_t> ids;
+        std::vector<QString> paths;
+        QString error;
+        QVERIFY2(reopened.getImages(dataset_id, ids, paths, error), qPrintable(error));
+        QCOMPARE(ids.size(), std::size_t(1));
+        QCOMPARE(paths.size(), std::size_t(1));
+    }
+
     void cancelledImportRollsBackCompletedBatches()
     {
         PersistentProjectFixture fixture;
