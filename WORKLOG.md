@@ -44,6 +44,22 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 修复进度任务切换属性通知
+
+**目标**
+- 修正 Ticket 05 任务切换时 ID、名称通知遗漏。
+
+**当前状态**
+- startTask 保存旧值后比较最终值，避免赋值后与入参比较永远相同；原有交错任务用例增加两个属性通知各一次的断言。
+- 未改动尚待确认的并行组件或项目两阶段关闭方案。
+
+**验证证据**
+- `cmake --build build --config Release --target tst_dltool_ui --parallel 4` → 成功。
+- `ctest --test-dir build -C Release -R '^tst_dltool_ui$' --output-on-failure` → 新断言先失败；修正后 1/1 passed，0.04 秒。
+
+**下一步**
+- 继续处理数据提交取消覆盖与项目关闭顺序缺陷；该局部修复不代表整体规格完成。
+
 ## 2026-09-09 — 逐票审查发现数据并发验收覆盖缺口
 
 **目标**
@@ -56,6 +72,8 @@
 - 进一步读取 DataOperationWorkflow.cpp:150，成功结果不会被取消请求覆盖；test_DataSplit.cpp 的复制重开验证未注入取消，test_DataImport.cpp 的批次取消验证提交前回滚，均不能替代提交后取消的验收。
 - Ticket 03 的真实关闭测试已核对：test_ProjectShutdown.cpp 覆盖 queued 写入拒绝、数据库重开无新增数据、重复关闭及切换重开；本轮此前 3/3 项目补测已执行这些断言。全执行者取消顺序仍需另核对：Project::shutdown 目前只先 beginShutdown 数据层，再顺序调用 Feature/Model shutdown，不应由数据闸门测试推导全部执行者提前取消。
 - 已确认项目级顺序缺陷：SmartAnnotationController::shutdown 同步 executor_thread_->wait，FewShotLearningController::shutdown 等待数据操作，均早于 Project::shutdown 后续 ModelTestTaskManager 的取消。后者内部对全部评估先 beginShutdown 再 waitForDone 是正确的，但不能补偿项目层先等待 Feature 的问题。
+- Ticket 04 的 test_ModelTestTaskManager.cpp:244 已完整核对：两个实际 VM 使用可控评估引擎同时进入，断言两个取消均被观察、active=0、无可用迟到结果。测试直接调用 manager.shutdown，因此覆盖管理器内部共享池，不覆盖 ProjectManager 关闭时 Feature 与 Model 的广播顺序。
+- Ticket 05 新发现：ProgressManager::startTask 先赋值 active_task_id_/task_name_，再与入参比较是否发通知；已有任务切换为另一具名任务时 activeTaskIdChanged/taskNameChanged 不发出。test_ProgressManager.cpp 的交错任务测试只读 getter，没有检查这两个属性通知，因此现有通过结果未覆盖 QML 绑定刷新。
 
 **验证证据**
 - 阅读上述测试完整函数与 DataIO::parallelFor；检索 tests/data 和 tests/project 的提交/取消用例，当前找到的 workflow 用例为模拟提交。

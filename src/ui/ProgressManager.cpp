@@ -45,8 +45,8 @@ QString ProgressManager::generateUniqueTaskId()
 
 QString ProgressManager::startTask(const QString &taskName, const QString &taskId)
 {
-    const bool had_task_id   = !active_task_id_.isEmpty();
-    const bool had_task_name = !task_name_.isEmpty();
+    const QString previous_task_id = active_task_id_;
+    const QString previous_task_name = task_name_;
     const bool was_running   = is_running_;
     const bool had_progress  = (progress_ != 0);
     const bool had_messages  = !message_queue_.isEmpty();
@@ -67,9 +67,9 @@ QString ProgressManager::startTask(const QString &taskName, const QString &taskI
     is_running_ = true;
     message_queue_.clear();
 
-    if (!had_task_id || active_task_id_ != taskId)
+    if (previous_task_id != active_task_id_)
         emit activeTaskIdChanged();
-    if (!had_task_name || task_name_ != taskName)
+    if (previous_task_name != task_name_)
         emit taskNameChanged();
     if (had_progress || !was_running)
         emit progressChanged();

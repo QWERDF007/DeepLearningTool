@@ -59,7 +59,11 @@ void ProgressManagerTest::interleavedTasksDoNotOverwriteEachOther()
     QCOMPARE(pm->getProgress(), 40);
 
     // Task 2 preempts / starts as the active task
+    QSignalSpy identity_spy(pm, &ProgressManager::activeTaskIdChanged);
+    QSignalSpy name_spy(pm, &ProgressManager::taskNameChanged);
     pm->startTask("Task 2", "task_2");
+    QCOMPARE(identity_spy.count(), 1);
+    QCOMPARE(name_spy.count(), 1);
     QCOMPARE(pm->activeTaskId(), QString("task_2"));
     QCOMPARE(pm->getIsRunning(), true);
     QCOMPARE(pm->getProgress(), 0);
