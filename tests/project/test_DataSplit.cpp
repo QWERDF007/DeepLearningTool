@@ -370,6 +370,29 @@ private slots:
             QVERIFY2(name != phantom_dataset_name, "回滚失败：遗留了子数据集记录");
         }
 
+        dltool::database::ProjectDataBase::ImageSnapshot valid_snapshot;
+        valid_snapshot.path = QStringLiteral("transaction-probe.png");
+        target.images = {valid_snapshot};
+        dltool::database::ProjectDataBase::DatasetSplitTarget invalid_target;
+        invalid_target.name = QString();
+        bool observed_inserted_image = false;
+        QVERIFY(!db.splitDatasetAtomic(
+            {target, invalid_target}, split_out, err,
+            [&]()
+            {
+                observed_inserted_image = observed_inserted_image || !split_out.image_ids.empty();
+                return false;
+            }));
+        QVERIFY(observed_inserted_image);
+        QVERIFY(split_out.dataset_ids.empty());
+        QVERIFY(split_out.image_ids.empty());
+        QVERIFY(split_out.label_ids.empty());
+        dltool::database::ProjectDataBase reopened(PersistentProjectFixture::projectDatabasePath());
+        after_ids.clear();
+        after_names.clear();
+        QVERIFY(reopened.getAllDatasets(after_ids, after_names, err));
+        QVERIFY(std::find(after_names.begin(), after_names.end(), phantom_dataset_name) == after_names.end());
+
         // 3. moveImagesAtomic with invalid target dataset: fails without moving
         bool move_ok = db.moveImagesAtomic({1, 2}, -99999, err);
         QVERIFY(!move_ok);
