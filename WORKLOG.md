@@ -6,6 +6,8 @@
 
 <!-- 没有待裁决事项时保持本节为空。 -->
 
+- 2026-09-09：Ticket 01 测试边界——是否同意将 DataIO 内部 parallelFor 提取为生产与测试共用的并行执行组件？TDD 技能要求新增边界先确认；现测试自建线程循环无法覆盖生产回归。详见“逐票审查发现数据并发验收覆盖缺口”。
+
 
 ---
 
@@ -42,6 +44,44 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 逐票审查发现数据并发验收覆盖缺口
+
+**目标**
+- 核对 Ticket 01/02 的生产行为与测试断言，而非仅依据回归数量。
+
+**当前状态**
+- Ticket 01：生产 DataIO.cpp:66 的 parallelFor 已在 join 后检查异常，但 test_DataIO.cpp:101 在测试内部自建线程循环，并未执行生产 parallelFor；该测试不足以防止原缺陷回归。
+- Ticket 02：test_DataOperationWorkflow.cpp:81 只将 result.success 设为 true 后取消，没有真实数据库提交与重开验证，尚不足以覆盖票据完整要求。
+- 本轮仅审查并记录，不修改生产实现，不宣称这两票已闭合。
+- 进一步读取 DataOperationWorkflow.cpp:150，成功结果不会被取消请求覆盖；test_DataSplit.cpp 的复制重开验证未注入取消，test_DataImport.cpp 的批次取消验证提交前回滚，均不能替代提交后取消的验收。
+- Ticket 03 的真实关闭测试已核对：test_ProjectShutdown.cpp 覆盖 queued 写入拒绝、数据库重开无新增数据、重复关闭及切换重开；本轮此前 3/3 项目补测已执行这些断言。全执行者取消顺序仍需另核对：Project::shutdown 目前只先 beginShutdown 数据层，再顺序调用 Feature/Model shutdown，不应由数据闸门测试推导全部执行者提前取消。
+- 已确认项目级顺序缺陷：SmartAnnotationController::shutdown 同步 executor_thread_->wait，FewShotLearningController::shutdown 等待数据操作，均早于 Project::shutdown 后续 ModelTestTaskManager 的取消。后者内部对全部评估先 beginShutdown 再 waitForDone 是正确的，但不能补偿项目层先等待 Feature 的问题。
+
+**验证证据**
+- 阅读上述测试完整函数与 DataIO::parallelFor；检索 tests/data 和 tests/project 的提交/取消用例，当前找到的 workflow 用例为模拟提交。
+
+**下一步**
+- 沿生产 DataIO 公开导入/导出入口寻找可控下一层依赖，补生产最后 worker 异常回归；补真实提交与回调之间取消并重开验证。不要继续复制生产算法到测试中。
+- 项目关闭修正应沿现有 ProjectManager 公开关闭入口验证，复用已有 beginShutdown/shutdown 两阶段约定，广播全部取消后再等待；不能仅调整 Feature/Model 的先后顺序。
+
+## 2026-09-09 — 验证项目单层缺前置行为
+
+**目标**
+- 核对 Ticket 32/34 的单层测试不自动补齐前置条件要求。
+
+**当前状态**
+- 专用负向目录 `F:/tmp/dltool-negative-final-20260909`：缺项目时 data-creation 拒绝且未创建目录；随后仅创建空项目，data-import 因目标数据集不存在拒绝。
+- 仅执行验证，未修改生产代码；CTest 的预期失败已核对具体失败断言，不仅检查退出码。
+
+**验证证据**
+- py312 `tools/run_project_tests.py --project-layer data-creation --project-root F:/tmp/dltool-negative-final-20260909 --skip-build` → fixture.isValid 失败，项目不存在，且根目录未生成。
+- 同路径 `--project-layer project-creation` → 1/1 passed；随后 `--project-layer data-import` → test_DataImport.cpp:427 目标数据集不存在，非零退出；未自动运行 data-creation。
+- 两次单层调用均携带 CTest `--fixture-exclude-any .*`。
+- 同目录执行 `--project-layer model-train` → 缺模型在 test_PatchcoreTrain.cpp:24 失败。依次运行 data-creation、data-import、model-creation 均通过，再运行 model-predict → 缺 model.ckpt 在 test_PatchcorePredict.cpp:33 失败；model-evaluation → 无预测时 available=false，在 test_PatchcoreEvaluation.cpp:49 失败。所有负向均禁用 fixture 自动补齐；未执行训练或预测。
+
+**下一步**
+- 项目、数据集、模型、权重、预测缺失的负向行为均已实测；继续逐票核对实际源码断言。评估缺预测时断言提示为空，记录为诊断可读性不足，不误述为成功或整体闭合。
+
 ## 2026-09-09 — 分阶段提交缓存简化并执行普通回归
 
 **目标**
@@ -49,15 +89,17 @@
 
 **当前状态**
 - 已提交 `8084bb9 refactor: 简化评估图像缓存并保留 OpenCV 读取链路`。
-- 安装 consumer 测试修改尚未提交；未将规格、票据、依赖配置或 .gitignore 纳入提交。
+- 安装 consumer 阶段已提交 `7d3c9f6 test: 验证安装公共库的独立链接与隔离运行`；未将规格、票据、依赖配置或 .gitignore 纳入提交。
 
 **验证证据**
 - `cmake --build build --config Release --parallel 4` → 成功。
 - `ctest --test-dir build -C Release -L ordinary --output-on-failure` → 会话 5484 已结束，51/51 passed，279.32 秒；工具测试内部 24 passed，200.06 秒。
 - `git ls-files -- docs/REFACTOR_SPEC.md docs/refactor-tickets` → 无输出，确认不在索引中。
+- py312 执行 `tools/run_project_tests.py --project-layer full --project-root F:/tmp/dltool-acceptance-final-20260909 --project-name 验收项目 --dataset-name 验收数据 --python-env D:/Software/anaconda3/envs/py312 --skip-build` → 12/12 passed，34.04 秒。启动前确认目录不存在，未清理已有验收产物。
 
 **下一步**
-- 普通回归已结束；提交安装 consumer 阶段，继续逐票验收及项目级验证，不能据局部通过声明整体完成。
+- 补充运行 `--project-layer data-roundtrip --test-regex '^dltool_model_(data_roundtrip|project_shutdown|python_environment)_test$'`，复用上述验收项目、禁用 fixture 补齐 → 3/3 passed，1.07 秒。
+- 普通和项目正向回归已结束；继续核对单层缺前置负向行为与逐票源码覆盖，不能据测试总数声明整体完成。
 
 ## 2026-09-09 — 补齐安装库独立 consumer 验收
 
