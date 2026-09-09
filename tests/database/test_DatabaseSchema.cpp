@@ -463,6 +463,25 @@ private slots:
         }
     }
 
+    void schemaRejectsCaseSensitiveTestTaskNames()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("model.db"));
+        QVariantMap params;
+        QString error;
+        {
+            dltool::database::ModelDataBase database(path);
+            QVERIFY2(database.readTrainParams(params, &error), qPrintable(error));
+        }
+        QVERIFY(executeSql(path,
+                           "DROP TABLE test_tasks; CREATE TABLE test_tasks ("
+                           "task_id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE BINARY, "
+                           "ctime INTEGER NOT NULL, mtime INTEGER NOT NULL);"));
+        dltool::database::ModelDataBase database(path);
+        QVERIFY(!database.readTrainParams(params, &error));
+    }
+
     void migrationFailureRollsBackViaModelDataBase()
     {
         QTemporaryDir directory;

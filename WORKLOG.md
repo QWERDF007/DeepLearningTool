@@ -44,6 +44,21 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 校验唯一索引的字符比较规则
+
+**目标**
+- Ticket 08：拒绝测试任务名称的 NOCASE 唯一约束被 BINARY 替代。
+
+**当前状态**
+- 正本和实际索引通过 index_xinfo 读取键列及 collation，比较唯一约束时校验比较规则；不重复硬编码任务名称规则。
+- 真实 ModelDataBase 测试将 test_tasks 改为 BINARY 唯一约束，要求打开失败。
+
+**验证证据**
+- 定向 Release 构建成功；`ctest --test-dir build -C Release -R '^dltool_database_database_schema_tests$' --output-on-failure` → 新测试先失败，修复后 1/1 passed，0.22 秒。
+
+**下一步**
+- 继续收敛 schema 读取重复逻辑并核对其余约束；导出安全和项目关闭等已记录问题仍未闭合。
+
 ## 2026-09-09 — 修复部分索引冒充全表唯一约束
 
 **目标**

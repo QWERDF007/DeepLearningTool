@@ -35,6 +35,7 @@ struct ForeignKeySpec
 struct UniqueConstraintSpec
 {
     std::vector<QString> columns;
+    std::vector<QString> collations;
 };
 
 struct IndexSpec
@@ -277,23 +278,29 @@ TableSpec deriveTableSpec(sqlite3 *db, const QString &table_name)
 
             for (const auto &meta : idx_metas)
             {
-                const QString info_query = QStringLiteral("PRAGMA index_info('%1')").arg(meta.name);
+                const QString info_query = QStringLiteral("PRAGMA index_xinfo('%1')").arg(meta.name);
                 sqlite3_stmt *info_stmt = nullptr;
                 std::vector<QString> cols;
+                std::vector<QString> collations;
                 if (sqlite3_prepare_v2(db, info_query.toUtf8().constData(), -1, &info_stmt, nullptr) == SQLITE_OK)
                 {
                     while (sqlite3_step(info_stmt) == SQLITE_ROW)
                     {
+                        if (sqlite3_column_int(info_stmt, 5) == 0)
+                            continue;
                         const char *cn = reinterpret_cast<const char *>(sqlite3_column_text(info_stmt, 2));
                         if (cn != nullptr)
+                        {
                             cols.push_back(QString::fromUtf8(cn));
+                            collations.push_back(QString::fromUtf8(reinterpret_cast<const char *>(sqlite3_column_text(info_stmt, 4))).toUpper());
+                        }
                     }
                     sqlite3_finalize(info_stmt);
                 }
 
                 if (meta.unique != 0 && meta.origin != QStringLiteral("pk"))
                 {
-                    spec.unique_constraints.push_back(UniqueConstraintSpec{cols});
+                    spec.unique_constraints.push_back(UniqueConstraintSpec{cols, collations});
                 }
                 if (meta.origin == QStringLiteral("c"))
                 {
@@ -490,32 +497,41 @@ bool validateTable(sqlite3 *db, const TableSpec &spec, QString *err_msg)
         }
         sqlite3_finalize(statement);
 
-        std::vector<std::vector<QString>> actual_unique_constraints;
+        std::vector<UniqueConstraintSpec> actual_unique_constraints;
         for (const auto &meta : idx_metas)
         {
             if (meta.unique != 0 && meta.origin != QStringLiteral("pk"))
             {
-                const QString info_query = QStringLiteral("PRAGMA index_info('%1')").arg(meta.name);
+                const QString info_query = QStringLiteral("PRAGMA index_xinfo('%1')").arg(meta.name);
                 sqlite3_stmt *info_stmt = nullptr;
                 std::vector<QString> cols;
+                std::vector<QString> collations;
                 if (sqlite3_prepare_v2(db, info_query.toUtf8().constData(), -1, &info_stmt, nullptr) == SQLITE_OK)
                 {
                     while (sqlite3_step(info_stmt) == SQLITE_ROW)
                     {
+                        if (sqlite3_column_int(info_stmt, 5) == 0)
+                            continue;
                         const char *cn = reinterpret_cast<const char *>(sqlite3_column_text(info_stmt, 2));
                         if (cn != nullptr)
+                        {
                             cols.push_back(QString::fromUtf8(cn));
+                            collations.push_back(QString::fromUtf8(reinterpret_cast<const char *>(sqlite3_column_text(info_stmt, 4))).toUpper());
+                        }
                     }
                     sqlite3_finalize(info_stmt);
                 }
-                actual_unique_constraints.push_back(std::move(cols));
+                actual_unique_constraints.push_back({std::move(cols), std::move(collations)});
             }
         }
 
         for (const UniqueConstraintSpec &expected_uq : spec.unique_constraints)
         {
             const auto it = std::find_if(actual_unique_constraints.begin(), actual_unique_constraints.end(),
-                                         [&](const std::vector<QString> &actual_cols) {
+                                         [&](const UniqueConstraintSpec &actual) {
+                                             const auto &actual_cols = actual.columns;
+                                             if (actual.collations != expected_uq.collations)
+                                                 return false;
                                              if (actual_cols.size() != expected_uq.columns.size())
                                                  return false;
                                              for (std::size_t i = 0; i < expected_uq.columns.size(); ++i)
