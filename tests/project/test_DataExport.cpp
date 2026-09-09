@@ -92,10 +92,18 @@ private slots:
         QVERIFY(fixture.datasetCounts(dataset_id_2, &img_count_2, &lbl_count_2, &error));
         if (img_count_2 == 0)
         {
+            const QVariantMap groups = {
+                {QStringLiteral("OK"), QStringLiteral("good")},
+                {QStringLiteral("MT_Blowhole"), QStringLiteral("anomaly")},
+                {QStringLiteral("MT_Crack"), QStringLiteral("anomaly")},
+            };
             QVERIFY2(fixture.importData(dataset_id_2, dltool::data::DataFormat::Folder,
-                                        PersistentProjectFixture::imageRoot(), {}, {}, &error),
+                                        PersistentProjectFixture::imageRoot(), {}, groups, &error),
                      qPrintable(error));
         }
+
+        // Flush any pending events from the preceding import before monitoring export
+        QCoreApplication::processEvents();
 
         QTemporaryDir temp_export_dir;
         QVERIFY(temp_export_dir.isValid());
@@ -126,7 +134,11 @@ private slots:
         // Wait until data operation finishes
         QTRY_VERIFY_WITH_TIMEOUT(!fixture.dataManager()->dataOperationRunning(), 15000);
 
-        // 1. Success notification must NOT have been emitted
+        // 1. Success notification for export must NOT have been emitted
+        for (const auto &args : success_notifications)
+        {
+            QVERIFY(!args.at(0).toString().contains(QStringLiteral("导出")));
+        }
         QCOMPARE(success_notifications.size(), 0);
 
         // 2. Warn notification for cancellation should be emitted

@@ -151,32 +151,26 @@ int64_t ImportDatabaseWriter::Impl::ensureLabelClass(const QString &label_name, 
 
         if (anomaly_project)
         {
-            QString resolved_group;
             auto group_it = label_class_group_map.find(label_name);
             if (group_it != label_class_group_map.end())
             {
-                resolved_group = normalizeLabelClassGroup(group_it->second);
-            }
-            if (resolved_group.isEmpty())
-            {
-                resolved_group = anomalyLabelClassGroup();
-            }
-
-            if (cached_it->second.group != resolved_group)
-            {
-                const auto LabelClassesTable = dltool::database::LabelClasses{};
-                const std::vector<uint8_t> extra_data_blob = extraDataForGroup(resolved_group);
-                try
+                const QString resolved_group = normalizeLabelClassGroup(group_it->second);
+                if (!resolved_group.isEmpty() && cached_it->second.group != resolved_group)
                 {
-                    (*db)(sqlpp::update(LabelClassesTable)
-                              .set(LabelClassesTable.extraData = extra_data_blob)
-                              .where(LabelClassesTable.id == label_class_id));
-                    cached_it->second.group = resolved_group;
-                }
-                catch (const std::exception &e)
-                {
-                    err_msg = QString("更新类别属性失败: %1").arg(e.what());
-                    return -1;
+                    const auto LabelClassesTable = dltool::database::LabelClasses{};
+                    const std::vector<uint8_t> extra_data_blob = extraDataForGroup(resolved_group);
+                    try
+                    {
+                        (*db)(sqlpp::update(LabelClassesTable)
+                                  .set(LabelClassesTable.extraData = extra_data_blob)
+                                  .where(LabelClassesTable.id == label_class_id));
+                        cached_it->second.group = resolved_group;
+                    }
+                    catch (const std::exception &e)
+                    {
+                        err_msg = QString("更新类别属性失败: %1").arg(e.what());
+                        return -1;
+                    }
                 }
             }
         }
@@ -331,74 +325,83 @@ void ImportDatabaseWriter::Impl::handleDataBatchReady(
         }
 
         // 4. 标注插入
-        for (const auto &label : labels)
+        if (!folder_import)
         {
-            int64_t image_id = -1;
-            auto image_it = image_path_to_id.find(label.image_path);
-            if (image_it != image_path_to_id.end())
+            for (const auto &label : labels)
             {
-                image_id = image_it->second;
-            }
-            else
-            {
-                auto norm_it = normalized_image_path_to_id.find(normalizedImagePath(label.image_path));
-                if (norm_it != normalized_image_path_to_id.end())
+                if (label.data.isEmpty())
                 {
-                    image_id = norm_it->second;
+                    stats.skipped_labels++;
+                    continue;
                 }
-            }
 
-            if (image_id < 0)
-            {
-                stats.skipped_labels++;
-                continue;
-            }
-
-            const int64_t label_class_id = ensureLabelClass(label.label_class_name, QString{}, err_msg);
-            if (label_class_id < 0)
-            {
-                failed = true;
-                first_error_message = err_msg;
-                return;
-            }
-
-            if (first_polygon_class_by_image_id.find(image_id) == first_polygon_class_by_image_id.end())
-            {
-                first_polygon_class_by_image_id[image_id] = label_class_id;
-            }
-            auto class_cache_it = label_class_map.find(label.label_class_name);
-            if (class_cache_it != label_class_map.end() && class_cache_it->second.group != goodLabelClassGroup())
-            {
-                if (first_anomaly_polygon_class_by_image_id.find(image_id) == first_anomaly_polygon_class_by_image_id.end())
+                int64_t image_id = -1;
+                auto image_it = image_path_to_id.find(label.image_path);
+                if (image_it != image_path_to_id.end())
                 {
-                    first_anomaly_polygon_class_by_image_id[image_id] = label_class_id;
+                    image_id = image_it->second;
                 }
-            }
-
-            if (label_data_helper != nullptr)
-            {
-                auto label_data = label_data_helper->createLabelData();
-                if (label_data != nullptr)
+                else
                 {
-                    auto dim_it = image_dimensions.find(image_id);
-                    if (dim_it == image_dimensions.end())
+                    auto norm_it = normalized_image_path_to_id.find(normalizedImagePath(label.image_path));
+                    if (norm_it != normalized_image_path_to_id.end())
                     {
-                        QImageReader reader(label.image_path);
-                        const QSize  size = reader.size();
-                        dim_it            = image_dimensions.emplace(image_id, size).first;
+                        image_id = norm_it->second;
                     }
-                    const QRectF rect(0, 0, dim_it->second.width(), dim_it->second.height());
-                    label_data->fromQVariantMap(label.data, rect);
-                    const int64_t              region_type = label_data->type();
-                    const std::vector<uint8_t> region_blob = label_data->toBlob();
+                }
 
-                    (*db)(sqlpp::insert_into(LabelsTable)
-                               .set(LabelsTable.imageId      = image_id,
-                                    LabelsTable.labelClassId = label_class_id,
-                                    LabelsTable.regionType   = region_type,
-                                    LabelsTable.region       = region_blob));
+                if (image_id < 0)
+                {
+                    stats.skipped_labels++;
+                    continue;
+                }
 
-                    stats.imported_labels++;
+                const int64_t label_class_id = ensureLabelClass(label.label_class_name, QString{}, err_msg);
+                if (label_class_id < 0)
+                {
+                    failed = true;
+                    first_error_message = err_msg;
+                    return;
+                }
+
+                if (first_polygon_class_by_image_id.find(image_id) == first_polygon_class_by_image_id.end())
+                {
+                    first_polygon_class_by_image_id[image_id] = label_class_id;
+                }
+                auto class_cache_it = label_class_map.find(label.label_class_name);
+                if (class_cache_it != label_class_map.end() && class_cache_it->second.group != goodLabelClassGroup())
+                {
+                    if (first_anomaly_polygon_class_by_image_id.find(image_id) == first_anomaly_polygon_class_by_image_id.end())
+                    {
+                        first_anomaly_polygon_class_by_image_id[image_id] = label_class_id;
+                    }
+                }
+
+                if (label_data_helper != nullptr)
+                {
+                    auto label_data = label_data_helper->createLabelData();
+                    if (label_data != nullptr)
+                    {
+                        auto dim_it = image_dimensions.find(image_id);
+                        if (dim_it == image_dimensions.end())
+                        {
+                            QImageReader reader(label.image_path);
+                            const QSize  size = reader.size();
+                            dim_it            = image_dimensions.emplace(image_id, size).first;
+                        }
+                        const QRectF rect(0, 0, dim_it->second.width(), dim_it->second.height());
+                        label_data->fromQVariantMap(label.data, rect);
+                        const int64_t              region_type = label_data->type();
+                        const std::vector<uint8_t> region_blob = label_data->toBlob();
+
+                        (*db)(sqlpp::insert_into(LabelsTable)
+                                   .set(LabelsTable.imageId      = image_id,
+                                        LabelsTable.labelClassId = label_class_id,
+                                        LabelsTable.regionType   = region_type,
+                                        LabelsTable.region       = region_blob));
+
+                        stats.imported_labels++;
+                    }
                 }
             }
         }
@@ -408,7 +411,7 @@ void ImportDatabaseWriter::Impl::handleDataBatchReady(
         {
             for (const auto &[image_id, class_id] : folder_class_by_image_id)
             {
-                const std::string json_str = QString("{\"class_id\":%1}").arg(class_id).toStdString();
+                const std::string json_str = QString("{\"image_label_class_id\":%1,\"class_id\":%1}").arg(class_id).toStdString();
                 const std::vector<uint8_t> blob(json_str.begin(), json_str.end());
                 (*db)(sqlpp::update(ImagesTable)
                           .set(ImagesTable.extraData = blob)
@@ -433,7 +436,7 @@ void ImportDatabaseWriter::Impl::handleDataBatchReady(
                         effective_class_id = it_first->second;
                     }
                 }
-                const std::string json_str = QString("{\"class_id\":%1}").arg(effective_class_id).toStdString();
+                const std::string json_str = QString("{\"image_label_class_id\":%1,\"class_id\":%1}").arg(effective_class_id).toStdString();
                 const std::vector<uint8_t> blob(json_str.begin(), json_str.end());
                 (*db)(sqlpp::update(ImagesTable)
                           .set(ImagesTable.extraData = blob)

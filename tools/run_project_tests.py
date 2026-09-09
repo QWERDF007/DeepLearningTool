@@ -154,6 +154,11 @@ def main() -> int:
             "DLT_TEST_PROJECT_ROOT": str(args.project_root),
             "DLT_TEST_PROJECT_NAME": str(args.project_name),
             "DLT_TEST_DATASET_NAME": str(args.dataset_name),
+            "DLT_TEST_ASSET_ROOT": os.environ.get(
+                "DLT_TEST_ASSET_ROOT",
+                str(REPOSITORY_ROOT / "tests" / "assets" / "model"),
+            ),
+            "DLT_SOURCE_DIR": os.environ.get("DLT_SOURCE_DIR", str(REPOSITORY_ROOT)),
         }
     )
 

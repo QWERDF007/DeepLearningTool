@@ -87,12 +87,13 @@ bool validateAssetFixture(QString *error)
     expected_images.sort();
     expected_masks.sort();
 
-    if (assetFiles(image_root, {QStringLiteral("*.jpg"), QStringLiteral("*.jpeg"),
-                                QStringLiteral("*.png"), QStringLiteral("*.bmp"), QStringLiteral("*.webp")})
-        != expected_images)
+    const auto found_images = assetFiles(image_root, {QStringLiteral("*.jpg"), QStringLiteral("*.jpeg"),
+                                QStringLiteral("*.png"), QStringLiteral("*.bmp"), QStringLiteral("*.webp")});
+    if (found_images != expected_images)
     {
         if (error != nullptr)
-            *error = QStringLiteral("测试图片文件清单与固定夹具不一致");
+            *error = QStringLiteral("测试图片文件清单与固定夹具不一致: root=%1, found=[%2], expected=[%3]")
+                .arg(image_root, found_images.join(QStringLiteral(", ")), expected_images.join(QStringLiteral(", ")));
         return false;
     }
     if (assetFiles(mask_root, {QStringLiteral("*.png")}) != expected_masks)

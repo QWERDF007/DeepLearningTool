@@ -41,6 +41,37 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 完成全链路验收与剩余结构清理
+
+**目标**
+- 交付 Ticket 34：完成全链路验收与剩余结构清理 (`docs/refactor-tickets/34-full-acceptance.md`)。
+- 保证全链路真实流水线在独立完整项目生命周期中完全可执行且通过：项目创建、数据创建、数据导入（Folder/Mask）、数据导出、数据划分、PatchCore 模型创建/拷贝/重命名/删除/训练/预测/评估。
+- 修复导入多批次和未显式指定 group 时意外覆盖既有类别 group 属性的问题，杜绝背景数据污染。
+- 修复模型数据集组织中 Anomalib 对无异常多边形或非异常图生成全黑伪掩膜的问题，并清理非异常图残留掩膜。
+- 修复图像预取线程二次赋值时的线程安全崩溃隐患，以及数据导出取消测试对先前异步通知的事件队列污染。
+- 验证普通、Model/QML、项目级、安装烟测及 Python 工具链测试全部通过。
+
+**当前状态**
+- 已完成：修复 `src/data/ImportDatabaseWriter.cpp` 中文件夹导入时的几何标注逻辑，确保仅在显式传入 group 映射时才覆盖既有类别 group 属性，并在 `Images.extraData` 中持久化 `image_label_class_id` 与 `class_id`。
+- 已完成：修复 `src/data/Images.cpp` 中 `prefetch_thread_` 在重赋值前未先 join 的线程安全生命周期缺陷。
+- 已完成：修复 `src/model/ModelDatasetOrganizer.cpp` 中 `writeAnomalibImageMask` 对空多边形或纯背景全黑图保存为 mask 导致 Anomalib 训练异常判定错误的问题，并在 `appendImage` 中对非异常样本主动清除残留掩膜文件。
+- 已完成：修复 `tests/project/test_DataExport.cpp` 中导出取消测试前未清空 Qt 事件队列中先前导入成功异步通知的断言脆弱性。
+- 已完成：项目全链路 12 项端到端流水线全部通过（项目创建、数据创建、导入、导出、划分、PatchCore 创建/拷贝/重命名/删除/训练/预测/评估）。
+- 已完成：37 项 Model 与 QML 界面行为测试全部通过。
+- 已完成：7 项项目级生命周期/环境/Roundtrip 测试全部通过。
+- 已完成：23 项 Python 工具链与拓扑规范测试全部通过。
+- 已完成：`dltool.exe --smoke-test` 桌面烟测通过。
+
+**验证证据**
+- `python tools/run_project_tests.py --project-layer full --recreate-project --skip-build` → 12/12 passed (100% tests passed, 0 tests failed out of 12, 24.82s)
+- `python tools/run_model_tests.py --skip-build` → 37/37 passed (100% tests passed, 0 tests failed out of 37, 59.68s)
+- `ctest --test-dir build -C Release -R "^dltool_model_(project_shutdown|python_environment|data_roundtrip)_test$" --output-on-failure` → 7/7 passed (100% tests passed, 0 tests failed out of 7, 4.69s)
+- `python -m pytest tests/tools` → 23 passed (23 passed in 69.16s)
+- `$env:QT_QPA_PLATFORM="offscreen"; ./build/bin/dltool.exe --smoke-test` → exit code 0
+
+**下一步**
+- 所有重构 Ticket (01 至 34) 已全部验收交付完毕，代码库处于健康、无技术债、全链路自动化验证覆盖的稳定交付态。
+
 ## 2026-09-09 — 完成独立安装与运行包验证
 
 **目标**

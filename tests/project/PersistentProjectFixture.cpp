@@ -37,11 +37,13 @@ QString cleanAbsolutePath(const QString &path)
 
 QString sourceRoot()
 {
-    const QString configured = qEnvironmentVariable("DLT_RUNTIME_ROOT").trimmed();
+    const QString configured = qEnvironmentVariable("DLT_SOURCE_DIR").trimmed();
     if (!configured.isEmpty())
         return cleanAbsolutePath(configured);
 #ifdef DLT_SOURCE_ROOT
     return cleanAbsolutePath(QStringLiteral(DLT_SOURCE_ROOT));
+#elif defined(DLT_SOURCE_DIR)
+    return cleanAbsolutePath(QStringLiteral(DLT_SOURCE_DIR));
 #else
     return cleanAbsolutePath(QDir::currentPath());
 #endif

@@ -534,17 +534,25 @@ QString writeAnomalibImageMask(const std::vector<std::vector<QPointF>> &polygons
         return {};
     }
 
-    const std::vector<uint8_t> mask = dltool::common::polygons2Mask(polygons, image_width, image_height);
-    if (mask.empty())
+    const QString file_name = anomalibMaskFileName(image_id);
+    const QString path      = QDir(masks_dir).filePath(file_name);
+
+    if (polygons.empty())
     {
-        if (err_msg != nullptr)
-            *err_msg = QString("写入 anomalib mask 失败: mask 为空, image_id=%1").arg(image_id);
+        if (QFile::exists(path))
+            QFile::remove(path);
         return {};
     }
 
-    const QString file_name = anomalibMaskFileName(image_id);
-    const QString path      = QDir(masks_dir).filePath(file_name);
-    QImage        image(mask.data(), image_width, image_height, image_width, QImage::Format_Grayscale8);
+    const std::vector<uint8_t> mask = dltool::common::polygons2Mask(polygons, image_width, image_height);
+    if (mask.empty() || std::none_of(mask.cbegin(), mask.cend(), [](uint8_t value) { return value != 0; }))
+    {
+        if (QFile::exists(path))
+            QFile::remove(path);
+        return {};
+    }
+
+    QImage image(mask.data(), image_width, image_height, image_width, QImage::Format_Grayscale8);
     if (image.isNull() || !image.save(path))
     {
         if (err_msg != nullptr)
@@ -1219,6 +1227,12 @@ protected:
                     *err_msg = mask_err;
                 return false;
             }
+        }
+        else
+        {
+            const QString path = QDir(ctx.masks_dir).filePath(anomalibMaskFileName(image.image_id));
+            if (QFile::exists(path))
+                QFile::remove(path);
         }
         return true;
     }

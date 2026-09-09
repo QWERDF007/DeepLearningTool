@@ -123,6 +123,9 @@ void ImageInstancesListModel::startSizePrefetch()
 {
     if (prefetch_running_.exchange(true))
         return;
+    if (prefetch_thread_.joinable())
+        prefetch_thread_.join();
+    prefetch_cancel_.store(false, std::memory_order_relaxed);
     std::vector<std::pair<int64_t, QString>> targets;
     targets.reserve(full_image_instances_.size());
     for (const auto &entry : full_image_instances_)
