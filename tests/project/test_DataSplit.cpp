@@ -372,6 +372,19 @@ private slots:
 
         dltool::database::ProjectDataBase::ImageSnapshot valid_snapshot;
         valid_snapshot.path = QStringLiteral("transaction-probe.png");
+        bool cancelled_after_insert = false;
+        QVERIFY(!db.copyImagesAtomic(test_dataset_id, {valid_snapshot, valid_snapshot}, copy_out, err,
+                                     [&]()
+                                     {
+                                         if (copy_out.image_ids.empty())
+                                             return false;
+                                         cancelled_after_insert = true;
+                                         return true;
+                                     }));
+        QVERIFY(cancelled_after_insert);
+        QVERIFY(copy_out.image_ids.empty());
+        QVERIFY(copy_out.label_ids.empty());
+        QCOMPARE(db.getImagesCount(test_dataset_id), count_before);
         target.images = {valid_snapshot};
         dltool::database::ProjectDataBase::DatasetSplitTarget invalid_target;
         invalid_target.name = QString();
