@@ -6,7 +6,6 @@
 
 <!-- 没有待裁决事项时保持本节为空。 -->
 
-- 2026-09-09：浮点 TIFF 解码前尺寸读取需要可部署的元数据读取库；是否允许接入 libtiff？当前 Qt imageformats 目录无 TIFF 插件 DLL，新增准入使两项真实 TIFF 测试失败，见下方预算修正条目。
 
 ---
 
@@ -42,6 +41,63 @@
 **干到哪了**：
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
+
+## 2026-09-09 — 补齐安装库独立 consumer 验收
+
+**目标**
+- 验证安装目录中的公共库可被外部 consumer 真实链接并运行。
+
+**当前状态**
+- 已将安装测试改为调用 `dltool::common::geometry::rectangleToPolygon()`，链接安装目录 `dltool_common`，并在隔离 PATH 下通过 consumer 的 CTest。
+- 保留 OpenCV TIFF 读取和简化缓存方案；规格与票据继续保持本地未跟踪。
+
+**验证证据**
+- 当前工作区 `cmake --build build --config Release --parallel 4` 已成功。随后启动普通回归 `ctest --test-dir build -C Release -L ordinary --output-on-failure`，会话 5484 仍在运行，已观察前 27/51 通过；恢复工作时先轮询，不重复启动。
+- TDD 红测：未链接 `dltool_common` 时真实产生 LNK2019。
+- `PYTEST_ADDOPTS=-k test_cmake_install_and_independent_consumer ctest --test-dir build -C Release -R '^dltool_tools_tests$' --output-on-failure` → 1/1 passed，163.87 秒。
+- `git diff --check` → 无空白错误。
+
+**下一步**
+- 继续按规格核对尚未有当前证据的验收项；不要仅凭历史 WORKLOG 宣称全部完成。
+
+## 2026-09-09 — 恢复 OpenCV 读取并简化图像缓存
+
+**目标**
+- 遵照用户明确决定：保留 OpenCV TIFF 读取，不做生成期预算或内存峰值测量。
+
+**当前状态**
+- 已移除 provider 尺寸预读、expected_cost 接口、在途字节预留和 libtiff CMake 接入；保留并发数量限制、同 key 在途去重、按实际字节数淘汰已完成图像。
+- 零缓存容量和超容量图像仍能生成返回，不保留结果；缩容仅清理已缓存图像，不干扰在途生成。
+- float/double TIFF 热力图、大图缓存回归已恢复。压力测试允许淘汰后的重新生成，在途去重由独立同步测试断言；修正前组合测试曾有一次间歇失败，修正后连续五轮及最终组合通过。
+- 本地 REFACTOR_SPEC.md、Ticket 23 已同步用户的新验收范围，仍未跟踪。移除了 libtiff 待裁决项；未改 .gitignore 或依赖配置，未提交。
+
+**验证证据**
+- TDD：修改后两个新契约测试先失败，再实现通过。
+- `cmake --build build --config Release --target dltool dltool_model_evaluation_tests dltool_model_dataset_tests dltool_model_evaluation_behavior_tests tst_dltool_model_qml` → 成功；最后修改压力断言后单独重建 behavior 目标成功。
+- `ctest --test-dir build -C Release -R '^dltool_model_evaluation_behavior_tests$' --repeat until-fail:5 --output-on-failure` → 五轮通过。
+- `ctest --test-dir build -C Release -R '^(dltool_model_evaluation_tests|dltool_model_dataset_tests|dltool_model_evaluation_behavior_tests|tst_dltool_model_qml.*)$' --output-on-failure` → 24/24 passed，38.62 秒。
+- `git diff --check` → 无空白错误；未执行峰值测量。本轮未重跑普通全量、安装包和 PatchCore full，不据此宣称整体规格全部验收。
+
+**下一步**
+- 如继续整体验收，按更新后的规格运行普通全量及必要项目/安装验证；不要重新引入已被用户取消的生成预算。
+
+## 2026-09-09 — TIFF 元数据接入尝试中断
+
+**目标**
+- 继续修正评估准入与回归，在解码前获取浮点 TIFF 尺寸。
+
+**当前状态**
+- 未提交改动：新增 `cmake/ConfigTIFF.cmake`，根及 model CMake 接入静态 libtiff，provider 尝试用 libtiff 读取尺寸。原 OpenCV TIFF 解码链路未替换。
+- 用户中断并质疑额外依赖；暂停实施，需重新审视准入设计，不继续扩展依赖。
+- 构建已结束且失败，当前新增依赖尚未配置成功；本轮没有新的 CTest 通过证据。
+
+**验证证据**
+- `git ls-remote https://gitlab.com/libtiff/libtiff.git refs/tags/v4.7.1` → 获得固定标签引用。
+- `cmake --build build --config Release --target dltool_model_dataset_tests` → FetchContent 克隆后，Git 子模块步骤报 `git-sh-setup: file not found`，CMake 配置失败（退出码 1）。会话 44877 已终止，无需继续等待。
+- 本地规格和票据仍未跟踪；未更改依赖配置或 .gitignore。
+
+**下一步**
+- 先与用户确认简化预算与已有 OpenCV 读取链路的方案，再决定撤销本轮 libtiff 尝试或完成依赖接入；不要把解码前元数据需求误述为原 TIFF 解码能力缺失。
 
 ## 2026-09-09 — 提交当前评估预算与验证改动
 

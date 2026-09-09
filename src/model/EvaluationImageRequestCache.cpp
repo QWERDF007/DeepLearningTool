@@ -9,42 +9,31 @@ struct EvaluationImageRequestCache::PendingRequest
 {
     QWaitCondition condition;
     QImage         image;
-    int            reserved_cost{0};
     bool           completed{false};
 };
 
 EvaluationImageRequestCache::EvaluationImageRequestCache(const int max_cost, const int max_pending)
-    : max_cost_(std::max(0, max_cost))
-    , cache_(std::max(0, max_cost))
+    : cache_(std::max(0, max_cost))
     , max_pending_(std::max(0, max_pending))
 {
-}
-
-int EvaluationImageRequestCache::estimatedPendingCost() const
-{
-    if (max_cost_ <= 0)
-        return 0;
-    const int effective_pending = std::max(1, max_pending_);
-    return std::max(1, max_cost_ / effective_pending);
 }
 
 int EvaluationImageRequestCache::maxCost() const
 {
     QMutexLocker locker(&mutex_);
-    return max_cost_;
+    return cache_.maxCost();
 }
 
 void EvaluationImageRequestCache::setMaxCost(const int max_cost)
 {
     QMutexLocker locker(&mutex_);
-    max_cost_ = std::max(0, max_cost);
-    cache_.setMaxCost(std::max(0, max_cost_ - pending_cost_));
+    cache_.setMaxCost(std::max(0, max_cost));
 }
 
 int EvaluationImageRequestCache::totalCost() const
 {
     QMutexLocker locker(&mutex_);
-    return cache_.totalCost() + pending_cost_;
+    return cache_.totalCost();
 }
 
 int EvaluationImageRequestCache::maxPending() const
@@ -95,7 +84,7 @@ int EvaluationImageRequestCache::imageCost(const QImage &image)
     return static_cast<int>(std::min<qsizetype>(bytes, std::numeric_limits<int>::max()));
 }
 
-QImage EvaluationImageRequestCache::getOrCreate(const QString &key, const Loader &loader, const int expected_cost)
+QImage EvaluationImageRequestCache::getOrCreate(const QString &key, const Loader &loader)
 {
     if (key.isEmpty() || !loader)
         return {};
@@ -122,23 +111,7 @@ QImage EvaluationImageRequestCache::getOrCreate(const QString &key, const Loader
             if (max_pending_ > 0 && static_cast<int>(pending_.size()) >= max_pending_)
                 return {};
 
-            const int reserved = expected_cost > 0 ? expected_cost : estimatedPendingCost();
-
-            if (max_cost_ <= 0 || reserved > max_cost_ - pending_cost_)
-                return {};
-
-            if (max_cost_ > 0)
-            {
-                // 动态修剪已缓存对象，确保已缓存内存 + 进行中预留总和严格在 max_cost_ 预算内
-                const int allowed_cache = std::max(0, max_cost_ - pending_cost_ - reserved);
-                cache_.setMaxCost(allowed_cache);
-                if (cache_.totalCost() + pending_cost_ + reserved > max_cost_)
-                    return {};
-            }
-
-            pending                = std::make_shared<PendingRequest>();
-            pending->reserved_cost = reserved;
-            pending_cost_         += reserved;
+            pending = std::make_shared<PendingRequest>();
 
             pending_[key]   = pending;
             owns_generation = true;
@@ -162,8 +135,6 @@ QImage EvaluationImageRequestCache::getOrCreate(const QString &key, const Loader
     catch (...)
     {
         QMutexLocker locker(&mutex_);
-        pending_cost_ = std::max(0, pending_cost_ - pending->reserved_cost);
-        cache_.setMaxCost(std::max(0, max_cost_ - pending_cost_));
         pending->completed = true;
         pending_.remove(key);
         pending->condition.wakeAll();
@@ -172,17 +143,8 @@ QImage EvaluationImageRequestCache::getOrCreate(const QString &key, const Loader
 
     {
         QMutexLocker locker(&mutex_);
-        pending_cost_ = std::max(0, pending_cost_ - pending->reserved_cost);
-        const int actual_cost = imageCost(image);
-        if (!image.isNull() && max_cost_ > 0)
-        {
-            // 仅当图像真实大小能在剩余预算内容纳时才存入 cache_，超预算大图不入 cache_ 避免破坏总成本约束
-            if (actual_cost <= max_cost_ - pending_cost_)
-            {
-                cache_.setMaxCost(std::max(0, max_cost_ - pending_cost_));
-                cache_.insert(key, new QImage(image), actual_cost);
-            }
-        }
+        if (!image.isNull() && image.sizeInBytes() <= cache_.maxCost())
+            cache_.insert(key, new QImage(image), imageCost(image));
         pending->image     = image;
         pending->completed = true;
         pending_.remove(key);
