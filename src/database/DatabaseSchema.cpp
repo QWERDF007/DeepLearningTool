@@ -476,6 +476,9 @@ bool validateTable(sqlite3 *db, const TableSpec &spec, QString *err_msg)
         std::vector<IdxMeta> idx_metas;
         while (sqlite3_step(statement) == SQLITE_ROW)
         {
+            // A partial index does not enforce uniqueness for every table row.
+            if (sqlite3_column_int(statement, 4) != 0)
+                continue;
             const char *idx_n = reinterpret_cast<const char *>(sqlite3_column_text(statement, 1));
             int is_uniq = sqlite3_column_int(statement, 2);
             const char *orig = reinterpret_cast<const char *>(sqlite3_column_text(statement, 3));

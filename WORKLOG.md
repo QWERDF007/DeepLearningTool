@@ -44,6 +44,55 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 修复部分索引冒充全表唯一约束
+
+**目标**
+- Ticket 08：准确验证 DDL 的全表 UNIQUE 约束。
+
+**当前状态**
+- 现有真实项目库缺 UNIQUE 用例增加 `models(uuid) WHERE id > 100` 部分唯一索引；生产校验读取 PRAGMA index_list 的 partial 标志，拒绝将其视为全表唯一约束。
+- 尚未完成全部 schema 属性审查及其他待确认修复。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_database_database_schema_tests --parallel 4` → 成功。
+- `ctest --test-dir build -C Release -R '^dltool_database_database_schema_tests$' --output-on-failure` → 新夹具先失败，修复后 1/1 passed，0.19 秒。
+
+**下一步**
+- 继续核对索引排序/比较规则及外键完整语义，勿将本次局部通过作为整体验收完成。
+
+## 2026-09-09 — 核对 schema 迁移失败测试
+
+**目标**
+- 核对 Ticket 08 的真实迁移回滚覆盖。
+
+**当前状态**
+- 已确认项目库迁移测试通过 ProjectDataBase::openProject 进入生产迁移，在创建表后修改既有记录并注入失败；断言版本仍为 0、旧数据不变、新表不存在；去掉注入后重开成功。模型库另有对应测试。
+- 本项不是单纯模拟 success 标志；生产事务路径覆盖失败回滚。schema 完整比较的其他细节尚未全部复核，不据此宣称整票完成。
+
+**验证证据**
+- 读取 test_DatabaseSchema.cpp:400 起两项真实数据库测试、DatabaseSchema.cpp:594 起事务路径；此前本轮普通 CTest 51/51 中数据库测试通过。
+
+**下一步**
+- 保留现有迁移测试，继续核对 schema 比较与剩余票据；已发现的导出、数据并发与项目关闭问题仍未解决。
+
+## 2026-09-09 — 审查导出发布与回滚安全
+
+**目标**
+- 核对 Ticket 06/07 的覆盖失败保留原目标要求。
+
+**当前状态**
+- 发现 SafeExportScope::publish 回滚分支在恢复 rename 失败后忽略 copyDirectoryRecursively 返回值，随后无条件删除 backup 并声称已恢复。恢复失败时可能删除最后完整备份，不满足验收。
+- test_DataIOExport.cpp:148 仅通过缺失源图片触发发布前失败，未验证发布失败加恢复失败；四种导出器均调用该 publish。
+- 尚未修改生产代码，需在公开导出/发布边界补故障注入测试再修复；不使用用户目录做失败测试。
+- 复用调查：IModelStorageAdapter 包含模型数据库/权重/日志目录语义，不适合数据层反向依赖。SafeExportScope 已是公开发布接口；构造函数的系统临时目录兜底导致跨卷复制分支，复制还排除隐藏项，不适合作为已有目标的安全备份。
+
+**验证证据**
+- 阅读 DataIO.cpp:1105—1190、test_DataIOExport.cpp:148—193；检索 scope.publish 四个生产调用入口。
+
+**下一步**
+- 确保恢复失败保留备份和真实错误，禁止假报已恢复；补发布及回滚失败验证。并行测试边界和项目关闭方案仍待确认。
+- 已提出简化方案：保留 SafeExportScope 入口，强制同父目录暂存，移除跨卷复制兜底，发布/恢复失败保留可恢复备份并准确报错。等待方案确认后按既有公开入口补测试实施。
+
 ## 2026-09-09 — 修复进度任务切换属性通知
 
 **目标**
