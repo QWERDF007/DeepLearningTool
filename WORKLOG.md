@@ -41,6 +41,30 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 让数据树增量刷新并保留选择
+
+**目标**
+- 交付 Ticket 31：让数据树增量刷新并保留选择 (`docs/refactor-tickets/31-tree-projection.md`)。
+- 名称颜色等元数据变化局部通知，不全树 reset。
+- 结构变化按业务批次合并，按稳定 ID 保留选择，仅裁剪实际失效项。
+- 验证角色过滤、批量更新及 UI 响应，不用高频日志掩盖性能。
+- 遵循 TDD，先编写失败测试用例，再以最简长期架构实现；Release 构建与 CTest 通过。
+
+**当前状态**
+- 已完成：在 `tests/data/test_DataSelectionTreeModel.cpp` 中编写 5 组 TDD 测试，覆盖元数据变化局部 `dataChanged`（无 `modelReset`）、无关角色变更过滤、增量行列增删按稳定 ID 保留选择、高频批量更新合并、以及真实 `ProjectDataBase` + `DataManager` 端到端集成。
+- 已完成：在 `DataSelectionTreeModel` 中区分元数据变更与结构变更。元数据（名称、颜色、DisplayRole）变化直接定位到具体树节点就地更新并定向发送 `dataChanged` 信号，杜绝全树 reset 破坏滚动与展开状态。
+- 已完成：实现结构变更差量同步 `syncTree`（支持扁平树 `syncFlatTree` 与数据集-类别树 `syncDatasetClassTree`），通过 `scheduleTreeSync` 在事件循环内合并批量高频信号，在读取查询前通过 `ensureTreeSynced` 刷新，采用 LIS/差量算法以 `beginInsertRows`/`endInsertRows` 与 `beginRemoveRows`/`endRemoveRows` 增量更新。
+- 已完成：实现 `pruneMissingSelectedIds` 仅裁剪实际已不存在的无效 ID，已有有效选择（扁平 ID、数据集 ID、数据集-类别作用域）在增删过程中完整保留。
+- 已完成：对无关角色的 `dataChanged` 信号在入口直接过滤，避免无效计算与高频日志。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_data_data_selection_tree_model_tests` → 编译链接成功（0 error）
+- `ctest --test-dir build --output-on-failure -R dltool_data_data_selection_tree_model_tests -C Release` → 100% 测试通过（1/1 包含 5 组全量断言，耗时 0.07s）
+- `ctest --test-dir build --output-on-failure -L "data|feature" -C Release` → 100% 测试通过（16/16 全部通过，耗时 9.35s）
+
+**下一步**
+- 开始执行 Ticket 32：特征抽取编排器收敛 (`docs/refactor-tickets/32-feature-orchestrator.md`)。
+
 ## 2026-09-09 — 让聚类写回使用固定输入并准确结束
 
 **目标**

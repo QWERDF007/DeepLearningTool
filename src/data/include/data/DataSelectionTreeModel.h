@@ -118,11 +118,23 @@ signals:
 
 private:
     struct Node;
+    struct TargetItem;
     using LabelClassKey = std::pair<qint64, qint64>;
 
     Node       *nodeFromIndex(const QModelIndex &index) const;
     Node       *rootNode() const;
     QModelIndex indexForNode(const Node *node) const;
+
+    void scheduleTreeSync();
+    void ensureTreeSynced() const;
+    void syncTree();
+    void syncFlatTree();
+    void syncDatasetClassTree();
+    void reconcileChildren(Node *parent_node, const QModelIndex &parent_index,
+                           const std::vector<TargetItem> &target_items);
+    bool isMetadataOnlyChange(QAbstractItemModel *model, const QList<int> &roles) const;
+    void handleMetadataChanged(QAbstractItemModel *model, const QModelIndex &topLeft,
+                               const QModelIndex &bottomRight, const QList<int> &roles);
 
     void rebuildTree();
     void rebuildFlatTree();
@@ -152,9 +164,10 @@ private:
     int name_role_{Qt::DisplayRole};
     int color_role_{-1};
 
-    std::set<qint64>       selected_flat_ids_;
-    std::set<qint64>       selected_dataset_ids_;
+    std::set<qint64>        selected_flat_ids_;
+    std::set<qint64>        selected_dataset_ids_;
     std::set<LabelClassKey> selected_label_classes_;
+    mutable bool            tree_sync_pending_{false};
 };
 
 } // namespace dltool::data
