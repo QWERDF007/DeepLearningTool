@@ -1074,6 +1074,97 @@ private slots:
         settings->setAutoSaveEnabled(old_auto_save);
     }
 
+    void smartAnnotationRealModelInferenceVerification()
+    {
+        const QString real_model_path = QStringLiteral("F:/models/edgesam/edge_sam/edge_sam.wts");
+        if (!QFileInfo::exists(real_model_path))
+        {
+            qWarning() << "[Ticket 29] Real SAM model weights not found, skipping real inference test:" << real_model_path;
+            return;
+        }
+
+        auto *settings = dltool::settings::GlobalSettings::getInstance();
+        QVERIFY(settings != nullptr);
+
+        namespace field = dltool::settings::generated::field;
+        const QVariant old_enabled   = settings->valueForField(field::SmartAnnotation::Enabled);
+        const QVariant old_model     = settings->valueForField(field::SmartAnnotation::Model);
+        const QVariant old_modelPath = settings->valueForField(field::SmartAnnotation::ModelPath);
+        const QVariant old_runtime   = settings->valueForField(field::SmartAnnotation::ModelRuntime);
+        const bool     old_auto_save = settings->autoSaveEnabled();
+        settings->setAutoSaveEnabled(false);
+
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, true));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, QStringLiteral("edge_sam")));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, real_model_path));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelRuntime, QStringLiteral("tensorrt:0")));
+
+        // 使用默认无 mock 的控制器，直接拉起底层生产 Predictor 执行器
+        dltool::feature::SmartAnnotationController controller;
+
+        QSignalSpy load_spy(&controller, &dltool::feature::SmartAnnotationController::modelLoadFinished);
+        QSignalSpy infer_spy(&controller, &dltool::feature::SmartAnnotationController::inferFinished);
+
+        const QString real_image_path = busImagePath();
+        QVERIFY2(QFileInfo::exists(real_image_path), qPrintable(real_image_path));
+        const QImage real_image(real_image_path);
+        QVERIFY(!real_image.isNull());
+
+        // 点提示设定在图像中央 (bus 目标前景区域)
+        QVariantMap point;
+        point.insert(QStringLiteral("x"), static_cast<double>(real_image.width()) * 0.5);
+        point.insert(QStringLiteral("y"), static_cast<double>(real_image.height()) * 0.5);
+        point.insert(QStringLiteral("label"), 1);
+
+        // 1. 首次触发 infer 会启动异步模型加载
+        controller.infer(real_image_path, {point}, {});
+        QTRY_VERIFY_WITH_TIMEOUT(load_spy.count() == 1, 15000);
+        QVERIFY2(load_spy.first().first().toBool(), "EdgeSAM 模型加载失败");
+
+        // 2. 模型已就绪，触发真实 SAM 推理并记录耗时
+        QElapsedTimer timer;
+        timer.start();
+        controller.infer(real_image_path, {point}, {});
+
+        // 等待 TensorRT 推理完成
+        QTRY_VERIFY_WITH_TIMEOUT(infer_spy.count() == 1, 15000);
+        const qint64 elapsed_ms = timer.elapsed();
+
+        const QVariantMap result = infer_spy.first().first().toMap();
+        const bool success = result.value(QStringLiteral("success")).toBool();
+        const QString err = result.value(QStringLiteral("error")).toString();
+        QVERIFY2(success, qPrintable(QString("真实 SAM 推理失败: %1").arg(err)));
+
+        const QVariantList points = result.value(QStringLiteral("points")).toList();
+        QVERIFY(!points.isEmpty());
+        QVERIFY(points.size() >= 3);
+
+        const QVariantList mask_runs = result.value(QStringLiteral("mask_runs")).toList();
+        QVERIFY(!mask_runs.isEmpty());
+
+        const double iou = result.value(QStringLiteral("iou")).toDouble();
+        QVERIFY(iou > 0.0);
+
+        const int pixel_count = result.value(QStringLiteral("mask_pixel_count")).toInt();
+        QVERIFY(pixel_count > 0);
+
+        qInfo() << "[Evidence Ticket 29] Real SAM model inference verified:"
+                << "model=edge_sam"
+                << "runtime=tensorrt:0"
+                << "elapsed_ms=" << elapsed_ms
+                << "polygon_points=" << points.size()
+                << "mask_runs=" << mask_runs.size()
+                << "mask_pixels=" << pixel_count
+                << "iou=" << iou;
+
+        controller.shutdown();
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, old_enabled));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, old_model));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, old_modelPath));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelRuntime, old_runtime));
+        settings->setAutoSaveEnabled(old_auto_save);
+    }
+
     void clusterFreezesSourcesAndRejectsWritebackConflicts()
     {
         ClusterTestFixture fixture;

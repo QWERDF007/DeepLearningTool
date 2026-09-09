@@ -502,5 +502,51 @@ def test_desktop_smoke_test_with_smoke_test_flag() -> None:
     assert proc.returncode == 0, f"App smoke test failed with code {proc.returncode}: {proc.stderr}"
 
 
+def test_isolated_installed_package_desktop_smoke_test() -> None:
+    """Verify dltool packaged into an isolated directory starts and exits cleanly without build tree in PATH."""
+    install_candidates = [
+        ROOT / "install" / "test_isolated",
+        ROOT / "install" / "release",
+        ROOT / "install",
+    ]
+    package_dir: Path | None = None
+    exe_name = "dltool.exe" if os.name == "nt" else "dltool"
+    for candidate in install_candidates:
+        if (candidate / exe_name).is_file() and (candidate / "Qt6Core.dll").is_file():
+            package_dir = candidate
+            break
+
+    if package_dir is None:
+        pytest.skip("Packaged runtime not found in install directories; run tools/package_app.py first")
+
+    app_exe = package_dir / exe_name
+
+    # Strictly isolate PATH: only the isolated package directory and Windows System32
+    env = os.environ.copy()
+    if os.name == "nt":
+        sys32 = os.environ.get("SystemRoot", r"C:\Windows") + r"\System32"
+        sys_root = os.environ.get("SystemRoot", r"C:\Windows")
+        env["PATH"] = f"{package_dir};{sys32};{sys_root}"
+        env.pop("QT_QPA_PLATFORM", None)
+    else:
+        env["PATH"] = f"{package_dir}:/usr/bin:/bin"
+        env["LD_LIBRARY_PATH"] = f"{package_dir}:{package_dir / 'lib'}"
+        env["QT_QPA_PLATFORM"] = "offscreen"
+
+    env["QML_DISABLE_DISK_CACHE"] = "1"
+
+    proc = subprocess.run(
+        [str(app_exe), "--smoke-test"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert proc.returncode == 0, (
+        f"Isolated package smoke test failed with code {proc.returncode}: {proc.stderr}\n"
+        f"Stdout: {proc.stdout}"
+    )
+
+
 
 
