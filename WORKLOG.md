@@ -41,6 +41,31 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 让聚类写回使用固定输入并准确结束
+
+**目标**
+- 交付 Ticket 30：让聚类写回使用固定输入并准确结束。
+- 启动时冻结来源与目标，写回前校验冲突，不悄悄回读新选择。
+- 单库写入事务完成，跨文件失败明确部分完成或恢复结果。
+- 创建失败、后续写回失败、取消及旧回调均可验证，不出现无说明的残留数据集。
+- 遵循 TDD，基于真实下一层依赖与公开入口建立验证，通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `ProjectDataBase` 中实现单库单事务原子聚类操作 `applyClusterAtomic`，内部使用 `sqlpp::start_transaction`。在创建目标数据集与移动/复制图像及标注、Tags 的整个流程中，一旦发生错误或收到取消请求，执行完整事务回滚，杜绝孤立、残留的数据集与脏数据。
+- 已完成：在 `DataManager` 中实现 `writebackClusterAsync`，封装原子聚类写回操作。写回成功后在 GUI 主线程原子批量更新 `datasets_`、`image_source_` 与 `label_source_`，且安全处理全局过滤器刷新。
+- 已完成：在 `ImageClusterController` 中冻结输入数据集与图像映射（`frozen_source_dataset_names`、`frozen_image_source_dataset`、`frozen_items`），写回前主动校验冲突（比对当前图像归属与冻结归属，图像被移动或删除时明确报错中止），彻底移除旧的多次动态回读与逐步分散写回逻辑。
+- 已完成：为 `ImageClusterController` 引入 `ClusterExecutor` 注入缝，支持在测试环境中模拟复杂聚类响应、进度反馈、异步挂起与冲突场景。
+- 已完成：重写 `finishCluster`，直接对接 `writebackClusterAsync`，统一收敛聚类结果报告、进度管理器通知与错误呈现。
+- 已完成：在 `test_FeatureLifecycle.cpp` 中编写 5 组针对性测试（冻结来源与冲突拒绝、单库单事务原子写入失败零残留、取消零残留、关闭状态下迟到旧回调丢弃、真实资源 `bus.jpg` 端到端聚类与写回）。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_feature_lifecycle_tests` → 编译链接成功（0 warning/error）
+- `ctest --test-dir build --output-on-failure -R dltool_feature_lifecycle_tests -C Release` → 100% 测试通过（18/18 用例全部通过，耗时 2.25s）
+- `ctest --test-dir build --output-on-failure -L "feature|data" -C Release` → 16/16 测试全部通过，耗时 9.91s
+
+**下一步**
+- 开始执行 Ticket 31：树投影与选择收敛到单一源 (`docs/refactor-tickets/31-tree-projection.md`)。
+
 ## 2026-09-09 — 让智能标注推理异步且可安全关闭
 
 **目标**

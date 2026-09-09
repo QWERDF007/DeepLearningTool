@@ -10,6 +10,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <functional>
+#include <map>
 #include <utility>
 #include <vector>
 
@@ -154,6 +155,31 @@ public:
                           const int64_t target_dataset_id,
                           QString &err_msg,
                           const std::function<bool()> &is_cancelled = nullptr) const;
+
+    struct ClusterTarget
+    {
+        QString target_dataset_name;
+        std::vector<int64_t> move_image_ids;
+        std::vector<ImageSnapshot> copy_images;
+    };
+
+    struct AtomicClusterOutput
+    {
+        std::map<QString, int64_t> dataset_ids_by_name;
+        std::vector<int64_t> created_dataset_ids;
+        size_t moved_image_count{0};
+        size_t copied_image_count{0};
+        std::vector<int64_t> new_image_ids;
+        std::vector<int64_t> new_label_ids;
+    };
+
+    /**
+     * @brief 单库单事务原子创建聚类目标数据集并写入移动或复制的图像、标注与 Tag。
+     */
+    bool applyClusterAtomic(const std::vector<ClusterTarget> &targets,
+                            AtomicClusterOutput &output,
+                            QString &err_msg,
+                            const std::function<bool()> &is_cancelled = nullptr) const;
 
     /**
      * @brief 初始化项目数据库, 创建必要的表结构并插入项目基本信息。

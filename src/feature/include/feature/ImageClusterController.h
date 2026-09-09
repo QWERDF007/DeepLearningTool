@@ -41,8 +41,79 @@ class FEATURE_API ImageClusterController : public QObject
     Q_PROPERTY(QString lastSummary READ lastSummary NOTIFY resultsChanged FINAL)
 
 public:
+    enum class ImageClusterApplyMode
+    {
+        Move = 0,
+        Copy = 1,
+    };
+
+    struct ImageClusterAssignment
+    {
+        int64_t image_id{0};
+        int64_t cluster_id{-1};
+        double  probability{0.0};
+    };
+
+    struct FrozenImageItem
+    {
+        int64_t image_id{0};
+        int64_t source_dataset_id{-1};
+        QString source_dataset_name;
+        std::filesystem::path image_path;
+    };
+
+    struct ClusterRequest
+    {
+        uint64_t request_id{0};
+        QString weights_file;
+        bool    include_noise{false};
+        ImageClusterApplyMode apply_mode{ImageClusterApplyMode::Move};
+
+        irt::features::ImageClusterConfig config;
+        std::vector<irt::features::ImageClusterItem> items;
+        std::vector<FrozenImageItem> frozen_items;
+        std::map<int64_t, QString> frozen_source_dataset_names;
+        std::map<int64_t, int64_t> frozen_image_source_dataset;
+
+        std::chrono::steady_clock::time_point started_at;
+        std::shared_ptr<std::atomic_bool> cancellation_token;
+
+        bool cancellationRequested() const noexcept
+        {
+            return cancellation_token != nullptr && cancellation_token->load(std::memory_order_relaxed);
+        }
+    };
+
+    struct ClusterResponse
+    {
+        uint64_t request_id{0};
+        bool    success{false};
+        QString error;
+        QString summary;
+        qint64  elapsed_ms{0};
+
+        bool    include_noise{false};
+        ImageClusterApplyMode apply_mode{ImageClusterApplyMode::Move};
+        int     feature_dim{0};
+        int64_t cluster_count{0};
+        int64_t noise_count{0};
+
+        std::vector<ImageClusterAssignment> assignments;
+        std::vector<FrozenImageItem> frozen_items;
+        std::map<int64_t, QString> frozen_source_dataset_names;
+        std::map<int64_t, int64_t> frozen_image_source_dataset;
+    };
+
+    using ClusterExecutor = std::function<void(const ClusterRequest &request, ClusterResponse &response,
+                                               const irt::features::ImageClusterProgressCallback &progress)>;
+
+public:
     explicit ImageClusterController(ImageClusterDataProvider *data_provider,
                                     dltool::data::DataManager *data_manager,
+                                    QObject *parent = nullptr);
+    explicit ImageClusterController(ImageClusterDataProvider *data_provider,
+                                    dltool::data::DataManager *data_manager,
+                                    ClusterExecutor executor,
                                     QObject *parent = nullptr);
     ~ImageClusterController() override;
 
@@ -72,81 +143,12 @@ signals:
     void buildProgressChanged(int processedCount, int totalCount);
 
 private:
-    enum class ImageClusterApplyMode
-    {
-        Move = 0,
-        Copy = 1,
-    };
-
-    struct ImageClusterAssignment
-    {
-        int64_t image_id{0};
-        int64_t cluster_id{-1};
-        double  probability{0.0};
-    };
-
-    struct ImageClusterApplyResult
-    {
-        size_t moved_image_count{0};
-        size_t copied_image_count{0};
-        size_t target_dataset_count{0};
-        size_t skipped_noise_count{0};
-    };
-
-    struct ClusterApplyPlan
-    {
-        std::map<int64_t, std::vector<int64_t>> image_ids_by_target_dataset;
-        size_t                                  skipped_noise_count{0};
-    };
-
-    struct ClusterRequest
-    {
-        QString weights_file;
-        bool    include_noise{false};
-        ImageClusterApplyMode apply_mode{ImageClusterApplyMode::Move};
-
-        irt::features::ImageClusterConfig config;
-        std::vector<irt::features::ImageClusterItem> items;
-
-        std::chrono::steady_clock::time_point started_at;
-        std::shared_ptr<std::atomic_bool> cancellation_token;
-
-        bool cancellationRequested() const noexcept
-        {
-            return cancellation_token != nullptr && cancellation_token->load(std::memory_order_relaxed);
-        }
-    };
-
-    struct ClusterResponse
-    {
-        bool    success{false};
-        QString error;
-        QString summary;
-        qint64  elapsed_ms{0};
-
-        bool    include_noise{false};
-        ImageClusterApplyMode apply_mode{ImageClusterApplyMode::Move};
-        int     feature_dim{0};
-        int64_t cluster_count{0};
-        int64_t noise_count{0};
-
-        std::vector<ImageClusterAssignment> assignments;
-    };
-
     void buildClusterRequest(ClusterRequest &request) const;
     bool validateClusterRequest(const ClusterRequest &request);
     QString clusterRequestValidationError(const ClusterRequest &request) const;
     void collectClusterItems(ClusterRequest &request, const std::map<int64_t, std::set<int64_t>> &scope);
     static void executeCluster(const ClusterRequest &request, ClusterResponse &response,
                                const irt::features::ImageClusterProgressCallback &progress);
-    bool buildClusterApplyPlan(const std::vector<ImageClusterAssignment> &assignments,
-                               bool include_noise,
-                               ClusterApplyPlan &plan,
-                               QString &err_msg);
-    bool ensureClusterTargetDataset(const QString &target_dataset_name, int64_t &dataset_id, QString &err_msg);
-    void applyClusterPlan(const ClusterResponse &response, ClusterApplyPlan plan);
-    void completeClusterApply(const ClusterResponse &response, const ClusterApplyPlan &plan,
-                              size_t applied_image_count, const QString &error);
 
     void resetForNewCluster();
     void startProgress(const ClusterRequest &request);
@@ -162,6 +164,7 @@ private:
 
     ImageClusterDataProvider *data_provider_{nullptr};
     QPointer<dltool::data::DataManager> data_manager_;
+    ClusterExecutor custom_executor_{nullptr};
 
     bool    enabled_{true};
     bool    running_{false};
@@ -171,6 +174,7 @@ private:
     QString current_cluster_task_id_;
     QPointer<::QThread> worker_thread_;
     std::shared_ptr<std::atomic_bool> cancellation_token_;
+    std::atomic<uint64_t> current_request_id_{0};
     std::atomic_bool    shutting_down_{false};
 };
 

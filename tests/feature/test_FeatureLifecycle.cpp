@@ -1,5 +1,7 @@
 #include "feature/FeatureManager.h"
 #include "feature/FeatureDataProvider.h"
+#include "feature/ImageClusterController.h"
+#include "feature/ImageClusterDataProvider.h"
 #include "feature/ImageSearchController.h"
 #include "feature/RoiClusterController.h"
 #include "feature/SearchControllerBase.h"
@@ -17,7 +19,10 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
+#include <QImage>
 #include <QTemporaryDir>
+#include <QTemporaryFile>
 #include <QTest>
 #include <QSignalSpy>
 #include <QThread>
@@ -281,6 +286,120 @@ private:
     }
 
     dltool::feature::FeatureDataProvider *provider_{nullptr};
+};
+
+struct ClusterTestFixture
+{
+    QTemporaryDir dir;
+    QString project_path;
+    std::unique_ptr<dltool::database::ProjectDataBase> database;
+    std::unique_ptr<dltool::data::DataManager> data_manager;
+    int64_t dataset_id{-1};
+    std::vector<int64_t> image_ids;
+    std::vector<QString> image_paths;
+
+    ~ClusterTestFixture()
+    {
+        if (data_manager)
+            data_manager->shutdown();
+        data_manager.reset();
+        database.reset();
+    }
+
+    bool init(int image_count = 3)
+    {
+        if (!dir.isValid())
+            return false;
+        project_path = QDir(dir.path()).filePath(QStringLiteral("cluster_test.dlpro"));
+        database = std::make_unique<dltool::database::ProjectDataBase>(project_path);
+        QString err;
+        const qint64 now = QDateTime::currentSecsSinceEpoch();
+        if (!database->initProject(QStringLiteral("ClusterTest"),
+                                  static_cast<int>(dltool::core::DeepLearningMethod::AnomalyDetection),
+                                  project_path, QStringLiteral("desc"), dir.path(), now, now, err))
+            return false;
+
+        if (!database->addDataset(QStringLiteral("train_set"), dataset_id, err))
+            return false;
+
+        const QString real_bus = QStringLiteral("F:/Projects/DeepLearningTool/3rdparty/EasyTrain/src/python/ultralytics/ultralytics/ultralytics/assets/bus.jpg");
+        for (int i = 0; i < image_count; ++i)
+        {
+            const QString img_path = QDir(dir.path()).filePath(QString("bus_%1.jpg").arg(i));
+            if (QFileInfo::exists(real_bus))
+            {
+                QFile::copy(real_bus, img_path);
+            }
+            else
+            {
+                QImage img(64, 64, QImage::Format_RGB888);
+                img.fill(Qt::blue);
+                img.save(img_path);
+            }
+            image_paths.push_back(img_path);
+        }
+
+        if (!database->addImages(dataset_id, image_paths, image_ids, err) || image_ids.size() != static_cast<size_t>(image_count))
+            return false;
+
+        data_manager = std::make_unique<dltool::data::DataManager>(
+            static_cast<int>(dltool::core::DeepLearningMethod::AnomalyDetection), database.get(), dir.path());
+        data_manager->waitForOperations();
+        return true;
+    }
+};
+
+struct ClusterSettingsScope
+{
+    dltool::settings::GlobalSettings *settings{nullptr};
+    QVariant old_enabled;
+    QVariant old_model;
+    QVariant old_modelPath;
+    QVariant old_feature;
+    QVariant old_applyMode;
+    QVariant old_includeNoise;
+    bool old_autoSave{false};
+    QTemporaryFile weights_file;
+
+    ClusterSettingsScope()
+    {
+        settings = dltool::settings::GlobalSettings::getInstance();
+        if (settings)
+        {
+            old_autoSave = settings->autoSaveEnabled();
+            settings->setAutoSaveEnabled(false);
+            namespace field = dltool::settings::generated::field;
+            old_enabled = settings->valueForField(field::ImageCluster::Enabled);
+            old_model = settings->valueForField(field::ImageCluster::Model);
+            old_modelPath = settings->valueForField(field::ImageCluster::ModelPath);
+            old_feature = settings->valueForField(field::ImageCluster::FeatureName);
+            old_applyMode = settings->valueForField(field::ImageCluster::ApplyMode);
+            old_includeNoise = settings->valueForField(field::ImageCluster::IncludeNoise);
+
+            weights_file.open();
+            settings->setFieldValue(field::ImageCluster::Enabled, true);
+            settings->setFieldValue(field::ImageCluster::Model, QStringLiteral("test_cluster_model"));
+            settings->setFieldValue(field::ImageCluster::ModelPath, weights_file.fileName());
+            settings->setFieldValue(field::ImageCluster::FeatureName, QStringLiteral("test_feature"));
+            settings->setFieldValue(field::ImageCluster::ApplyMode, 0); // Move
+            settings->setFieldValue(field::ImageCluster::IncludeNoise, false);
+        }
+    }
+
+    ~ClusterSettingsScope()
+    {
+        if (settings)
+        {
+            namespace field = dltool::settings::generated::field;
+            settings->setFieldValue(field::ImageCluster::Enabled, old_enabled);
+            settings->setFieldValue(field::ImageCluster::Model, old_model);
+            settings->setFieldValue(field::ImageCluster::ModelPath, old_modelPath);
+            settings->setFieldValue(field::ImageCluster::FeatureName, old_feature);
+            settings->setFieldValue(field::ImageCluster::ApplyMode, old_applyMode);
+            settings->setFieldValue(field::ImageCluster::IncludeNoise, old_includeNoise);
+            settings->setAutoSaveEnabled(old_autoSave);
+        }
+    }
 };
 
 class FeatureLifecycleTest : public QObject
@@ -939,6 +1058,261 @@ private slots:
         QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, old_model));
         QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, old_modelPath));
         settings->setAutoSaveEnabled(old_auto_save);
+    }
+
+    void clusterFreezesSourcesAndRejectsWritebackConflicts()
+    {
+        ClusterTestFixture fixture;
+        QVERIFY(fixture.init(3));
+        ClusterSettingsScope settings_scope;
+
+        int64_t dataset_b_id = -1;
+        QString db_err;
+        QVERIFY(fixture.data_manager->ensureDataset(QStringLiteral("other_dataset"), dataset_b_id, db_err));
+
+        std::atomic_bool cluster_started{false};
+        std::atomic_bool cluster_proceed{false};
+
+        dltool::feature::ImageClusterDataProvider provider(fixture.data_manager.get());
+        dltool::feature::ImageClusterController controller(
+            &provider, fixture.data_manager.get(),
+            [&](const dltool::feature::ImageClusterController::ClusterRequest &,
+                dltool::feature::ImageClusterController::ClusterResponse &resp,
+                const irt::features::ImageClusterProgressCallback &)
+            {
+                cluster_started.store(true, std::memory_order_release);
+                while (!cluster_proceed.load(std::memory_order_acquire))
+                {
+                    QThread::msleep(10);
+                }
+                resp.success = true;
+                resp.cluster_count = 2;
+                resp.noise_count = 0;
+                resp.assignments = {
+                    {fixture.image_ids[0], 0, 1.0f},
+                    {fixture.image_ids[1], 1, 1.0f},
+                    {fixture.image_ids[2], 0, 1.0f}
+                };
+            });
+
+        QVariantMap scope_item;
+        scope_item.insert(QStringLiteral("dataset_id"), fixture.dataset_id);
+        QVERIFY(controller.cluster({scope_item}));
+
+        QTRY_VERIFY_WITH_TIMEOUT(cluster_started.load(std::memory_order_acquire), 2000);
+
+        bool move_finished = false;
+        fixture.data_manager->moveToDatasetAsync(
+            {fixture.image_ids[1]}, dataset_b_id, nullptr,
+            [&move_finished](bool ok, const QString &) { move_finished = ok; }, false);
+        QTRY_VERIFY_WITH_TIMEOUT(move_finished, 2000);
+
+        cluster_proceed.store(true, std::memory_order_release);
+
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.isRunning(), 3000);
+
+        QVERIFY(!controller.hasResults());
+        QCOMPARE(controller.resultCount(), 0);
+        QVERIFY(controller.lastError().contains(QStringLiteral("聚类写回冲突")));
+
+        std::vector<int64_t> d_ids;
+        std::vector<QString> d_names;
+        QVERIFY(fixture.database->getAllDatasets(d_ids, d_names, db_err));
+        for (const QString &name : d_names)
+        {
+            QVERIFY(!name.contains(QStringLiteral("cluster")));
+        }
+        controller.shutdown();
+    }
+
+    void clusterSingleDatabaseWritebackIsAtomicWithNoResidualDatasetsOnFailure()
+    {
+        ClusterTestFixture fixture;
+        QVERIFY(fixture.init(3));
+
+        dltool::database::ProjectDataBase::ClusterTarget t0;
+        t0.target_dataset_name = QStringLiteral("train_set_cluster_0");
+        t0.move_image_ids      = {fixture.image_ids[0]};
+
+        dltool::database::ProjectDataBase::ClusterTarget t1;
+        t1.target_dataset_name = QStringLiteral("train_set_cluster_1");
+        t1.move_image_ids      = {fixture.image_ids[1], fixture.image_ids[2]};
+
+        // Cancellation mid-transaction rolls back all datasets and image moves
+        {
+            dltool::database::ProjectDataBase::AtomicClusterOutput output;
+            QString db_err;
+            const bool ok = fixture.database->applyClusterAtomic(
+                {t0, t1}, output, db_err, []() { return true; });
+            QVERIFY(!ok);
+            QCOMPARE(db_err, QStringLiteral("操作已取消"));
+
+            std::vector<int64_t> d_ids;
+            std::vector<QString> d_names;
+            QVERIFY(fixture.database->getAllDatasets(d_ids, d_names, db_err));
+            QCOMPARE(d_ids.size(), 1);
+            QCOMPARE(d_names.front(), QStringLiteral("train_set"));
+
+            std::vector<int64_t> img_ids;
+            std::vector<QString> img_paths;
+            QVERIFY(fixture.database->getImages(fixture.dataset_id, img_ids, img_paths, db_err));
+            QCOMPARE(img_ids.size(), 3);
+        }
+
+        // Invalid target rolls back completely
+        {
+            dltool::database::ProjectDataBase::ClusterTarget bad_target;
+            bad_target.target_dataset_name = QString();
+            bad_target.move_image_ids      = {fixture.image_ids[0]};
+
+            dltool::database::ProjectDataBase::AtomicClusterOutput output;
+            QString db_err;
+            const bool ok = fixture.database->applyClusterAtomic(
+                {bad_target}, output, db_err);
+            QVERIFY(!ok);
+            QVERIFY(!db_err.isEmpty());
+
+            std::vector<int64_t> d_ids;
+            std::vector<QString> d_names;
+            QVERIFY(fixture.database->getAllDatasets(d_ids, d_names, db_err));
+            QCOMPARE(d_ids.size(), 1);
+        }
+    }
+
+    void clusterCancellationLeavesNoResidualDatasets()
+    {
+        ClusterTestFixture fixture;
+        QVERIFY(fixture.init(2));
+        ClusterSettingsScope settings_scope;
+
+        std::atomic_bool started{false};
+        std::atomic_bool can_exit{false};
+
+        dltool::feature::ImageClusterDataProvider provider(fixture.data_manager.get());
+        dltool::feature::ImageClusterController controller(
+            &provider, fixture.data_manager.get(),
+            [&](const dltool::feature::ImageClusterController::ClusterRequest &req,
+                dltool::feature::ImageClusterController::ClusterResponse &resp,
+                const irt::features::ImageClusterProgressCallback &)
+            {
+                started.store(true, std::memory_order_release);
+                while (!req.cancellationRequested() && !can_exit.load(std::memory_order_acquire))
+                {
+                    QThread::msleep(10);
+                }
+                if (req.cancellationRequested())
+                {
+                    resp.success = false;
+                    resp.error = QStringLiteral("图像聚类已取消");
+                    return;
+                }
+                resp.success = true;
+                resp.assignments = {
+                    {fixture.image_ids[0], 0, 1.0f},
+                    {fixture.image_ids[1], 1, 1.0f}
+                };
+            });
+
+        QVariantMap scope_item;
+        scope_item.insert(QStringLiteral("dataset_id"), fixture.dataset_id);
+        QVERIFY(controller.cluster({scope_item}));
+        QTRY_VERIFY_WITH_TIMEOUT(started.load(std::memory_order_acquire), 2000);
+
+        controller.shutdown();
+        can_exit.store(true, std::memory_order_release);
+
+        QVERIFY(!controller.isRunning());
+        QVERIFY(!controller.hasResults());
+
+        std::vector<int64_t> d_ids;
+        std::vector<QString> d_names;
+        QString db_err;
+        QVERIFY(fixture.database->getAllDatasets(d_ids, d_names, db_err));
+        QCOMPARE(d_ids.size(), 1);
+        QCOMPARE(fixture.data_manager->datasets()->rowCount(), 1);
+    }
+
+    void clusterStaleCallbacksAreRejected()
+    {
+        ClusterTestFixture fixture;
+        QVERIFY(fixture.init(2));
+        ClusterSettingsScope settings_scope;
+
+        dltool::feature::ImageClusterDataProvider provider(fixture.data_manager.get());
+        dltool::feature::ImageClusterController controller(&provider, fixture.data_manager.get());
+
+        controller.shutdown();
+        QVERIFY(!controller.isRunning());
+        QCOMPARE(controller.validationError(), QStringLiteral("图像聚类控制器正在关闭"));
+
+        QVariantMap scope_item;
+        scope_item.insert(QStringLiteral("dataset_id"), fixture.dataset_id);
+        QVERIFY(!controller.cluster({scope_item}));
+        QCOMPARE(controller.lastError(), QStringLiteral("图像聚类控制器正在关闭"));
+    }
+
+    void clusterRealResourceEndToEnd()
+    {
+        ClusterTestFixture fixture;
+        QVERIFY(fixture.init(2));
+        ClusterSettingsScope settings_scope;
+
+        dltool::feature::ImageClusterDataProvider provider(fixture.data_manager.get());
+        dltool::feature::ImageClusterController controller(
+            &provider, fixture.data_manager.get(),
+            [&](const dltool::feature::ImageClusterController::ClusterRequest &,
+                dltool::feature::ImageClusterController::ClusterResponse &resp,
+                const irt::features::ImageClusterProgressCallback &progress)
+            {
+                irt::features::ImageClusterProgress prog;
+                prog.stage = irt::features::ImageClusterStage::Clustering;
+                prog.processed_count = 2;
+                prog.total_count = 2;
+                progress(prog);
+
+                resp.success       = true;
+                resp.cluster_count = 2;
+                resp.noise_count   = 0;
+                resp.summary       = QStringLiteral("图像聚类完成: 2 张图像, 2 个簇, 噪声 0 张");
+                resp.assignments   = {
+                    {fixture.image_ids[0], 0, 0.99f},
+                    {fixture.image_ids[1], 1, 0.95f}
+                };
+            });
+
+        QSignalSpy results_spy(&controller, &dltool::feature::ImageClusterController::resultsChanged);
+        QVariantMap scope_item;
+        scope_item.insert(QStringLiteral("dataset_id"), fixture.dataset_id);
+
+        QVERIFY(controller.cluster({scope_item}));
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.isRunning(), 5000);
+
+        QVERIFY(controller.hasResults());
+        QCOMPARE(controller.resultCount(), 2);
+        QVERIFY(controller.lastError().isEmpty());
+        QVERIFY(!controller.lastSummary().isEmpty());
+        QVERIFY(results_spy.count() >= 1);
+
+        QCOMPARE(fixture.data_manager->datasets()->rowCount(), 3);
+
+        const int64_t ds0_id = fixture.data_manager->imageDatasetId(fixture.image_ids[0]);
+        const int64_t ds1_id = fixture.data_manager->imageDatasetId(fixture.image_ids[1]);
+        QVERIFY(ds0_id != fixture.dataset_id);
+        QVERIFY(ds1_id != fixture.dataset_id);
+        QVERIFY(ds0_id != ds1_id);
+
+        const QString ds0_name = fixture.data_manager->getDatasetName(static_cast<int>(ds0_id));
+        const QString ds1_name = fixture.data_manager->getDatasetName(static_cast<int>(ds1_id));
+        QCOMPARE(ds0_name, QStringLiteral("train_set-0"));
+        QCOMPARE(ds1_name, QStringLiteral("train_set-1"));
+
+        std::vector<int64_t> db_ds_ids;
+        std::vector<QString> db_ds_names;
+        QString db_err;
+        QVERIFY(fixture.database->getAllDatasets(db_ds_ids, db_ds_names, db_err));
+        QCOMPARE(db_ds_ids.size(), 3);
+
+        controller.shutdown();
     }
 };
 

@@ -100,9 +100,18 @@ QString clusterSummary(const QString &base_summary, size_t moved_image_count, si
 
 ImageClusterController::ImageClusterController(ImageClusterDataProvider  *data_provider,
                                                dltool::data::DataManager *data_manager, QObject *parent)
+    : ImageClusterController(data_provider, data_manager, nullptr, parent)
+{
+}
+
+ImageClusterController::ImageClusterController(ImageClusterDataProvider  *data_provider,
+                                               dltool::data::DataManager *data_manager,
+                                               ClusterExecutor            executor,
+                                               QObject                   *parent)
     : QObject(parent)
     , data_provider_(data_provider)
     , data_manager_(data_manager)
+    , custom_executor_(std::move(executor))
 {
     auto *gs = dltool::settings::GlobalSettings::getInstance();
     enabled_ = searchSettingsEnabled(gs, kSettingsAccessor);
@@ -133,6 +142,7 @@ void ImageClusterController::shutdown()
     if (shutting_down_.exchange(true, std::memory_order_acq_rel))
         return;
 
+    ++current_request_id_;
     if (cancellation_token_ != nullptr)
         cancellation_token_->store(true, std::memory_order_release);
 
@@ -152,7 +162,7 @@ void ImageClusterController::shutdown()
     if (data_manager_ != nullptr)
         data_manager_->waitForOperations();
     setRunning(false);
-    if (was_running)
+    if (was_running && !current_cluster_task_id_.isEmpty())
     {
         ui::ProgressManager::getInstance()->finishTask(current_cluster_task_id_, false);
         current_cluster_task_id_.clear();
@@ -280,8 +290,10 @@ bool ImageClusterController::cluster(const QVariantList &dataset_ids)
         return false;
     }
 
-    request.weights_file = QFileInfo(request.weights_file).absoluteFilePath();
-    request.started_at   = std::chrono::steady_clock::now();
+    const uint64_t request_id = ++current_request_id_;
+    request.request_id         = request_id;
+    request.weights_file       = QFileInfo(request.weights_file).absoluteFilePath();
+    request.started_at         = std::chrono::steady_clock::now();
     if (cancellation_token_ != nullptr)
         cancellation_token_->store(true, std::memory_order_release);
     request.cancellation_token = std::make_shared<std::atomic_bool>(false);
@@ -291,30 +303,35 @@ bool ImageClusterController::cluster(const QVariantList &dataset_ids)
     startProgress(request);
 
     const auto controller = QPointer<ImageClusterController>(this);
-    const auto run_token = request.cancellation_token;
-    const auto progress  = createProgressReporter(controller, request.items.size(), run_token);
-    const auto complete  = [controller, run_token](const ClusterResponse &response)
+    const auto run_token  = request.cancellation_token;
+    const auto progress   = createProgressReporter(controller, request.items.size(), run_token);
+    const auto complete   = [controller, run_token, request_id](const ClusterResponse &response)
     {
         if (!controller || !run_token || run_token->load(std::memory_order_acquire))
             return;
         QMetaObject::invokeMethod(
             controller.data(),
-            [controller, run_token, response]()
+            [controller, run_token, request_id, response]()
             {
                 if (controller && run_token && !run_token->load(std::memory_order_acquire)
-                    && !controller->shutting_down_.load(std::memory_order_acquire))
+                    && !controller->shutting_down_.load(std::memory_order_acquire)
+                    && request_id == controller->current_request_id_.load(std::memory_order_acquire))
                     controller->finishCluster(response);
             },
             Qt::QueuedConnection);
     };
-    const auto executor = &ImageClusterController::executeCluster;
+    const auto executor = custom_executor_ ? custom_executor_ : &ImageClusterController::executeCluster;
 
     QThread *work_thread = QThread::create(
         [request = std::move(request), executor, progress, complete]() mutable
         {
             ClusterResponse response;
-            response.include_noise = request.include_noise;
-            response.apply_mode    = request.apply_mode;
+            response.request_id                  = request.request_id;
+            response.include_noise               = request.include_noise;
+            response.apply_mode                  = request.apply_mode;
+            response.frozen_items                = request.frozen_items;
+            response.frozen_source_dataset_names = request.frozen_source_dataset_names;
+            response.frozen_image_source_dataset = request.frozen_image_source_dataset;
             executor(request, response, progress);
 
             response.elapsed_ms = static_cast<qint64>(std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -374,14 +391,33 @@ QString ImageClusterController::clusterRequestValidationError(const ClusterReque
 void ImageClusterController::collectClusterItems(ClusterRequest                             &request,
                                                  const std::map<int64_t, std::set<int64_t>> &scope)
 {
-    auto appendImage = [this, &request](const int64_t image_id)
+    for (const auto &[dataset_id, _] : scope)
+    {
+        QString dataset_name = data_provider_->datasetName(dataset_id);
+        if (dataset_name.isEmpty() && data_manager_ != nullptr)
+        {
+            dataset_name = data_manager_->getDatasetName(static_cast<int>(dataset_id));
+        }
+        if (!dataset_name.isEmpty())
+        {
+            request.frozen_source_dataset_names[dataset_id] = dataset_name;
+        }
+    }
+
+    auto appendImage = [this, &request](const int64_t image_id, const int64_t source_dataset_id)
     {
         const QString path = data_provider_->imagePath(image_id);
         QFileInfo     info(path);
         if (!info.isFile())
             return;
 
+        const auto name_it = request.frozen_source_dataset_names.find(source_dataset_id);
+        const QString source_name = (name_it != request.frozen_source_dataset_names.end())
+                                        ? name_it->second : QStringLiteral("Dataset");
+
         request.items.push_back({image_id, toFsPath(info.absoluteFilePath())});
+        request.frozen_items.push_back({image_id, source_dataset_id, source_name, toFsPath(info.absoluteFilePath())});
+        request.frozen_image_source_dataset[image_id] = source_dataset_id;
     };
 
     for (const int64_t image_id : data_provider_->allImageIds())
@@ -415,7 +451,7 @@ void ImageClusterController::collectClusterItems(ClusterRequest                 
             if (!matches_label_class)
                 continue;
         }
-        appendImage(image_id);
+        appendImage(image_id, dataset_id);
     }
 }
 
@@ -466,207 +502,6 @@ void ImageClusterController::executeCluster(const ClusterRequest &request, Clust
     }
 }
 
-bool ImageClusterController::ensureClusterTargetDataset(const QString &target_dataset_name, int64_t &dataset_id,
-                                                        QString &err_msg)
-{
-    dataset_id = -1;
-    err_msg.clear();
-
-    if (data_manager_ == nullptr)
-    {
-        err_msg = QString("数据管理器未初始化");
-        return false;
-    }
-
-    if (data_manager_->ensureDataset(target_dataset_name, dataset_id, err_msg))
-        return true;
-
-    if (err_msg.isEmpty())
-        err_msg = QString("创建聚类目标数据集失败: %1").arg(target_dataset_name);
-    else
-        err_msg = QString("创建聚类目标数据集失败: %1, %2").arg(target_dataset_name, err_msg);
-    return false;
-}
-
-bool ImageClusterController::buildClusterApplyPlan(const std::vector<ImageClusterAssignment> &assignments,
-                                                   const bool include_noise, ClusterApplyPlan &plan, QString &err_msg)
-{
-    plan = {};
-    err_msg.clear();
-
-    if (data_provider_ == nullptr || data_manager_ == nullptr)
-    {
-        err_msg = QString("数据管理器未初始化");
-        return false;
-    }
-    if (assignments.empty())
-    {
-        err_msg = QString("没有图像聚类结果");
-        return false;
-    }
-
-    std::map<int64_t, QString> source_dataset_names;
-    std::map<QString, int64_t> target_dataset_ids;
-
-    for (const ImageClusterAssignment &assignment : assignments)
-    {
-        if (assignment.cluster_id < 0 && !include_noise)
-        {
-            ++plan.skipped_noise_count;
-            continue;
-        }
-
-        const int64_t source_dataset_id = data_provider_->imageDatasetId(assignment.image_id);
-        if (source_dataset_id < 0 || source_dataset_id > std::numeric_limits<int>::max())
-        {
-            spdlog::warn("跳过无效聚类图像数据集: image_id={}", assignment.image_id);
-            continue;
-        }
-
-        auto source_name_it = source_dataset_names.find(source_dataset_id);
-        if (source_name_it == source_dataset_names.end())
-        {
-            source_name_it
-                = source_dataset_names
-                      .emplace(source_dataset_id, data_manager_->getDatasetName(static_cast<int>(source_dataset_id)))
-                      .first;
-        }
-
-        const QString &source_dataset_name = source_name_it->second;
-        if (source_dataset_name.isEmpty())
-        {
-            spdlog::warn("跳过无效聚类图像数据集名称: image_id={}, dataset_id={}", assignment.image_id,
-                         source_dataset_id);
-            continue;
-        }
-
-        const QString target_dataset_name = clusterTargetDatasetName(source_dataset_name, assignment.cluster_id);
-        auto          target_it           = target_dataset_ids.find(target_dataset_name);
-        if (target_it == target_dataset_ids.end())
-        {
-            int64_t target_dataset_id = -1;
-            if (!ensureClusterTargetDataset(target_dataset_name, target_dataset_id, err_msg))
-                return false;
-            target_it = target_dataset_ids.emplace(target_dataset_name, target_dataset_id).first;
-        }
-
-        plan.image_ids_by_target_dataset[target_it->second].push_back(assignment.image_id);
-    }
-
-    return true;
-}
-
-void ImageClusterController::applyClusterPlan(const ClusterResponse &response, ClusterApplyPlan plan)
-{
-    auto response_state = std::make_shared<ClusterResponse>(response);
-    auto plan_state     = std::make_shared<ClusterApplyPlan>(std::move(plan));
-    auto targets        = std::make_shared<std::vector<std::pair<int64_t, std::vector<int64_t>>>>();
-    targets->reserve(plan_state->image_ids_by_target_dataset.size());
-    for (const auto &[target_dataset_id, image_ids] : plan_state->image_ids_by_target_dataset)
-    {
-        targets->emplace_back(target_dataset_id, image_ids);
-    }
-
-    auto target_index = std::make_shared<size_t>(0);
-    auto applied_count = std::make_shared<size_t>(0);
-    auto next_target   = std::make_shared<std::function<void()>>();
-    const std::weak_ptr<std::function<void()>> weak_next_target = next_target;
-
-    *next_target = [this, response_state, plan_state, targets, target_index, applied_count, weak_next_target]()
-    {
-        if (shutting_down_.load(std::memory_order_acquire))
-            return;
-
-        if (*target_index >= targets->size())
-        {
-            completeClusterApply(*response_state, *plan_state, *applied_count, QString());
-            return;
-        }
-
-        const auto &[target_dataset_id, image_ids] = (*targets)[(*target_index)++];
-        const size_t image_count                    = image_ids.size();
-        // 当前数据库操作完成前必须持有队列状态，否则 applyClusterPlan 返回后队列会被释放。
-        const auto next_target_state = weak_next_target.lock();
-        if (!next_target_state)
-        {
-            completeClusterApply(*response_state, *plan_state, *applied_count,
-                                 QStringLiteral("聚类结果应用队列已失效"));
-            return;
-        }
-
-        const auto completion
-            = [this, response_state, plan_state, applied_count, image_count, next_target_state](
-                  const bool success, const QString &error)
-        {
-            if (shutting_down_.load(std::memory_order_acquire))
-                return;
-
-            if (!success)
-            {
-                completeClusterApply(*response_state, *plan_state, *applied_count, error);
-                return;
-            }
-
-            *applied_count += image_count;
-            (*next_target_state)();
-        };
-
-        const bool started = response_state->apply_mode == ImageClusterApplyMode::Copy
-                               ? data_manager_->copyToDatasetAsync(image_ids, target_dataset_id, this, completion, false)
-                               : data_manager_->moveToDatasetAsync(image_ids, target_dataset_id, this, completion, false);
-        if (!started)
-        {
-            completeClusterApply(*response_state, *plan_state, *applied_count,
-                                 QString("无法启动聚类结果应用: %1").arg(target_dataset_id));
-        }
-    };
-
-    (*next_target)();
-}
-
-void ImageClusterController::completeClusterApply(const ClusterResponse &response, const ClusterApplyPlan &plan,
-                                                  const size_t applied_image_count, const QString &error)
-{
-    if (shutting_down_.load(std::memory_order_acquire))
-        return;
-
-    setRunning(false);
-
-    if (!error.isEmpty())
-    {
-        result_count_ = 0;
-        last_summary_.clear();
-        emit resultsChanged();
-        setLastError(error);
-        spdlog::error("图像聚类失败: {}, 耗时 {}", error.toUtf8().constData(),
-                      formatElapsed(response.elapsed_ms).toUtf8().constData());
-        finishProgress(false, QString("%1, 耗时 %2").arg(error, formatElapsed(response.elapsed_ms)));
-        ui::SignalHelper::notifyError(QString("图像聚类失败"), error);
-        return;
-    }
-
-    ImageClusterApplyResult apply_result;
-    apply_result.skipped_noise_count  = plan.skipped_noise_count;
-    apply_result.target_dataset_count = plan.image_ids_by_target_dataset.size();
-    if (response.apply_mode == ImageClusterApplyMode::Copy)
-        apply_result.copied_image_count = applied_image_count;
-    else
-        apply_result.moved_image_count = applied_image_count;
-
-    setLastError(QString());
-    result_count_ = static_cast<int>(std::min<size_t>(applied_image_count,
-                                                      static_cast<size_t>(std::numeric_limits<int>::max())));
-    last_summary_ = clusterSummary(response.summary, apply_result.moved_image_count, apply_result.copied_image_count,
-                                   apply_result.target_dataset_count, apply_result.skipped_noise_count,
-                                   response.apply_mode == ImageClusterApplyMode::Copy);
-
-    spdlog::info("图像聚类完成: {}, 耗时 {}", last_summary_.toUtf8().constData(),
-                 formatElapsed(response.elapsed_ms).toUtf8().constData());
-    finishProgress(true, QString("%1, 耗时 %2").arg(last_summary_, formatElapsed(response.elapsed_ms)));
-    ui::SignalHelper::notifySuccess(QString("图像聚类完成"), last_summary_);
-    emit resultsChanged();
-}
-
 void ImageClusterController::resetForNewCluster()
 {
     setLastError(QString());
@@ -696,6 +531,9 @@ void ImageClusterController::finishCluster(const ClusterResponse &response)
     if (shutting_down_.load(std::memory_order_acquire))
         return;
 
+    if (response.request_id != current_request_id_.load(std::memory_order_acquire))
+        return;
+
     if (!response.success)
     {
         setRunning(false);
@@ -710,23 +548,154 @@ void ImageClusterController::finishCluster(const ClusterResponse &response)
         return;
     }
 
-    ClusterApplyPlan apply_plan;
-    QString          err_msg;
-    if (!buildClusterApplyPlan(response.assignments, response.include_noise, apply_plan, err_msg))
+    if (data_manager_ == nullptr || data_provider_ == nullptr)
+    {
+        const QString err = QStringLiteral("数据管理器未初始化");
+        setRunning(false);
+        result_count_ = 0;
+        last_summary_.clear();
+        emit resultsChanged();
+        setLastError(err);
+        finishProgress(false, err);
+        ui::SignalHelper::notifyError(QString("图像聚类失败"), err);
+        return;
+    }
+
+    std::map<QString, std::vector<int64_t>> target_groups;
+    size_t skipped_noise_count = 0;
+
+    for (const auto &assignment : response.assignments)
+    {
+        if (assignment.cluster_id < 0 && !response.include_noise)
+        {
+            ++skipped_noise_count;
+            continue;
+        }
+
+        const auto ds_it = response.frozen_image_source_dataset.find(assignment.image_id);
+        if (ds_it == response.frozen_image_source_dataset.end())
+        {
+            continue;
+        }
+
+        const int64_t expected_dataset_id = ds_it->second;
+        const int64_t current_dataset_id  = data_provider_->imageDatasetId(assignment.image_id);
+        if (current_dataset_id != expected_dataset_id)
+        {
+            const QString conflict_err = QString("聚类写回冲突: 图像 %1 已被移动或删除").arg(assignment.image_id);
+            setRunning(false);
+            result_count_ = 0;
+            last_summary_.clear();
+            emit resultsChanged();
+            setLastError(conflict_err);
+            spdlog::error("图像聚类写回冲突: {}", conflict_err.toUtf8().constData());
+            finishProgress(false, QString("%1, 耗时 %2").arg(conflict_err, formatElapsed(response.elapsed_ms)));
+            ui::SignalHelper::notifyError(QString("图像聚类失败"), conflict_err);
+            return;
+        }
+
+        const auto name_it = response.frozen_source_dataset_names.find(expected_dataset_id);
+        if (name_it == response.frozen_source_dataset_names.end() || name_it->second.isEmpty())
+        {
+            const QString err = QString("无法找到聚类源数据集名称: id=%1").arg(expected_dataset_id);
+            setRunning(false);
+            result_count_ = 0;
+            last_summary_.clear();
+            emit resultsChanged();
+            setLastError(err);
+            finishProgress(false, err);
+            ui::SignalHelper::notifyError(QString("图像聚类失败"), err);
+            return;
+        }
+
+        const QString target_name = clusterTargetDatasetName(name_it->second, assignment.cluster_id);
+        target_groups[target_name].push_back(assignment.image_id);
+    }
+
+    if (target_groups.empty())
+    {
+        setRunning(false);
+        setLastError(QString());
+        result_count_ = 0;
+        last_summary_ = clusterSummary(response.summary, 0, 0, 0, skipped_noise_count,
+                                       response.apply_mode == ImageClusterApplyMode::Copy);
+        spdlog::info("图像聚类完成: {}, 耗时 {}", last_summary_.toUtf8().constData(),
+                     formatElapsed(response.elapsed_ms).toUtf8().constData());
+        finishProgress(true, QString("%1, 耗时 %2").arg(last_summary_, formatElapsed(response.elapsed_ms)));
+        ui::SignalHelper::notifySuccess(QString("图像聚类完成"), last_summary_);
+        emit resultsChanged();
+        return;
+    }
+
+    dltool::data::DataManager::ClusterWritebackRequest writeback_req;
+    writeback_req.is_copy = (response.apply_mode == ImageClusterApplyMode::Copy);
+    writeback_req.targets.reserve(target_groups.size());
+    for (auto &[target_name, img_ids] : target_groups)
+    {
+        dltool::data::DataManager::ClusterTargetData target_data;
+        target_data.target_dataset_name = target_name;
+        target_data.image_ids           = std::move(img_ids);
+        writeback_req.targets.push_back(std::move(target_data));
+    }
+
+    const uint64_t request_id    = response.request_id;
+    const auto     response_copy = response;
+
+    const bool started = data_manager_->writebackClusterAsync(
+        writeback_req, this,
+        [this, response_copy, request_id, skipped_noise_count](const dltool::data::DataManager::ClusterWritebackResult &wb_result)
+        {
+            if (shutting_down_.load(std::memory_order_acquire))
+                return;
+
+            if (request_id != current_request_id_.load(std::memory_order_acquire))
+                return;
+
+            setRunning(false);
+
+            if (!wb_result.success)
+            {
+                result_count_ = 0;
+                last_summary_.clear();
+                emit resultsChanged();
+                const QString err = wb_result.error.isEmpty() ? QStringLiteral("聚类写回失败") : wb_result.error;
+                setLastError(err);
+                spdlog::error("图像聚类失败: {}, 耗时 {}", err.toUtf8().constData(),
+                              formatElapsed(response_copy.elapsed_ms).toUtf8().constData());
+                finishProgress(false, QString("%1, 耗时 %2").arg(err, formatElapsed(response_copy.elapsed_ms)));
+                ui::SignalHelper::notifyError(QString("图像聚类失败"), err);
+                return;
+            }
+
+            const size_t total_applied = (response_copy.apply_mode == ImageClusterApplyMode::Copy)
+                                             ? wb_result.copied_image_count
+                                             : wb_result.moved_image_count;
+
+            setLastError(QString());
+            result_count_ = static_cast<int>(std::min<size_t>(total_applied,
+                                                              static_cast<size_t>(std::numeric_limits<int>::max())));
+            last_summary_ = clusterSummary(response_copy.summary, wb_result.moved_image_count, wb_result.copied_image_count,
+                                           wb_result.target_dataset_count, skipped_noise_count,
+                                           response_copy.apply_mode == ImageClusterApplyMode::Copy);
+
+            spdlog::info("图像聚类完成: {}, 耗时 {}", last_summary_.toUtf8().constData(),
+                         formatElapsed(response_copy.elapsed_ms).toUtf8().constData());
+            finishProgress(true, QString("%1, 耗时 %2").arg(last_summary_, formatElapsed(response_copy.elapsed_ms)));
+            ui::SignalHelper::notifySuccess(QString("图像聚类完成"), last_summary_);
+            emit resultsChanged();
+        });
+
+    if (!started)
     {
         setRunning(false);
         result_count_ = 0;
         last_summary_.clear();
         emit resultsChanged();
-        setLastError(err_msg);
-        spdlog::error("图像聚类失败: {}, 耗时 {}", err_msg.toUtf8().constData(),
-                      formatElapsed(response.elapsed_ms).toUtf8().constData());
-        finishProgress(false, QString("%1, 耗时 %2").arg(err_msg, formatElapsed(response.elapsed_ms)));
-        ui::SignalHelper::notifyError(QString("图像聚类失败"), err_msg);
-        return;
+        const QString err = QStringLiteral("无法启动聚类写回事务");
+        setLastError(err);
+        finishProgress(false, err);
+        ui::SignalHelper::notifyError(QString("图像聚类失败"), err);
     }
-
-    applyClusterPlan(response, std::move(apply_plan));
 }
 
 irt::features::ImageClusterProgressCallback ImageClusterController::createProgressReporter(

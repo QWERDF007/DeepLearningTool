@@ -23,6 +23,7 @@
 #include <QVariantList>
 #include <QtQml>
 #include <functional>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -271,6 +272,38 @@ public:
                             ImageOperationCompletion completion, bool notify_user = true);
     bool moveToDatasetAsync(const std::vector<int64_t> &image_ids, int64_t dataset_id, QObject *callback_context,
                             ImageOperationCompletion completion, bool notify_user = true);
+
+    struct ClusterTargetData
+    {
+        QString target_dataset_name;
+        std::vector<int64_t> image_ids;
+    };
+
+    struct ClusterWritebackRequest
+    {
+        std::vector<ClusterTargetData> targets;
+        bool is_copy{false};
+    };
+
+    struct ClusterWritebackResult
+    {
+        bool success{false};
+        bool cancelled{false};
+        QString error;
+        size_t moved_image_count{0};
+        size_t copied_image_count{0};
+        size_t target_dataset_count{0};
+        std::vector<int64_t> created_dataset_ids;
+        std::map<QString, int64_t> dataset_ids_by_name;
+        std::vector<LoadedImageInstance> copied_images;
+        std::vector<LoadedLabelInstance> copied_labels;
+    };
+
+    using ClusterWritebackCompletion = std::function<void(const ClusterWritebackResult &result)>;
+
+    bool writebackClusterAsync(const ClusterWritebackRequest &request,
+                               QObject *callback_context,
+                               ClusterWritebackCompletion completion);
     Q_INVOKABLE void splitDataset(const int64_t dataset_id, const double train_ratio, const double validation_ratio,
                                   const double test_ratio, const bool use_validation);
 
