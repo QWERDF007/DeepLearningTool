@@ -1,4 +1,7 @@
 #include "data/DataIO.h"
+#include "data/ParallelFor.h"
+#include <latch>
+#include <stdexcept>
 
 #include <QCoreApplication>
 #include <QEventLoop>
@@ -225,40 +228,17 @@ private slots:
         io.runInThread(
             []()
             {
-                std::vector<std::jthread> workers;
-                std::atomic_bool          stop_requested{false};
-                std::exception_ptr        first_exception;
-                std::mutex                mutex;
-
-                for (int i = 0; i < 4; ++i)
+                std::atomic_bool cancelled{false};
+                std::latch finished_workers(3);
+                dltool::data::parallelFor(4, 4, cancelled, [&](std::size_t index)
                 {
-                    workers.emplace_back(
-                        [&, i]()
-                        {
-                            if (i == 3)
-                            {
-                                QThread::msleep(15);
-                                stop_requested.store(true, std::memory_order_relaxed);
-                                std::lock_guard lock(mutex);
-                                if (!first_exception)
-                                    first_exception = std::make_exception_ptr(std::runtime_error("最后一个 worker 失败"));
-                            }
-                            else
-                            {
-                                while (!stop_requested.load(std::memory_order_relaxed))
-                                    QThread::msleep(2);
-                            }
-                        });
-                }
-
-                for (auto &w : workers)
-                {
-                    if (w.joinable())
-                        w.join();
-                }
-
-                if (first_exception)
-                    std::rethrow_exception(first_exception);
+                    if (index == 3)
+                    {
+                        finished_workers.wait();
+                        throw std::runtime_error("最后一个 worker 失败");
+                    }
+                    finished_workers.count_down();
+                });
             },
             [&io](const QString &error)
             {
@@ -271,6 +251,39 @@ private slots:
         QVERIFY(messages.at(0).contains(QStringLiteral("最后一个 worker 失败")));
 
         disconnect(connection);
+    }
+
+    void parallelExecutionCompletesEachItemOnce()
+    {
+        std::atomic_bool cancelled{false};
+        std::vector<int> visits(37, 0);
+        dltool::data::parallelFor(visits.size(), 4, cancelled,
+                                 [&](std::size_t index) { ++visits[index]; });
+        for (int count : visits)
+            QCOMPARE(count, 1);
+    }
+
+    void parallelExecutionSkipsPrecancelledWork()
+    {
+        std::atomic_bool cancelled{true};
+        std::atomic_int calls{0};
+        dltool::data::parallelFor(37, 4, cancelled,
+                                 [&](std::size_t) { ++calls; });
+        QCOMPARE(calls.load(), 0);
+    }
+
+    void parallelCancellationWaitsForInFlightWork()
+    {
+        std::atomic_bool cancelled{false};
+        std::atomic_int completed{0};
+        std::latch started(4);
+        dltool::data::parallelFor(37, 4, cancelled, [&](std::size_t)
+        {
+            started.arrive_and_wait();
+            cancelled.store(true);
+            ++completed;
+        });
+        QCOMPARE(completed.load(), 4);
     }
 };
 

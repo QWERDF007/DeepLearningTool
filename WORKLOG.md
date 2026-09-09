@@ -43,6 +43,22 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-10 — 提取数据并行执行共用组件
+
+**目标**
+- Ticket 01：让生产与异常测试使用同一执行实现，删除测试内复制算法。
+
+**当前状态**
+- 用户已确认边界；parallelFor 从 DataIO.cpp 原样提取到 data/ParallelFor.h，生产调用保持不变。异常测试改用该组件，以 latch 等待其余三项完成后抛异常，不再依赖固定 sleep。
+- 补充成功时每项仅执行一次、预取消不执行、四个在途工作取消后全部结束的公开组件测试。相关 Release 构建成功，CTest data_io 1/1 通过；仍待故障敏感性验证，未提交。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_data_data_io_tests --parallel 4` 成功，句柄 80718 已结束；新头文件触发 glob 自动重新配置。随后 `ctest --test-dir build -C Release -R '^dltool_data_data_io_tests$' --output-on-failure` → 1/1 通过。
+
+**下一步**
+- 故障敏感性验证：临时将共用组件的 rethrow 改为 return，构建后通过 CTest -V 实测异常用例失败（results.size 实际 0，期望 1；12 passed、1 failed）。已恢复 rethrow 并重新构建成功，相关 data_io/data_ioexport CTest 2/2 通过。
+- 下一步：提交共用组件与测试，继续项目关闭的统一取消/等待及 Schema 等剩余验收；本验证不代表整个规格完成。
+
 ## 2026-09-09 — 实施导出恢复故障测试
 
 **目标**
