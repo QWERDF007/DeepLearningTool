@@ -500,21 +500,24 @@ private slots:
         // 3. 失败/异常导出时恢复原目标内容，不损坏既有成果
         // 4. 直接从 UNC 路径回读导出的图像与 JSON 标注文件，验证内容完整性
 
-        const QString temp_dir = dltool::common::cleanPath(QDir::tempPath());
-        QString unc_base;
-        if (temp_dir.length() >= 2 && temp_dir[1] == QLatin1Char(':'))
+        QString unc_base = qEnvironmentVariable("DLTOOL_TEST_UNC_DIR");
+        if (unc_base.trimmed().isEmpty())
         {
-            const QChar drive = temp_dir[0];
-            unc_base = QStringLiteral("//127.0.0.1/%1$%2").arg(drive).arg(temp_dir.mid(2));
-        }
-        else
-        {
-            unc_base = temp_dir;
+            const QString temp_dir = dltool::common::cleanPath(QDir::tempPath());
+            if (temp_dir.length() >= 2 && temp_dir[1] == QLatin1Char(':'))
+            {
+                const QChar drive = temp_dir[0];
+                unc_base = QStringLiteral("//127.0.0.1/%1$%2").arg(drive).arg(temp_dir.mid(2));
+            }
+            else
+            {
+                unc_base = temp_dir;
+            }
         }
 
         if (!QDir(unc_base).exists())
         {
-            QSKIP("当前运行环境未开启 127.0.0.1 默认管理共享，跳过真实 UNC 导出测试");
+            QFAIL(qPrintable(QString("当前运行环境 UNC 共享路径不可用: %1。请确保 127.0.0.1 管理共享可用或配置 DLTOOL_TEST_UNC_DIR").arg(unc_base)));
             return;
         }
 
@@ -595,12 +598,13 @@ private slots:
         QCOMPARE(json_doc.object().value(QStringLiteral("imageHeight")).toInt(), 24);
         json_file.close();
 
-        // 阶段二：安全覆盖导出（写入 pre-existing sentinel 验证覆盖发布）
+        // 阶段二：安全覆盖导出（写入 pre-existing sentinel 验证覆盖发布后旧目标被安全替换清除）
         const QString sentinel_file = QDir(unc_output_dir).filePath(QStringLiteral("sentinel_marker.txt"));
         QFile sentinel(sentinel_file);
         QVERIFY(sentinel.open(QIODevice::WriteOnly | QIODevice::Text));
         sentinel.write("pre_existing_data");
         sentinel.close();
+        QVERIFY(QFile::exists(sentinel_file));
 
         finished = false;
         success  = false;
@@ -619,46 +623,114 @@ private slots:
         image2.path     = source_image_path2;
         image2.width    = 16;
         image2.height   = 16;
+        dltool::data::ExportLabel label2;
+        label2.label_id       = 2;
+        label2.image_id       = 2;
+        label2.label_class_id = 1;
+        label2.data           = {
+            {QStringLiteral("x"),      1 },
+            {QStringLiteral("y"),      1 },
+            {QStringLiteral("width"),  8 },
+            {QStringLiteral("height"), 8 }
+        };
+        dataset2.labels.push_back(label2);
+        dataset2.label_classes.push_back({1, QStringLiteral("defect"), QStringLiteral("#FF0000")});
         dataset2.images.push_back(image2);
 
         exporter.startExport(dataset2, unc_output_dir);
         QTRY_VERIFY_WITH_TIMEOUT(finished, 10000);
         QVERIFY2(success, qPrintable(message));
-        QVERIFY(dltool::data::DataIO::validateExportOutput(dltool::data::DataFormat::LabelMe, dataset2,
-                                                            unc_output_dir, {}, error));
 
-        // 阶段三：失败导出时恢复 UNC 既有目标内容
-        // 在 UNC 目标中放置必须保留的标志文件
-        const QString preserve_file = QDir(unc_output_dir).filePath(QStringLiteral("preserve_after_fail.txt"));
-        QFile preserve(preserve_file);
-        QVERIFY(preserve.open(QIODevice::WriteOnly | QIODevice::Text));
-        preserve.write("must_be_preserved_in_unc");
-        preserve.close();
+        // 验证覆写约定：旧目标的遗留文件 sentinel_marker.txt 必须已被彻底替换清除（原子目录替换，而非合并）
+        QVERIFY2(!QFile::exists(sentinel_file), "覆写发布后，旧目标的遗留文件 sentinel_marker.txt 应已被彻底替换清除");
+        QVERIFY2(dltool::data::DataIO::validateExportOutput(dltool::data::DataFormat::LabelMe, dataset2,
+                                                            unc_output_dir, {}, error),
+                 qPrintable(error));
 
-        // 构造一个包含不存在文件的破损数据集以触发导出中途失败
-        dltool::data::ExportDataset failing_dataset;
-        failing_dataset.dataset_name = QStringLiteral("unc-dataset-fail");
-        dltool::data::ExportImage bad_image;
-        bad_image.image_id = 99;
-        bad_image.path     = QDir(local_source_dir.path()).filePath(QStringLiteral("non_existent.png"));
-        bad_image.width    = 16;
-        bad_image.height   = 16;
-        failing_dataset.images.push_back(bad_image);
+        const QString exported_image_path2 = QDir(unc_output_dir).filePath(QStringLiteral("images/unc_test_img2.png"));
+        QVERIFY2(QFile::exists(exported_image_path2), qPrintable(exported_image_path2));
+        QImage readback_image2;
+        QVERIFY(readback_image2.load(exported_image_path2));
+        QCOMPARE(readback_image2.size(), QSize(16, 16));
 
-        finished = false;
-        success  = false;
-        message.clear();
+        const QString exported_json_path2 = QDir(unc_output_dir).filePath(QStringLiteral("annotations/unc_test_img2.json"));
+        QVERIFY2(QFile::exists(exported_json_path2), qPrintable(exported_json_path2));
+        QFile json_file2(exported_json_path2);
+        QVERIFY(json_file2.open(QIODevice::ReadOnly));
+        const QJsonDocument json_doc2 = QJsonDocument::fromJson(json_file2.readAll());
+        QVERIFY(!json_doc2.isNull());
+        QCOMPARE(json_doc2.object().value(QStringLiteral("imageWidth")).toInt(), 16);
+        QCOMPARE(json_doc2.object().value(QStringLiteral("imageHeight")).toInt(), 16);
+        json_file2.close();
 
-        exporter.startExport(failing_dataset, unc_output_dir);
-        QTRY_VERIFY_WITH_TIMEOUT(finished, 10000);
-        QVERIFY(!success);
+        // 阶段三：故障注入测试——真实模拟 UNC 路径在 staging publish（重命名生效）阶段发生故障
+        // 验证 SafeExportScope 触发回滚机制，将 .backup 目录完全恢复为既有目标目录
+        int rename_calls = 0;
+        QString publish_err;
+        const QString staging_canary = QStringLiteral("staging_new_data.txt");
+        {
+            dltool::data::SafeExportScope unc_scope(unc_output_dir,
+                [&rename_calls](const QString &from, const QString &to) {
+                    ++rename_calls;
+                    // 第 1 次重命名：将 target_dir 备份为 .backup_xxx，允许成功
+                    if (rename_calls == 1)
+                    {
+                        return QDir().rename(from, to);
+                    }
+                    // 第 2 次重命名：将 staging_dir 发布为 target_dir，故障注入：模拟发布失败
+                    if (rename_calls == 2)
+                    {
+                        return false;
+                    }
+                    // 第 3 次重命名：回滚操作，将 .backup_xxx 还原为 target_dir，允许成功
+                    return QDir().rename(from, to);
+                });
+            QVERIFY(unc_scope.isValid());
 
-        // 验证 UNC 目标目录内容完好无损被恢复
-        QVERIFY(QFile::exists(preserve_file));
-        QFile check_preserve(preserve_file);
-        QVERIFY(check_preserve.open(QIODevice::ReadOnly | QIODevice::Text));
-        QCOMPARE(check_preserve.readAll(), QByteArray("must_be_preserved_in_unc"));
-        check_preserve.close();
+            // 在 staging 暂存目录写入新文件，验证失败后绝不泄露到 target_dir
+            QFile canary(QDir(unc_scope.stagingDir()).filePath(staging_canary));
+            QVERIFY(canary.open(QIODevice::WriteOnly | QIODevice::Text));
+            canary.write("this_staging_file_must_not_leak_into_target");
+            canary.close();
+
+            // 执行 publish：预期在第 2 次重命名时注入失败，并自动执行第 3 次重命名回滚
+            const bool publish_ok = unc_scope.publish(publish_err);
+            QVERIFY(!publish_ok);
+            QVERIFY2(publish_err.contains(QStringLiteral("已恢复原目标内容")), qPrintable(publish_err));
+            QCOMPARE(rename_calls, 3); // 严格证明真实经历了: target->backup, staging->target(失败), backup->target(回滚)
+        }
+
+        // 阶段四：故障恢复后重新回读验证 UNC 目标下所有图片和标注，证明零数据损坏
+        QVERIFY2(!QFile::exists(QDir(unc_output_dir).filePath(staging_canary)),
+                 "staging 暂存文件不应出现在恢复后的目标目录中");
+
+        // 重新调用生产级导出校验器验证恢复后的 UNC 目标目录
+        error.clear();
+        QVERIFY2(dltool::data::DataIO::validateExportOutput(dltool::data::DataFormat::LabelMe, dataset2,
+                                                            unc_output_dir, {}, error),
+                 qPrintable(error));
+
+        // 重新回读并完整解码 UNC 目录中的图像与标注 JSON，证明零数据损坏
+        QVERIFY(QFile::exists(exported_image_path2));
+        QImage post_recovery_image;
+        QVERIFY(post_recovery_image.load(exported_image_path2));
+        QCOMPARE(post_recovery_image.size(), QSize(16, 16));
+
+        QVERIFY(QFile::exists(exported_json_path2));
+        QFile post_recovery_json(exported_json_path2);
+        QVERIFY(post_recovery_json.open(QIODevice::ReadOnly));
+        const QJsonDocument post_recovery_doc = QJsonDocument::fromJson(post_recovery_json.readAll());
+        QVERIFY(!post_recovery_doc.isNull());
+        QCOMPARE(post_recovery_doc.object().value(QStringLiteral("imageWidth")).toInt(), 16);
+        QCOMPARE(post_recovery_doc.object().value(QStringLiteral("imageHeight")).toInt(), 16);
+        post_recovery_json.close();
+
+        // 验证 UNC 目标父目录下没有任何残留的 .backup_* 或 .staging_* 目录
+        const QString unc_parent = QFileInfo(unc_output_dir).path();
+        const QStringList leftover_dirs = QDir(unc_parent).entryList(
+            {QStringLiteral(".backup_*"), QStringLiteral(".staging_*")},
+            QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot);
+        QVERIFY2(leftover_dirs.isEmpty(), qPrintable(QString("存在残留备份或暂存目录: %1").arg(leftover_dirs.join(QStringLiteral(", ")))));
 
         // 清理 UNC 临时测试目录
         QDir(unc_output_dir).removeRecursively();
