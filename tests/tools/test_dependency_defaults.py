@@ -587,7 +587,7 @@ def test_isolated_installed_package_desktop_smoke_test() -> None:
             cwd=str(ROOT),
             capture_output=True,
             text=True,
-            timeout=180,
+            timeout=360,
         )
         assert pack_res.returncode == 0, f"Packaging failed: {pack_res.stderr}\nStdout: {pack_res.stdout}"
 

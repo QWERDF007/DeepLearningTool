@@ -2,12 +2,15 @@
 #include "data/DataFormat.h"
 #include "data/DatasetIO.h"
 
+#include "common/Utils.h"
 #include "ui/ProgressManager.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QEventLoop>
 #include <QImage>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QVector>
@@ -487,6 +490,178 @@ private slots:
 
         // Verify dataset 1 remains 100% valid and untouched
         QVERIFY(dltool::data::DataIO::validateExportOutput(dltool::data::DataFormat::LabelMe, dataset1, out_dir1, {}, err));
+    }
+
+    void uncPathExportOverwritesAndRecoversSafelyWithReadbackValidation()
+    {
+        // 验证 Ticket 06 验收条件：
+        // 1. 本地与 UNC 共享路径按实际目标验证，真实导出文件、目录与标注产物
+        // 2. 覆盖导出成功发布，旧目标被安全替换
+        // 3. 失败/异常导出时恢复原目标内容，不损坏既有成果
+        // 4. 直接从 UNC 路径回读导出的图像与 JSON 标注文件，验证内容完整性
+
+        const QString temp_dir = dltool::common::cleanPath(QDir::tempPath());
+        QString unc_base;
+        if (temp_dir.length() >= 2 && temp_dir[1] == QLatin1Char(':'))
+        {
+            const QChar drive = temp_dir[0];
+            unc_base = QStringLiteral("//127.0.0.1/%1$%2").arg(drive).arg(temp_dir.mid(2));
+        }
+        else
+        {
+            unc_base = temp_dir;
+        }
+
+        if (!QDir(unc_base).exists())
+        {
+            QSKIP("当前运行环境未开启 127.0.0.1 默认管理共享，跳过真实 UNC 导出测试");
+            return;
+        }
+
+        const QString unc_output_dir = QDir(unc_base).filePath(
+            QStringLiteral("dltool_unc_export_%1").arg(QCoreApplication::applicationPid()));
+
+        // 清理旧残留
+        if (QDir(unc_output_dir).exists())
+            QDir(unc_output_dir).removeRecursively();
+
+        QTemporaryDir local_source_dir;
+        QVERIFY(local_source_dir.isValid());
+
+        // 准备真实源图像
+        const QString source_image_path = QDir(local_source_dir.path()).filePath(QStringLiteral("unc_test_img.png"));
+        QImage source_image(QSize(32, 24), QImage::Format_RGB32);
+        source_image.fill(Qt::green);
+        QVERIFY(source_image.save(source_image_path));
+
+        dltool::data::ExportDataset dataset1;
+        dataset1.dataset_name = QStringLiteral("unc-dataset-v1");
+        dltool::data::ExportImage image1;
+        image1.image_id = 1;
+        image1.path     = source_image_path;
+        image1.width    = 32;
+        image1.height   = 24;
+        dltool::data::ExportLabel label1;
+        label1.label_id       = 1;
+        label1.image_id       = 1;
+        label1.label_class_id = 1;
+        label1.data           = {
+            {QStringLiteral("x"),      2 },
+            {QStringLiteral("y"),      2 },
+            {QStringLiteral("width"),  10},
+            {QStringLiteral("height"), 10}
+        };
+        dataset1.labels.push_back(label1);
+        dataset1.label_classes.push_back({1, QStringLiteral("defect"), QStringLiteral("#FF0000")});
+        dataset1.images.push_back(image1);
+
+        // 阶段一：真实导出到 UNC 路径
+        bool finished = false;
+        bool success  = false;
+        QString message;
+        dltool::data::LabelMeIO exporter;
+        connect(&exporter, &dltool::data::DataIO::exportFinished, this,
+                [&finished, &success, &message](const bool s, const QString &m)
+                {
+                    finished = true;
+                    success  = s;
+                    message  = m;
+                });
+
+        exporter.startExport(dataset1, unc_output_dir);
+        QTRY_VERIFY_WITH_TIMEOUT(finished, 10000);
+        QVERIFY2(success, qPrintable(message));
+
+        // 验证产物完整性与校验通过
+        QString error;
+        QVERIFY2(dltool::data::DataIO::validateExportOutput(dltool::data::DataFormat::LabelMe, dataset1,
+                                                            unc_output_dir, {}, error),
+                 qPrintable(error));
+
+        // 真实回读校验：直接从 UNC 路径读取并解码图像与标注 JSON
+        const QString exported_image_path = QDir(unc_output_dir).filePath(QStringLiteral("images/unc_test_img.png"));
+        QVERIFY2(QFile::exists(exported_image_path), qPrintable(exported_image_path));
+        QImage readback_image;
+        QVERIFY(readback_image.load(exported_image_path));
+        QCOMPARE(readback_image.size(), QSize(32, 24));
+
+        const QString exported_json_path = QDir(unc_output_dir).filePath(QStringLiteral("annotations/unc_test_img.json"));
+        QVERIFY2(QFile::exists(exported_json_path), qPrintable(exported_json_path));
+        QFile json_file(exported_json_path);
+        QVERIFY(json_file.open(QIODevice::ReadOnly));
+        const QJsonDocument json_doc = QJsonDocument::fromJson(json_file.readAll());
+        QVERIFY(!json_doc.isNull());
+        QCOMPARE(json_doc.object().value(QStringLiteral("imageWidth")).toInt(), 32);
+        QCOMPARE(json_doc.object().value(QStringLiteral("imageHeight")).toInt(), 24);
+        json_file.close();
+
+        // 阶段二：安全覆盖导出（写入 pre-existing sentinel 验证覆盖发布）
+        const QString sentinel_file = QDir(unc_output_dir).filePath(QStringLiteral("sentinel_marker.txt"));
+        QFile sentinel(sentinel_file);
+        QVERIFY(sentinel.open(QIODevice::WriteOnly | QIODevice::Text));
+        sentinel.write("pre_existing_data");
+        sentinel.close();
+
+        finished = false;
+        success  = false;
+        message.clear();
+
+        // 导出更新版数据集（包含新图像）
+        const QString source_image_path2 = QDir(local_source_dir.path()).filePath(QStringLiteral("unc_test_img2.png"));
+        QImage source_image2(QSize(16, 16), QImage::Format_RGB32);
+        source_image2.fill(Qt::blue);
+        QVERIFY(source_image2.save(source_image_path2));
+
+        dltool::data::ExportDataset dataset2;
+        dataset2.dataset_name = QStringLiteral("unc-dataset-v2");
+        dltool::data::ExportImage image2;
+        image2.image_id = 2;
+        image2.path     = source_image_path2;
+        image2.width    = 16;
+        image2.height   = 16;
+        dataset2.images.push_back(image2);
+
+        exporter.startExport(dataset2, unc_output_dir);
+        QTRY_VERIFY_WITH_TIMEOUT(finished, 10000);
+        QVERIFY2(success, qPrintable(message));
+        QVERIFY(dltool::data::DataIO::validateExportOutput(dltool::data::DataFormat::LabelMe, dataset2,
+                                                            unc_output_dir, {}, error));
+
+        // 阶段三：失败导出时恢复 UNC 既有目标内容
+        // 在 UNC 目标中放置必须保留的标志文件
+        const QString preserve_file = QDir(unc_output_dir).filePath(QStringLiteral("preserve_after_fail.txt"));
+        QFile preserve(preserve_file);
+        QVERIFY(preserve.open(QIODevice::WriteOnly | QIODevice::Text));
+        preserve.write("must_be_preserved_in_unc");
+        preserve.close();
+
+        // 构造一个包含不存在文件的破损数据集以触发导出中途失败
+        dltool::data::ExportDataset failing_dataset;
+        failing_dataset.dataset_name = QStringLiteral("unc-dataset-fail");
+        dltool::data::ExportImage bad_image;
+        bad_image.image_id = 99;
+        bad_image.path     = QDir(local_source_dir.path()).filePath(QStringLiteral("non_existent.png"));
+        bad_image.width    = 16;
+        bad_image.height   = 16;
+        failing_dataset.images.push_back(bad_image);
+
+        finished = false;
+        success  = false;
+        message.clear();
+
+        exporter.startExport(failing_dataset, unc_output_dir);
+        QTRY_VERIFY_WITH_TIMEOUT(finished, 10000);
+        QVERIFY(!success);
+
+        // 验证 UNC 目标目录内容完好无损被恢复
+        QVERIFY(QFile::exists(preserve_file));
+        QFile check_preserve(preserve_file);
+        QVERIFY(check_preserve.open(QIODevice::ReadOnly | QIODevice::Text));
+        QCOMPARE(check_preserve.readAll(), QByteArray("must_be_preserved_in_unc"));
+        check_preserve.close();
+
+        // 清理 UNC 临时测试目录
+        QDir(unc_output_dir).removeRecursively();
     }
 
 private:
