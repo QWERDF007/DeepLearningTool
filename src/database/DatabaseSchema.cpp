@@ -329,13 +329,23 @@ std::vector<TableSpec> deriveCanonicalTablesFor(SchemaKind kind)
     QString err;
     for (const ResourceSpec &resource : resourcesFor(kind))
     {
-        executeResource(mem_db, resource.resource_name, &err);
+        if (!executeResource(mem_db, resource.resource_name, &err))
+        {
+            sqlite3_close(mem_db);
+            return {};
+        }
     }
 
     std::vector<TableSpec> specs;
     for (const ResourceSpec &resource : resourcesFor(kind))
     {
-        specs.push_back(deriveTableSpec(mem_db, QString::fromLatin1(resource.table_name)));
+        TableSpec spec = deriveTableSpec(mem_db, QString::fromLatin1(resource.table_name));
+        if (spec.columns.empty())
+        {
+            sqlite3_close(mem_db);
+            return {};
+        }
+        specs.push_back(std::move(spec));
     }
 
     sqlite3_close(mem_db);
@@ -361,7 +371,11 @@ TableSpec settingsTableSpec(const QString &table_name)
         if (sqlite3_open_v2(":memory:", &mem_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) != SQLITE_OK)
             return TableSpec{};
         QString err;
-        executeSettingsTableResource(mem_db, QStringLiteral("__template__"), &err);
+        if (!executeSettingsTableResource(mem_db, QStringLiteral("__template__"), &err))
+        {
+            sqlite3_close(mem_db);
+            return TableSpec{};
+        }
         TableSpec spec = deriveTableSpec(mem_db, QStringLiteral("__template__"));
         sqlite3_close(mem_db);
         return spec;
@@ -587,7 +601,10 @@ bool validateTable(sqlite3 *db, const TableSpec &spec, QString *err_msg)
 
 bool validateSchema(sqlite3 *db, SchemaKind kind, QString *err_msg)
 {
-    for (const TableSpec &table : tablesFor(kind))
+    const auto &tables = tablesFor(kind);
+    if (kind != SchemaKind::Settings && tables.empty())
+        return setError(err_msg, QStringLiteral("无法派生有效的 schema 正本: %1").arg(static_cast<int>(kind)));
+    for (const TableSpec &table : tables)
     {
         if (!validateTable(db, table, err_msg))
             return false;

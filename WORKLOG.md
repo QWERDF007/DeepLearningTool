@@ -6,6 +6,10 @@
 
 <!-- 没有待裁决事项时保持本节为空。 -->
 
+- 2026-09-10：Schema 派生错误传播方案待确认：标准 schema 内存库派生失败沿现有错误接口返回、释放连接且不缓存不完整结果；补专门故障验证。目标库 SQLite 授权回调不能替代该内部路径验证。
+
+- 2026-09-10：项目关闭两阶段方案待确认：沿现有管理器增加非阻塞 beginShutdown，统一拒绝新工作并广播取消后，再按依赖顺序 shutdown 等待、落库和释放；测试从 ProjectManager 公开关闭入口验证。见“核对项目关闭两阶段边界”。
+
 
 
 ---
@@ -42,6 +46,38 @@
 **干到哪了**：
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
+
+## 2026-09-10 — 收敛 Schema 正本派生错误
+
+**目标**
+- Ticket 08：Schema 正本派生失败时不得忽略错误或缓存不完整结构。
+
+**当前状态**
+- 内存 schema 与 settings 模板资源执行失败立即释放连接并返回空结果；派生空表不进入有效验证路径，验证时明确返回错误。原迁移事务逻辑未改变。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_database_database_schema_tests --parallel 4` → 成功。
+- `ctest --test-dir build -C Release -R '^dltool_database_database_schema_tests$' --output-on-failure` → 1/1 通过，0.23 秒。
+
+**下一步**
+- 提交本阶段；随后实施项目关闭两阶段并补公开入口测试。规格和票据保持本地未跟踪。
+
+## 2026-09-10 — 核对项目关闭两阶段边界
+
+**目标**
+- 闭合规格阶段 3 的全部执行者先取消、再等待契约。
+
+**当前状态**
+- 仅审查，未修改关闭实现。现有 Project::shutdown 在 FeatureManager::shutdown 返回后才取消模型评估；Feature 各控制器 shutdown 内直接 wait，仍存在提前等待。
+- 拟沿已有管理器拆出非阻塞 beginShutdown，保留 shutdown 为幂等完成入口；TaskManager 的通信和必要终态处理保留至第二阶段。不新增通用关闭框架，不只调整调用顺序。按 AGENTS 开发前要求等待方案确认。
+
+**验证证据**
+- 核对 src/project/Projects.cpp、FeatureManager.cpp、SmartAnnotationController.cpp、FewShotLearningController.cpp、ModelTaskController.cpp、ModelTestTaskManager.cpp 的关闭调用链；目前只有局部先取消后等待，不能证明项目整体满足要求。
+- 补充发现：ModelManager::shutdown 忽略 waitForOperations(5000) 的返回值并清空句柄；ModelOperationWorkflow::waitForCompletions 超时会返回 false。现有 managerShutdownCancelsAndWaitsActiveOperations 只取消 5MB 复制，不能证明超过五秒的不可中断工作已收敛。两阶段修正需同时覆盖该场景，不可只改取消顺序。静态风险，未复现；尝试单独 workflow CTest 名称未匹配测试，不计为通过（该类使用 REGISTER_TEST 聚合注册）。
+- 已纠正测试入口：test_ModelOperationWorkflow.cpp 由 storage_params 聚合目标收录。`cmake --build build --config Release --target dltool_model_storage_params_tests --parallel 4` 成功；`ctest --test-dir build -C Release -R '^dltool_model_storage_params_tests$' --output-on-failure` → 1/1 通过，2.01 秒。该结果不覆盖上述五秒超时缺口。
+
+**下一步**
+- 用户确认后，通过 ProjectManager 关闭同时挂起 Feature/评估工作的受控测试验证取消顺序、拒绝新工作、无迟到发布及终态落库，再实施两阶段接口并运行相关 CTest。
 
 ## 2026-09-10 — 提取数据并行执行共用组件
 
