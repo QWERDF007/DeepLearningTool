@@ -201,6 +201,7 @@ void ModelEvaluationViewModel::beginShutdown()
     ++aggregation_revision_;
     ++aggregation_schedule_token_;
     evaluation_worker_active_ = false;
+    setLoading(false);
     cancel_token_.reset();
 }
 
@@ -209,6 +210,11 @@ void ModelEvaluationViewModel::shutdown()
     beginShutdown();
     if (owned_evaluation_pool_ != nullptr)
         owned_evaluation_pool_->waitForDone();
+}
+
+bool ModelEvaluationViewModel::isShuttingDown() const
+{
+    return shutting_down_;
 }
 
 std::shared_ptr<std::atomic_bool> ModelEvaluationViewModel::activeAggregationCancelToken() const

@@ -101,6 +101,9 @@ public:
 
     void shutdown();
 
+    /** @brief 检查当前评估视图模型是否已进入关闭流程。 */
+    bool isShuttingDown() const;
+
     /** @brief 获取当前活跃的聚合取消令牌（用于测试观测和生命周期验证）。 */
     std::shared_ptr<std::atomic_bool> activeAggregationCancelToken() const;
 
