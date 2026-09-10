@@ -551,21 +551,39 @@ def test_isolated_installed_package_desktop_smoke_test() -> None:
                 hasher.update(chunk)
         return hasher.hexdigest()
 
-    # 若安装目录不存在或二进制与当前构建哈希不一致，触发 packaging 脚本生成/同步最新构建
-    if not app_exe.is_file() or compute_sha256(app_exe) != compute_sha256(build_exe):
+    build_bin_dir = ROOT / "build" / "bin"
+    if os.name == "nt":
+        project_binaries = list(build_bin_dir.glob("dltool_*.dll")) + list(build_bin_dir.glob("quickui.dll"))
+    else:
+        project_binaries = list(build_bin_dir.glob("libdltool_*.so")) + list(build_bin_dir.glob("libquickui.so"))
+
+    def project_binary_mismatch() -> bool:
+        if not app_exe.is_file() or compute_sha256(app_exe) != compute_sha256(build_exe):
+            return True
+        for b_file in project_binaries:
+            target = (package_dir / "lib" / b_file.name) if not os.name == "nt" and (package_dir / "lib" / b_file.name).is_file() else (package_dir / b_file.name)
+            if not target.is_file() or compute_sha256(target) != compute_sha256(b_file):
+                return True
+        return False
+
+    # 若安装目录不存在、缺少 marker、或可执行文件及任一工程库哈希与当前构建不一致，触发 packaging 脚本生成/同步最新构建
+    if not (package_dir / ".dltool_package").is_file() or project_binary_mismatch():
         package_script = ROOT / "tools" / "package_app.py"
+        pack_cmd = [
+            sys.executable,
+            str(package_script),
+            "--build-dir",
+            "build",
+            "--install-dir",
+            str(package_dir),
+            "--config",
+            "release",
+            "--allow-missing-dependencies",
+        ]
+        if (package_dir / ".dltool_package").is_file():
+            pack_cmd.append("--no-clean")
         pack_res = subprocess.run(
-            [
-                sys.executable,
-                str(package_script),
-                "--build-dir",
-                "build",
-                "--install-dir",
-                str(package_dir),
-                "--config",
-                "release",
-                "--allow-missing-dependencies",
-            ],
+            pack_cmd,
             cwd=str(ROOT),
             capture_output=True,
             text=True,
@@ -581,19 +599,16 @@ def test_isolated_installed_package_desktop_smoke_test() -> None:
     )
 
     # 验证当前构建生成的全部工程核心动态库与安装目录中的动态库 SHA-256 完全逐位匹配
-    build_bin_dir = ROOT / "build" / "bin"
     if os.name == "nt":
-        project_dlls = list(build_bin_dir.glob("dltool_*.dll")) + list(build_bin_dir.glob("quickui.dll"))
-        assert len(project_dlls) >= 8, f"Expected at least 8 project DLLs in {build_bin_dir}, found {len(project_dlls)}"
-        for build_dll in project_dlls:
+        assert len(project_binaries) >= 8, f"Expected at least 8 project DLLs in {build_bin_dir}, found {len(project_binaries)}"
+        for build_dll in project_binaries:
             pkg_dll = package_dir / build_dll.name
             assert pkg_dll.is_file(), f"Project DLL {build_dll.name} missing from package directory {package_dir}"
             assert compute_sha256(pkg_dll) == compute_sha256(build_dll), (
                 f"Packaged DLL {build_dll.name} SHA-256 does not match current build output"
             )
     else:
-        project_sos = list(build_bin_dir.glob("libdltool_*.so")) + list(build_bin_dir.glob("libquickui.so"))
-        for build_so in project_sos:
+        for build_so in project_binaries:
             pkg_so = (package_dir / "lib" / build_so.name) if (package_dir / "lib" / build_so.name).is_file() else (package_dir / build_so.name)
             assert pkg_so.is_file(), f"Project shared object {build_so.name} missing from package directory {package_dir}"
             assert compute_sha256(pkg_so) == compute_sha256(build_so), (
