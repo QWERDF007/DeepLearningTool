@@ -203,7 +203,8 @@ private slots:
         dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
         ModelManager manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr, &task_manager);
 
-        std::atomic<bool> work_completed{false};
+        std::atomic<bool> work_started{false};
+        std::atomic<bool> cleanup_completed{false};
         std::atomic<bool> completion_called{false};
 
         ModelOperationWorkflow::Options options;
@@ -212,37 +213,45 @@ private slots:
 
         auto handle = ModelOperationWorkflow::start(
             &manager, options,
-            [&work_completed](ModelOperationWorkflow::Result &result)
+            [&work_started, &cleanup_completed](ModelOperationWorkflow::Result &result)
             {
-                QElapsedTimer timer;
-                timer.start();
-                while (timer.elapsed() < 5200 && !result.cancellationRequested())
+                work_started.store(true, std::memory_order_release);
+                // 等待外部取消信号
+                while (!result.cancellationRequested())
+                {
+                    QThread::msleep(10);
+                }
+                // 收到取消信号后，模拟执行超过 5 秒的受控资源清理操作
+                QElapsedTimer cleanup_timer;
+                cleanup_timer.start();
+                while (cleanup_timer.elapsed() < 5200)
                 {
                     QThread::msleep(20);
                 }
-                result.success = !result.cancellationRequested();
-                work_completed.store(true, std::memory_order_release);
+                cleanup_completed.store(true, std::memory_order_release);
+                result.success = false;
             },
-            [&completion_called](const ModelOperationWorkflow::Result &result)
+            [&completion_called](const ModelOperationWorkflow::Result &)
             {
-                if (result.success)
-                    completion_called.store(true, std::memory_order_release);
+                completion_called.store(true, std::memory_order_release);
             });
 
         QVERIFY(handle != nullptr);
         manager.trackOperation(handle);
 
+        // 确保后台 worker 已实际进入执行状态
+        QTRY_VERIFY_WITH_TIMEOUT(work_started.load(std::memory_order_acquire), 3000);
+
         QElapsedTimer wait_timer;
         wait_timer.start();
 
-        // 验证 waitForOperations() 绝不在历史的 5000 ms 时提前超时或被截断
-        const bool wait_ok = manager.waitForOperations(-1);
+        // 验证真实生产关闭路径 manager.shutdown() 会向操作发出取消并等待超过 5 秒的清理完全收敛，不发生提前超时或截断
+        manager.shutdown();
 
         const qint64 elapsed = wait_timer.elapsed();
-        QVERIFY2(wait_ok, "waitForOperations 应返回 true，而不是超时");
         QVERIFY2(elapsed >= 5100,
-                 qPrintable(QString("操作等待时间应严格 >= 5100 ms，实际为 %1 ms").arg(elapsed)));
-        QVERIFY(work_completed.load(std::memory_order_acquire));
+                 qPrintable(QString("manager.shutdown() 等待时间应严格 >= 5100 ms，实际为 %1 ms").arg(elapsed)));
+        QVERIFY(cleanup_completed.load(std::memory_order_acquire));
         QVERIFY(completion_called.load(std::memory_order_acquire));
         QVERIFY(handle->isFinished());
         QVERIFY(handle->isCompletionFinished());
