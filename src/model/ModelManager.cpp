@@ -123,7 +123,7 @@ void ModelManager::shutdown()
         if (handle)
             handle->requestCancel();
     }
-    waitForOperations(5000);
+    ModelOperationWorkflow::waitForCompletions(operation_handles_);
     operation_handles_.clear();
 
     if (tensorboard_runner_ != nullptr)

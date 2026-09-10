@@ -180,6 +180,13 @@ public:
     ModelOperationWorkflow::HandlePtr recoverPendingAsync(ModelOperationWorkflow::Completion completion = {});
 
     /**
+     * @brief 登记受管后台操作句柄，以便统一等待与关闭
+     * @param handle 操作句柄
+     * @return 句柄指针
+     */
+    ModelOperationWorkflow::HandlePtr trackOperation(ModelOperationWorkflow::HandlePtr handle);
+
+    /**
      * @brief 等待所有正在进行的模型后台操作完成
      * @param timeout_ms 超时时间（毫秒），负数表示无限等待
      * @return 是否全部完成
@@ -511,8 +518,6 @@ private:
     mutable std::unordered_map<std::string, std::unique_ptr<IModel>> model_instances_; ///< 模型实例缓存
 
     mutable std::unordered_set<std::string> config_load_started_; ///< 已触发配置加载的模型
-
-    ModelOperationWorkflow::HandlePtr trackOperation(ModelOperationWorkflow::HandlePtr handle);
 
     std::atomic_bool                               shutting_down_{false};
     std::atomic_bool                               shutdown_requested_{false};

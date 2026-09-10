@@ -5,6 +5,7 @@
 #include "database/DataBase.h"
 #include "model/ModelEvaluationProtocol.h"
 #include "model/ModelManager.h"
+#include "model/ModelOperationWorkflow.h"
 #include "model/ModelStorageService.h"
 #include "model/TensorBoardRunner.h"
 #include "model/TaskManager.h"
@@ -15,6 +16,9 @@
 #include <QStandardPaths>
 #include <QSignalSpy>
 #include <QTest>
+#include <QThread>
+
+#include <atomic>
 
 using namespace dltool::model;
 using namespace dltool::model::testsupport;
@@ -188,6 +192,60 @@ private slots:
         runner.shutdown();
         QVERIFY(!runner.start(spec, &error));
         QCOMPARE(error, QStringLiteral("TensorBoard 运行器正在关闭"));
+    }
+
+    void longRunningOperationExceedingFiveSecondsWaitsToCompletionWithoutTimeout()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        TaskManager task_manager;
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr, &task_manager);
+
+        std::atomic<bool> work_completed{false};
+        std::atomic<bool> completion_called{false};
+
+        ModelOperationWorkflow::Options options;
+        options.title = QStringLiteral("超长耗时操作");
+        options.manage_progress = false;
+
+        auto handle = ModelOperationWorkflow::start(
+            &manager, options,
+            [&work_completed](ModelOperationWorkflow::Result &result)
+            {
+                QElapsedTimer timer;
+                timer.start();
+                while (timer.elapsed() < 5200 && !result.cancellationRequested())
+                {
+                    QThread::msleep(20);
+                }
+                result.success = !result.cancellationRequested();
+                work_completed.store(true, std::memory_order_release);
+            },
+            [&completion_called](const ModelOperationWorkflow::Result &result)
+            {
+                if (result.success)
+                    completion_called.store(true, std::memory_order_release);
+            });
+
+        QVERIFY(handle != nullptr);
+        manager.trackOperation(handle);
+
+        QElapsedTimer wait_timer;
+        wait_timer.start();
+
+        // 验证 waitForOperations() 绝不在历史的 5000 ms 时提前超时或被截断
+        const bool wait_ok = manager.waitForOperations(-1);
+
+        const qint64 elapsed = wait_timer.elapsed();
+        QVERIFY2(wait_ok, "waitForOperations 应返回 true，而不是超时");
+        QVERIFY2(elapsed >= 5100,
+                 qPrintable(QString("操作等待时间应严格 >= 5100 ms，实际为 %1 ms").arg(elapsed)));
+        QVERIFY(work_completed.load(std::memory_order_acquire));
+        QVERIFY(completion_called.load(std::memory_order_acquire));
+        QVERIFY(handle->isFinished());
+        QVERIFY(handle->isCompletionFinished());
     }
 };
 
