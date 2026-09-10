@@ -3,6 +3,8 @@
 #include "core/CoreDef.h"
 #include "database/DataBase.h"
 #include "project/Projects.h"
+#include "ui/ProgressManager.h"
+#include <spdlog/spdlog.h>
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -255,6 +257,83 @@ private slots:
         auto *reopened_data_b = reopened_b->dataManager();
         QVERIFY(reopened_data_b != nullptr);
         QCOMPARE(reopened_data_b->getDatasetId(QStringLiteral("数据集B")), dataset_b_id);
+
+        manager->closeProject();
+    }
+
+    void twoPhaseShutdownSequenceAndLateCallbackIsolation()
+    {
+        QTemporaryDir project_directory;
+        QVERIFY(project_directory.isValid());
+
+        auto *manager = dltool::project::ProjectManager::getInstance();
+        QVERIFY(manager != nullptr);
+        if (manager->currentProject() != nullptr)
+            manager->closeProject();
+
+        const QString project_path = QDir(project_directory.path()).filePath(QStringLiteral("twophase.dlpro"));
+        auto *project = manager->createProject(
+            QStringLiteral("两阶段关闭测试"),
+            static_cast<int>(dltool::core::DeepLearningMethod::AnomalyDetection),
+            project_path,
+            QStringLiteral("两阶段关闭生命周期测试"),
+            project_directory.path());
+        QVERIFY(project != nullptr);
+        auto *data_manager = project->dataManager();
+        auto *model_manager = project->modelManager();
+        auto *feature_manager = project->featureManager();
+        auto *test_task_manager = project->modelTestTaskManager();
+        QVERIFY(data_manager != nullptr);
+        QVERIFY(model_manager != nullptr);
+        QVERIFY(feature_manager != nullptr);
+        QVERIFY(test_task_manager != nullptr);
+
+        auto *progress = dltool::ui::ProgressManager::getInstance();
+        QVERIFY(progress != nullptr);
+        const QString old_task_id = progress->startTask(QStringLiteral("关闭前任务"), QStringLiteral("task_old_phase"));
+        QCOMPARE(progress->activeTaskId(), QStringLiteral("task_old_phase"));
+        QVERIFY(progress->getIsRunning());
+
+        // 启动后台锁定操作
+        auto *blocking_op = new BlockingProjectDatabaseDataIO(project_path, data_manager);
+        blocking_op->startDatabaseLock();
+        QTRY_VERIFY_WITH_TIMEOUT(blocking_op->lockAcquired(), 10000);
+
+        // 验证两阶段关闭：先取消、再等待，总耗时应在 3 秒内完成收敛
+        QElapsedTimer close_timer;
+        close_timer.start();
+        manager->closeProject();
+
+        QVERIFY2(close_timer.elapsed() < 3000,
+                 qPrintable(QStringLiteral("两阶段关闭等待超时: %1 ms").arg(close_timer.elapsed())));
+        QVERIFY(manager->currentProject() == nullptr);
+
+        // 进度管理器必须已被重置，旧任务标识清除
+        QVERIFY(!progress->getIsRunning());
+        QCOMPARE(progress->getProgress(), 0);
+        QVERIFY(progress->activeTaskId().isEmpty());
+
+        // 模拟迟到回调：旧任务的回调通知必须被拒绝，绝不唤醒或污染进度管理器
+        progress->updateProgress(75, old_task_id);
+        progress->addMessage(spdlog::level::info, QStringLiteral("迟到消息"), old_task_id);
+        QVERIFY(!progress->getIsRunning());
+        QCOMPARE(progress->getProgress(), 0);
+        QVERIFY(progress->activeTaskId().isEmpty());
+
+        // 打开新项目，验证环境干净
+        QTemporaryDir new_directory;
+        QVERIFY(new_directory.isValid());
+        const QString new_project_path = QDir(new_directory.path()).filePath(QStringLiteral("clean_next.dlpro"));
+        auto *next_project = manager->createProject(
+            QStringLiteral("新干净项目"),
+            static_cast<int>(dltool::core::DeepLearningMethod::AnomalyDetection),
+            new_project_path,
+            QStringLiteral("新项目无污染验证"),
+            new_directory.path());
+        QVERIFY(next_project != nullptr);
+        QVERIFY(!progress->getIsRunning());
+        QCOMPARE(progress->getProgress(), 0);
+        QVERIFY(progress->activeTaskId().isEmpty());
 
         manager->closeProject();
     }
