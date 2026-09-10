@@ -228,7 +228,7 @@ void ModelTaskController::beginShutdown()
 
 int ModelTaskController::addModelTask(const QString &model_uuid, const ModelTaskType task_type)
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return -1;
 
     QString   error;
@@ -240,7 +240,7 @@ int ModelTaskController::addModelTask(const QString &model_uuid, const ModelTask
 
 int ModelTaskController::startModelTask(const QString &model_uuid, const ModelTaskType task_type)
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return -1;
 
     QString   error;
@@ -273,7 +273,7 @@ int ModelTaskController::startModelTask(const QString &model_uuid, const ModelTa
 
 int ModelTaskController::startModelTestTask(const QString &model_uuid, const QString &test_task_uuid)
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return -1;
 
     QString   error;
@@ -297,7 +297,7 @@ bool ModelTaskController::stopModelTask(const QString &model_uuid, const ModelTa
 
 bool ModelTaskController::stopModelTestTask(const QString &model_uuid, const QString &test_task_uuid)
 {
-    if (shutting_down_ || task_manager_ == nullptr)
+    if (shutting_down_ || shutdown_requested_ || task_manager_ == nullptr)
         return false;
     const int task_id
         = task_manager_->findModelTask(model_uuid.trimmed(), ModelTaskType::Test, test_task_uuid.trimmed(), false);
@@ -306,7 +306,7 @@ bool ModelTaskController::stopModelTestTask(const QString &model_uuid, const QSt
 
 bool ModelTaskController::deleteModelTask(const QString &model_uuid, const ModelTaskType task_type)
 {
-    if (shutting_down_ || task_manager_ == nullptr)
+    if (shutting_down_ || shutdown_requested_ || task_manager_ == nullptr)
         return false;
 
     const int task_id = task_manager_->findModelTask(model_uuid.trimmed(), task_type, true);
@@ -465,6 +465,11 @@ void ModelTaskController::restoreModelTasks()
 int ModelTaskController::ensureTaskRecord(const QString &model_uuid, const ModelTaskType task_type,
                                           const QString &scope_uuid, const QString &scope_name, QString *err_msg)
 {
+    if (shutting_down_ || shutdown_requested_)
+    {
+        setError(err_msg, QString("模型任务控制器正在关闭"));
+        return -1;
+    }
     if (model_manager_ == nullptr)
     {
         setError(err_msg, QString("模型管理器为空"));
@@ -559,7 +564,7 @@ int ModelTaskController::ensureTaskRecord(const QString &model_uuid, const Model
 
 bool ModelTaskController::prepareTask(const int task_id)
 {
-    if (shutting_down_ || task_manager_ == nullptr || model_manager_ == nullptr)
+    if (shutting_down_ || shutdown_requested_ || task_manager_ == nullptr || model_manager_ == nullptr)
         return false;
 
     const TaskManager::Task *task = task_manager_->findTask(task_id);
@@ -687,7 +692,7 @@ bool ModelTaskController::stopTask(const int task_id)
 
 bool ModelTaskController::deleteTask(const int task_id)
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return false;
 
     TaskIdentity identity;

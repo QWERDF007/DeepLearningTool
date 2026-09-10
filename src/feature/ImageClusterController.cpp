@@ -241,7 +241,7 @@ QString ImageClusterController::validationError() const
 
 bool ImageClusterController::cluster(const QVariantList &dataset_ids)
 {
-    if (shutting_down_.load(std::memory_order_acquire))
+    if (shutting_down_.load(std::memory_order_acquire) || shutdown_requested_.load(std::memory_order_acquire))
     {
         setLastError(QStringLiteral("图像聚类控制器正在关闭"));
         return false;

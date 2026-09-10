@@ -90,6 +90,8 @@ public:
     /** 在项目关闭前取消外部进程和 C++ 评估，并等待评估线程收敛。 */
     void shutdown();
     void beginShutdown();
+    bool isShuttingDown() const { return shutting_down_; }
+    bool isShutdownRequested() const { return shutdown_requested_ || shutting_down_; }
 
     /**
      * @brief 删除指定模型任务记录。

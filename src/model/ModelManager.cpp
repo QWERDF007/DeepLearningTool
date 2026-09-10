@@ -168,7 +168,7 @@ bool ModelManager::waitForOperations(const int timeout_ms)
 ModelOperationWorkflow::HandlePtr ModelManager::recoverPendingAsync(
     ModelOperationWorkflow::Completion completion)
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return {};
 
     ModelOperationWorkflow::Options options;
@@ -332,6 +332,12 @@ bool ModelManager::addModel(const QString &name, const QString &framework_name, 
 ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, const QString &framework_name,
                                                            const QString &model_architecture, QString *err_msg)
 {
+    if (shutting_down_ || shutdown_requested_)
+    {
+        setError(err_msg, QStringLiteral("模型管理器正在关闭"));
+        return {};
+    }
+
     const QString trimmed_name               = name.trimmed();
     const QString trimmed_framework_name     = framework_name.trimmed();
     const QString trimmed_model_architecture = model_architecture.trimmed();
@@ -415,6 +421,12 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
 
 bool ModelManager::renameModel(const qint64 model_id, const QString &name)
 {
+    if (shutting_down_ || shutdown_requested_)
+    {
+        spdlog::warn("模型重命名失败: 模型管理器正在关闭");
+        return false;
+    }
+
     const QString name_error = validateModelName(name);
     if (!name_error.isEmpty())
     {
@@ -458,6 +470,12 @@ bool ModelManager::renameModel(const qint64 model_id, const QString &name)
 
 bool ModelManager::deleteModel(const qint64 model_id)
 {
+    if (shutting_down_ || shutdown_requested_)
+    {
+        spdlog::warn("删除模型失败: 模型管理器正在关闭");
+        return false;
+    }
+
     const int row = indexOfModel(model_id);
     if (row < 0)
     {
@@ -502,7 +520,7 @@ ModelOperationWorkflow::HandlePtr ModelManager::copyModelAsync(
     const qint64 model_id, const bool copy_train_weights,
     ModelOperationWorkflow::Completion completion)
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
     {
         spdlog::warn("复制模型失败: 模型管理器正在关闭");
         return {};
@@ -723,6 +741,9 @@ bool ModelManager::updateModelExtraData(const QString &model_uuid, const QVarian
 bool ModelManager::resetModelTaskState(const QString &model_uuid, const QString &section_key, const QStringList &fields,
                                        const QVariantMap &preset, QString *err_msg)
 {
+    if (shutting_down_ || shutdown_requested_)
+        return setError(err_msg, QStringLiteral("模型管理器正在关闭"));
+
     const int row = indexOfUuid(model_uuid.trimmed());
     if (row < 0)
         return setError(err_msg, QString("模型不存在: %1").arg(model_uuid.trimmed()));

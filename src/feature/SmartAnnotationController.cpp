@@ -1116,7 +1116,7 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
                                                     const irt::model::ModelRuntime &runtime,
                                                     const irt::model::ModelPrecision precision)
 {
-    if (shutting_down_.load(std::memory_order_acquire))
+    if (shutting_down_.load(std::memory_order_acquire) || shutdown_requested_.load(std::memory_order_acquire))
         return;
     const SmartModelLoadRequest request
         = buildSmartModelLoadRequest(model_name, model_path, runtime, precision);
@@ -1146,7 +1146,8 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
                                QString error, const bool success)
     {
         if (!controller || !loading_token || loading_token->load(std::memory_order_acquire)
-            || controller->shutting_down_.load(std::memory_order_acquire))
+            || controller->shutting_down_.load(std::memory_order_acquire)
+            || controller->shutdown_requested_.load(std::memory_order_acquire))
             return;
 
         QMetaObject::invokeMethod(
@@ -1155,6 +1156,7 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
             {
                 if (!controller || !loading_token || loading_token->load(std::memory_order_acquire)
                     || controller->shutting_down_.load(std::memory_order_acquire)
+                    || controller->shutdown_requested_.load(std::memory_order_acquire)
                     || controller->loading_cancellation_token_ != loading_token)
                     return;
                 if (controller->loading_model_key_ != request.key)
@@ -1243,7 +1245,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         {QStringLiteral("pending"), false}
     };
 
-    if (shutting_down_.load(std::memory_order_acquire))
+    if (shutting_down_.load(std::memory_order_acquire) || shutdown_requested_.load(std::memory_order_acquire))
     {
         result[QStringLiteral("error")] = QStringLiteral("智能标注控制器正在关闭");
         return result;
@@ -1358,7 +1360,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
 void SmartAnnotationController::onInferCompleted(quint64 request_id, QVariantMap result)
 {
-    if (shutting_down_.load(std::memory_order_acquire))
+    if (shutting_down_.load(std::memory_order_acquire) || shutdown_requested_.load(std::memory_order_acquire))
         return;
     if (request_id != current_request_id_)
         return;

@@ -197,7 +197,7 @@ QString RoiClusterController::validationError() const
 
 bool RoiClusterController::cluster(const QVariantList &dataset_class_scope)
 {
-    if (shutting_down_.load(std::memory_order_acquire))
+    if (shutting_down_.load(std::memory_order_acquire) || shutdown_requested_.load(std::memory_order_acquire))
     {
         setLastError(QStringLiteral("标注聚类控制器正在关闭"));
         return false;

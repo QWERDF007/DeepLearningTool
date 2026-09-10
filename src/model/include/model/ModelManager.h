@@ -64,6 +64,11 @@ public:
      */
     void shutdown();
     void beginShutdown();
+    bool isShuttingDown() const { return shutting_down_.load(std::memory_order_acquire); }
+    bool isShutdownRequested() const
+    {
+        return shutdown_requested_.load(std::memory_order_acquire) || shutting_down_.load(std::memory_order_acquire);
+    }
 
     Q_PROPERTY(int method READ method CONSTANT FINAL)
     Q_PROPERTY(QAbstractItemModel *userVisibleModel READ userVisibleModel CONSTANT FINAL)
