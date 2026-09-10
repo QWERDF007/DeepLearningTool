@@ -268,6 +268,21 @@ private slots:
         QVERIFY(err.contains(QStringLiteral("UNC")));
         QVERIFY(!resolved.contains(app_dir));
         QVERIFY(!err.contains(app_dir));
+
+        // 6. Windows native backslash UNC path -> retains UNC network semantics
+        QVERIFY(dltool::data::DatasetIO::resolveExportPath(QStringLiteral("\\\\192.168.1.100\\share\\export"), {}, resolved, err));
+        QVERIFY(resolved.contains(QStringLiteral("192.168.1.100/share/export")));
+
+        // 7. Malformed backslash UNC paths -> rejected, never falls back to app dir
+        QVERIFY(!dltool::data::DatasetIO::resolveExportPath(QStringLiteral("\\\\invalid_server"), {}, resolved, err));
+        QVERIFY(err.contains(QStringLiteral("UNC")));
+        QVERIFY(!resolved.contains(app_dir));
+        QVERIFY(!err.contains(app_dir));
+
+        QVERIFY(!dltool::data::DatasetIO::resolveExportPath(QStringLiteral("\\\\"), {}, resolved, err));
+        QVERIFY(err.contains(QStringLiteral("UNC")));
+        QVERIFY(!resolved.contains(app_dir));
+        QVERIFY(!err.contains(app_dir));
     }
 
     void exportersUseConsistentContractOnCancellation()
@@ -396,6 +411,82 @@ private slots:
             QVERIFY(!dltool::data::DataIO::validateExportOutput(dltool::data::DataFormat::Folder, dataset, folder_dir, {}, err));
             QVERIFY2(err.contains(QStringLiteral("无效")) || err.contains(QStringLiteral("0")), qPrintable(err));
         }
+    }
+
+    void batchExportCancellationHaltsSubsequentDatasetsAndPreservesCompletedArtifacts()
+    {
+        QTemporaryDir temporary_dir;
+        QVERIFY(temporary_dir.isValid());
+
+        // Create Dataset 1 (5 images)
+        dltool::data::ExportDataset dataset1;
+        dataset1.dataset_name = QStringLiteral("batch_ds1");
+        for (int i = 0; i < 5; ++i)
+        {
+            const QString img_path = QDir(temporary_dir.path()).filePath(QString("ds1_%1.png").arg(i));
+            QImage img(16, 16, QImage::Format_RGB32);
+            img.fill(Qt::blue);
+            QVERIFY(img.save(img_path));
+            dltool::data::ExportImage eimg;
+            eimg.image_id = i + 1;
+            eimg.path = img_path;
+            eimg.width = 16;
+            eimg.height = 16;
+            dataset1.images.push_back(eimg);
+        }
+
+        // Export dataset 1 fully
+        const QString out_dir1 = QDir(temporary_dir.path()).filePath(QStringLiteral("out_ds1"));
+        dltool::data::LabelMeIO exp1;
+        bool exp1_done = false;
+        bool exp1_ok = false;
+        connect(&exp1, &dltool::data::DataIO::exportFinished, this,
+                [&exp1_done, &exp1_ok](bool ok, const QString &) {
+                    exp1_done = true;
+                    exp1_ok = ok;
+                });
+        exp1.startExport(dataset1, out_dir1);
+        QTRY_VERIFY_WITH_TIMEOUT(exp1_done, 5000);
+        QVERIFY(exp1_ok);
+
+        // Verify dataset 1 output is valid
+        QString err;
+        QVERIFY(dltool::data::DataIO::validateExportOutput(dltool::data::DataFormat::LabelMe, dataset1, out_dir1, {}, err));
+
+        // Create Dataset 2 (many images, to be cancelled)
+        dltool::data::ExportDataset dataset2;
+        dataset2.dataset_name = QStringLiteral("batch_ds2");
+        for (int i = 0; i < 50; ++i)
+        {
+            const QString img_path = QDir(temporary_dir.path()).filePath(QString("ds2_%1.png").arg(i));
+            QImage img(16, 16, QImage::Format_RGB32);
+            img.fill(Qt::green);
+            QVERIFY(img.save(img_path));
+            dltool::data::ExportImage eimg;
+            eimg.image_id = i + 100;
+            eimg.path = img_path;
+            eimg.width = 16;
+            eimg.height = 16;
+            dataset2.images.push_back(eimg);
+        }
+
+        const QString out_dir2 = QDir(temporary_dir.path()).filePath(QStringLiteral("out_ds2"));
+        dltool::data::LabelMeIO exp2;
+        bool exp2_done = false;
+        bool exp2_ok = true;
+        connect(&exp2, &dltool::data::DataIO::exportFinished, this,
+                [&exp2_done, &exp2_ok](bool ok, const QString &) {
+                    exp2_done = true;
+                    exp2_ok = ok;
+                });
+        exp2.startExport(dataset2, out_dir2);
+        // Cancel dataset 2 immediately
+        exp2.requestCancel();
+        QTRY_VERIFY_WITH_TIMEOUT(exp2_done, 5000);
+        QVERIFY(!exp2_ok);
+
+        // Verify dataset 1 remains 100% valid and untouched
+        QVERIFY(dltool::data::DataIO::validateExportOutput(dltool::data::DataFormat::LabelMe, dataset1, out_dir1, {}, err));
     }
 
 private:
