@@ -2016,67 +2016,58 @@ private slots:
         vm1->setEvaluationOptions(options1);
         vm2->setEvaluationOptions(options2);
 
-        // 注册受控执行屏障引擎，验证工作线程在取消前确实已进入计算
+        // 先让 vm1 完成真实生产初始评估，进入就绪且具有实例记录的状态
+        QSignalSpy vm1_init_completed(vm1.get(), &ModelEvaluationViewModel::evaluationCompleted);
+        vm1->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(vm1->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QVERIFY(vm1->available());
+        QCOMPARE(vm1_init_completed.count(), 1);
+        QVERIFY(vm1->instances()->rowCount() > 0);
+
+        // 注册受控执行屏障引擎，验证 vm2 评估工作线程在取消前确实已进入计算
         ControlledShutdownEvaluationEngine::reset();
         EvaluationEngineRegistry::instance().registerEngine(
             evaluation::Method::Detection, []() { return std::make_unique<ControlledShutdownEvaluationEngine>(); });
         RestoreDetectionEvaluationEngine restore_engine;
 
-        // 构造包含多条真实样本数据的非空聚合输入，绝不使用空输入欺骗测试
-        EvaluationAggregateInput agg_input;
-        agg_input.anomaly_detection = false;
-        agg_input.has_instance_metrics = true;
-        agg_input.has_image_metrics = true;
-        agg_input.has_confusion_matrix = true;
-        agg_input.class_catalog[cat] = QStringLiteral("Cat");
-        agg_input.class_catalog[dog] = QStringLiteral("Dog");
-        for (int i = 0; i < 30; ++i)
-        {
-            EvaluationAggregateInput::InstanceEvent event;
-            event.status        = (i % 2 == 0) ? evaluation::Status::TruePositive : evaluation::Status::FalsePositive;
-            event.gt_class_id   = (i % 2 == 0) ? static_cast<int>(cat) : -1;
-            event.gt_class      = (i % 2 == 0) ? QStringLiteral("Cat") : QString();
-            event.pred_class_id = (i % 2 == 0) ? static_cast<int>(cat) : static_cast<int>(dog);
-            event.pred_class    = (i % 2 == 0) ? QStringLiteral("Cat") : QStringLiteral("Dog");
-            agg_input.instances.push_back(event);
-        }
-
-        auto agg_cancel_token = std::make_shared<std::atomic_bool>(false);
+        // 设置聚合执行屏障，证明取消信号到达时，真实聚合正在进行生产计算
         std::atomic_bool agg_entered{false};
-        std::atomic_bool agg_completed{false};
-        std::atomic_bool late_callback_delivered{false};
-        EvaluationAggregateOutput agg_output;
-
-        // 启动后台受控非空聚合执行者
-        shared_pool.start([&agg_input, agg_cancel_token, &agg_entered, &agg_completed, &late_callback_delivered, &agg_output, guard = QPointer<ModelEvaluationViewModel>(vm1.get())]() mutable {
-            agg_entered.store(true, std::memory_order_release);
-            while (!agg_cancel_token->load(std::memory_order_relaxed))
-            {
-                QThread::msleep(1);
-            }
-            agg_output = aggregateEvaluation(agg_input, agg_cancel_token);
-            agg_completed.store(true, std::memory_order_release);
-
-            // 模拟迟到回调投递至主线程
-            QMetaObject::invokeMethod(guard.data(), [&late_callback_delivered, guard]() {
-                if (guard != nullptr && !guard->isShuttingDown())
+        std::atomic_bool agg_exit_observed_cancel{false};
+        dltool::model::testsupport::setAggregateEvaluationExecutionBarrier(
+            [&agg_entered, &agg_exit_observed_cancel](const std::shared_ptr<std::atomic_bool> &token) {
+                agg_entered.store(true, std::memory_order_release);
+                while (token != nullptr && !token->load(std::memory_order_relaxed))
                 {
-                    late_callback_delivered.store(true, std::memory_order_release);
+                    QThread::msleep(1);
+                }
+                if (token != nullptr && token->load(std::memory_order_relaxed))
+                {
+                    agg_exit_observed_cancel.store(true, std::memory_order_release);
                 }
             });
-        });
-
-        // 启动两个并发评估
-        vm1->evaluate(true);
-        vm2->evaluate(true);
-
-        // 确保两个评估工作线程和一个聚合工作线程均已真实进入执行状态
-        QTRY_VERIFY_WITH_TIMEOUT(ControlledShutdownEvaluationEngine::entered_count.load(std::memory_order_acquire) == 2, 5000);
-        QTRY_VERIFY_WITH_TIMEOUT(agg_entered.load(std::memory_order_acquire), 5000);
-        QCOMPARE(ControlledShutdownEvaluationEngine::active_count.load(std::memory_order_acquire), 2);
+        struct ClearBarrierGuard
+        {
+            ~ClearBarrierGuard()
+            {
+                dltool::model::testsupport::clearAggregateEvaluationExecutionBarrier();
+            }
+        } clear_barrier_guard;
 
         QSignalSpy vm1_completed_spy(vm1.get(), &ModelEvaluationViewModel::evaluationCompleted);
+        QSignalSpy vm1_changed_spy(vm1.get(), &ModelEvaluationViewModel::evaluationChanged);
         QSignalSpy vm2_completed_spy(vm2.get(), &ModelEvaluationViewModel::evaluationCompleted);
+
+        // 通过真实生产过滤入口 setClassFilter 触发后台 scheduleRebuildFilteredAggregates()
+        vm1->setClassFilter({cat});
+        // 启动 vm2 的受控评估
+        vm2->evaluate(true);
+
+        // 确保 vm2 评估工作线程和 vm1 聚合工作线程均已在共享线程池中真实进入执行状态
+        QTRY_VERIFY_WITH_TIMEOUT(agg_entered.load(std::memory_order_acquire), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(ControlledShutdownEvaluationEngine::entered_count.load(std::memory_order_acquire) == 1, 5000);
+        QCOMPARE(ControlledShutdownEvaluationEngine::active_count.load(std::memory_order_acquire), 1);
+        QVERIFY(vm1->activeAggregationCancelToken() != nullptr);
+        QVERIFY(!vm1->activeAggregationCancelToken()->load(std::memory_order_acquire));
 
         // 在评估与聚合高并发运行期间，执行生产级两阶段关闭
         QElapsedTimer shutdown_timer;
@@ -2085,7 +2076,6 @@ private slots:
         // 第一阶段：非阻塞向全部组件（评估VM与聚合）发送取消请求
         vm1->beginShutdown();
         vm2->beginShutdown();
-        agg_cancel_token->store(true, std::memory_order_release);
 
         // 第二阶段：生产关闭入口，并在共享线程池等待所有执行者收敛
         vm1->shutdown();
@@ -2100,20 +2090,14 @@ private slots:
                  qPrintable(QString("评估与聚合收敛超时: %1 ms").arg(shutdown_timer.elapsed())));
 
         // 验证全部执行者观察到了取消信号并正常退出
-        QCOMPARE(ControlledShutdownEvaluationEngine::cancel_observed_count.load(std::memory_order_acquire), 2);
+        QCOMPARE(ControlledShutdownEvaluationEngine::cancel_observed_count.load(std::memory_order_acquire), 1);
         QCOMPARE(ControlledShutdownEvaluationEngine::active_count.load(std::memory_order_acquire), 0);
-        QVERIFY(agg_completed.load(std::memory_order_acquire));
+        QVERIFY(agg_exit_observed_cancel.load(std::memory_order_acquire));
 
-        // 验证非空聚合在取消时放弃并返回空结果
-        QVERIFY(agg_output.instance_metrics.empty());
-        QVERIFY(agg_output.image_metrics.empty());
-
-        // 验证零迟到回调：已关闭的 VM 拒绝了迟到结果，没有激发完成信号
+        // 验证零迟到回调：已关闭的 VM 拒绝了迟到结果，没有激发完成或变更信号
         QCOMPARE(vm1_completed_spy.count(), 0);
         QCOMPARE(vm2_completed_spy.count(), 0);
-        QVERIFY(!late_callback_delivered.load(std::memory_order_acquire));
-        QVERIFY(!vm1->available());
-        QVERIFY(!vm2->available());
+        QCOMPARE(vm1_changed_spy.count(), 0);
         QVERIFY(!vm1->loading());
         QVERIFY(!vm2->loading());
         QVERIFY(vm1->isShuttingDown());

@@ -7,8 +7,45 @@
 
 #include <QSet>
 #include <algorithm>
+#include <mutex>
 
 namespace dltool::model {
+
+namespace testsupport {
+static std::mutex g_barrier_mutex;
+static AggregateBarrier g_aggregate_barrier = nullptr;
+
+void setAggregateEvaluationExecutionBarrier(AggregateBarrier barrier)
+{
+    std::lock_guard<std::mutex> lock(g_barrier_mutex);
+    g_aggregate_barrier = std::move(barrier);
+}
+
+void clearAggregateEvaluationExecutionBarrier()
+{
+    std::lock_guard<std::mutex> lock(g_barrier_mutex);
+    g_aggregate_barrier = nullptr;
+}
+
+bool hasAggregateEvaluationExecutionBarrier()
+{
+    std::lock_guard<std::mutex> lock(g_barrier_mutex);
+    return g_aggregate_barrier != nullptr;
+}
+
+void invokeAggregateEvaluationExecutionBarrier(const std::shared_ptr<std::atomic_bool> &cancel_token)
+{
+    AggregateBarrier barrier;
+    {
+        std::lock_guard<std::mutex> lock(g_barrier_mutex);
+        barrier = g_aggregate_barrier;
+    }
+    if (barrier)
+    {
+        barrier(cancel_token);
+    }
+}
+} // namespace testsupport
 
 namespace {
 
@@ -148,6 +185,11 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
     {
         return token != nullptr && token->load(std::memory_order_relaxed);
     };
+
+    if (testsupport::hasAggregateEvaluationExecutionBarrier())
+    {
+        testsupport::invokeAggregateEvaluationExecutionBarrier(token);
+    }
 
     EvaluationAggregateOutput output;
     if (isCancelled())

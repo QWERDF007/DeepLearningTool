@@ -11,10 +11,19 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <vector>
 
 namespace dltool::model {
+
+namespace testsupport {
+using AggregateBarrier = std::function<void(const std::shared_ptr<std::atomic_bool> &cancel_token)>;
+MODEL_API void setAggregateEvaluationExecutionBarrier(AggregateBarrier barrier);
+MODEL_API void clearAggregateEvaluationExecutionBarrier();
+MODEL_API bool hasAggregateEvaluationExecutionBarrier();
+MODEL_API void invokeAggregateEvaluationExecutionBarrier(const std::shared_ptr<std::atomic_bool> &cancel_token);
+} // namespace testsupport
 
 /**
  * @brief 聚合评估输入：实例事件、图像记录、类别目录与过滤参数。
