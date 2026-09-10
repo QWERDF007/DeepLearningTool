@@ -6,9 +6,7 @@
 
 <!-- 没有待裁决事项时保持本节为空。 -->
 
-- 2026-09-10：Schema 派生错误传播方案待确认：标准 schema 内存库派生失败沿现有错误接口返回、释放连接且不缓存不完整结果；补专门故障验证。目标库 SQLite 授权回调不能替代该内部路径验证。
 
-- 2026-09-10：项目关闭两阶段方案待确认：沿现有管理器增加非阻塞 beginShutdown，统一拒绝新工作并广播取消后，再按依赖顺序 shutdown 等待、落库和释放；测试从 ProjectManager 公开关闭入口验证。见“核对项目关闭两阶段边界”。
 
 
 
@@ -36,7 +34,6 @@
 - ...
 -->
 
-
 ## [示例] 修复订单导出超时
 
 **总目标**：后台订单导出在 1 万行数据量下 30 秒内完成，不再 504。
@@ -46,6 +43,54 @@
 **干到哪了**：
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
+
+## 2026-09-10 — 修正小样本关闭闸门入口
+
+**目标**
+- 关闭请求发出后，所有小样本学习启动入口都必须立即拒绝新工作。
+
+**当前状态**
+- `startFsSam2`、`startFsSam2WithIds` 和 `validationError` 同时检查 `shutdown_requested_` 与终态 `shutting_down_`；补充明确关闭错误断言。
+- ProjectManager 关闭顺序、长耗时模型操作和 UNC 导出仍未完成验收。
+
+**验证证据**
+- 先运行新增断言失败（2.80 秒）；修正入口后重新构建再测试。
+- `cmake --build build --config Release --target dltool_feature_lifecycle_tests --parallel 4` → 成功。
+- `ctest --test-dir build -C Release -R '^dltool_feature_lifecycle_tests$' --output-on-failure` → 1/1 通过，3.25 秒。
+
+**下一步**
+- 继续补 ProjectManager 公开关闭入口的顺序观测测试。
+
+## 2026-09-10 — 收敛模型操作关闭等待
+
+**目标**
+- 修复 ModelManager 关闭时固定 5 秒超时后仍清理句柄的问题。
+
+**当前状态**
+- `ModelManager::shutdown()` 改为无期限等待所有操作及完成回调收敛后再清理句柄；未改变取消请求和终态处理。当前关闭两阶段改动尚未整体提交。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_storage_params_tests --parallel 4` → 成功。
+- `ctest --test-dir build -C Release -R '^dltool_model_storage_params_tests$' --output-on-failure` → 1/1 通过，2.44 秒。
+
+**下一步**
+- 补超过原 5 秒的受控操作测试，验证关闭不会提前释放；再完成 ProjectManager 统一顺序测试和阶段提交。
+
+## 2026-09-10 — 提交关闭取消广播阶段
+
+**目标**
+- 分阶段交付项目关闭取消广播及 Feature 入口测试。
+
+**当前状态**
+- 已提交 `7f5229a`，新增 featureManagerRequestShutdownGatesAllStarts，经公开入口调用 Search、Cluster、SAM 和 FewShotLearning。
+- 该测试仅断言启动失败；无有效输入时也可能失败，不能据此证明所有入口均因关闭请求拒绝。完整广播先于等待、在途工作收敛及五秒等待超时问题仍未闭合。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_feature_lifecycle_tests --parallel 4` → 退出码 0。
+- `ctest --test-dir build -C Release -R '^dltool_feature_lifecycle_tests$' --output-on-failure` → 1/1 通过，3.20 秒。
+
+**下一步**
+- 加强关闭原因与有效输入断言，检查各启动入口是否实际读取请求状态；补 ProjectManager 并发关闭顺序测试，修正第一阶段中的阻塞调用后再验收。
 
 ## 2026-09-10 — 核对 Feature 关闭接口边界
 

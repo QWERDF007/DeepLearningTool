@@ -454,6 +454,8 @@ private slots:
         QVERIFY(!manager.imageCluster()->cluster({1}));
         QVERIFY(!manager.roiCluster()->cluster({1}));
         QVERIFY(!manager.fewShotLearning()->startFsSam2());
+        QCOMPARE(manager.fewShotLearning()->lastError(), QStringLiteral("小样本学习控制器正在关闭"));
+        QCOMPARE(manager.fewShotLearning()->validationError(), QStringLiteral("小样本学习控制器正在关闭"));
         const auto result = manager.smartAnnotation()->infer({}, {}, {});
         QVERIFY(!result.value(QStringLiteral("success")).toBool());
         manager.shutdown();

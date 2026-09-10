@@ -337,7 +337,7 @@ void FewShotLearningController::setLabelClassViewModel(QObject *view_model)
 
 bool FewShotLearningController::startFsSam2()
 {
-    if (shutting_down_.load(std::memory_order_acquire))
+    if (shutting_down_.load(std::memory_order_acquire) || shutdown_requested_.load(std::memory_order_acquire))
     {
         setLastError(QStringLiteral("小样本学习控制器正在关闭"));
         return false;
@@ -353,7 +353,7 @@ bool FewShotLearningController::startFsSam2()
 
 QString FewShotLearningController::validationError() const
 {
-    if (shutting_down_.load(std::memory_order_acquire))
+    if (shutting_down_.load(std::memory_order_acquire) || shutdown_requested_.load(std::memory_order_acquire))
         return QStringLiteral("小样本学习控制器正在关闭");
     if (running_)
     {
@@ -378,7 +378,7 @@ bool FewShotLearningController::startFsSam2WithIds(const QVariantList &train_dat
                                                    const QVariantList &test_dataset_ids,
                                                    const QVariantList &label_class_ids)
 {
-    if (shutting_down_.load(std::memory_order_acquire))
+    if (shutting_down_.load(std::memory_order_acquire) || shutdown_requested_.load(std::memory_order_acquire))
     {
         setLastError(QStringLiteral("小样本学习控制器正在关闭"));
         return false;
