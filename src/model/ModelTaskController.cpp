@@ -205,6 +205,27 @@ void ModelTaskController::shutdown()
     preparation_operations_.clear();
 }
 
+void ModelTaskController::beginShutdown()
+{
+    shutdown_requested_ = true;
+    if (external_task_runner_ != nullptr)
+        external_task_runner_->shutdown();
+    for (const auto &operation : preparation_operations_)
+        if (operation != nullptr)
+            operation->requestCancel();
+    if (task_manager_ != nullptr)
+    {
+        const int count = task_manager_->rowCount();
+        for (int row = 0; row < count; ++row)
+        {
+            const int task_id = task_manager_->data(task_manager_->index(row, 0), TaskManager::TaskIdRole).toInt();
+            if (const auto *task = task_manager_->findTask(task_id); task != nullptr
+                && !TaskManager::isTerminal(task->status))
+                task_manager_->stopTask(task_id);
+        }
+    }
+}
+
 int ModelTaskController::addModelTask(const QString &model_uuid, const ModelTaskType task_type)
 {
     if (shutting_down_)
@@ -267,7 +288,7 @@ int ModelTaskController::startModelTestTask(const QString &model_uuid, const QSt
 
 bool ModelTaskController::stopModelTask(const QString &model_uuid, const ModelTaskType task_type)
 {
-    if (shutting_down_ || task_manager_ == nullptr)
+    if (shutting_down_ || shutdown_requested_ || task_manager_ == nullptr)
         return false;
 
     const int task_id = task_manager_->findModelTask(model_uuid.trimmed(), task_type, false);

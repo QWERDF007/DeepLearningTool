@@ -79,6 +79,7 @@ public:
 
     /** @brief 取消当前模型的评估并等待项目线程池收尾。 */
     void shutdown();
+    void beginShutdown();
 
     int                    rowCount(const QModelIndex &parent = {}) const override;
     QVariant               data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
@@ -250,6 +251,7 @@ private:
     QSet<QString>                                  pending_evaluation_notifications_;
     bool                                           applying_best_threshold_{false};
     bool                                           shutting_down_{false};
+    bool                                           shutdown_requested_{false};
     QTimer                                         save_timer_;
 };
 

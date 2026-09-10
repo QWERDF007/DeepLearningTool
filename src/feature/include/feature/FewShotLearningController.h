@@ -55,6 +55,7 @@ public:
 
     /** @brief 停止当前流程、等待数据导入收敛并丢弃迟到结果。 */
     void shutdown();
+    void requestShutdown();
 
     /**
      * @brief 功能是否启用
@@ -191,6 +192,7 @@ private:
     QMetaObject::Connection prediction_import_connection_;
     int current_import_index_{0};
     std::atomic_bool shutting_down_{false};
+    std::atomic_bool shutdown_requested_{false};
 };
 
 } // namespace dltool::feature

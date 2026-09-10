@@ -53,11 +53,10 @@ SearchControllerBase::~SearchControllerBase()
 
 void SearchControllerBase::shutdown()
 {
-    if (shutting_down_.exchange(true, std::memory_order_acq_rel))
+    if (shutdown_started_)
         return;
-
-    if (cancellation_token_ != nullptr)
-        cancellation_token_->store(true, std::memory_order_release);
+    shutdown_started_ = true;
+    requestShutdown();
 
     const bool was_running = running_;
 
@@ -74,6 +73,14 @@ void SearchControllerBase::shutdown()
         ui::ProgressManager::getInstance()->finishTask(current_search_task_id_, false);
         current_search_task_id_.clear();
     }
+}
+
+void SearchControllerBase::requestShutdown()
+{
+    if (shutting_down_.exchange(true, std::memory_order_acq_rel))
+        return;
+    if (cancellation_token_ != nullptr)
+        cancellation_token_->store(true, std::memory_order_release);
 }
 
 bool SearchControllerBase::enabled() const

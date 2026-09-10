@@ -230,6 +230,18 @@ void ModelTestTaskManager::shutdown()
     flush();
 }
 
+void ModelTestTaskManager::beginShutdown()
+{
+    shutdown_requested_ = true;
+    shutdown_requested_ = true;
+    save_timer_.stop();
+    for (ModelEvaluationViewModel *evaluation : evaluation_cache_)
+        if (evaluation != nullptr)
+            evaluation->beginShutdown();
+    if (current_evaluation_ != nullptr)
+        current_evaluation_->beginShutdown();
+}
+
 void ModelTestTaskManager::shutdownCachedEvaluations()
 {
     for (ModelEvaluationViewModel *evaluation : evaluation_cache_)
@@ -309,7 +321,7 @@ QString ModelTestTaskManager::modelUuid() const
 
 void ModelTestTaskManager::setModelUuid(const QString &uuid)
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return;
 
     const QString value = uuid.trimmed();
@@ -483,7 +495,7 @@ QString ModelTestTaskManager::validateTaskName(const QString &name) const
 
 QString ModelTestTaskManager::createTask(const QString &name)
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return QStringLiteral("测试任务管理器正在关闭");
 
     if (model_manager_ == nullptr || model_uuid_.isEmpty())
@@ -523,7 +535,7 @@ QString ModelTestTaskManager::createTask(const QString &name)
 
 bool ModelTestTaskManager::switchTask(const QString &uuid)
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return false;
 
     if (currentModelBusy())
@@ -538,7 +550,7 @@ bool ModelTestTaskManager::switchTask(const QString &uuid)
 
 bool ModelTestTaskManager::renameTask(const QString &uuid, const QString &name)
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return false;
 
     if (currentModelBusy())
@@ -584,7 +596,7 @@ bool ModelTestTaskManager::renameTask(const QString &uuid, const QString &name)
 
 bool ModelTestTaskManager::deleteTask(const QString &uuid)
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return false;
 
     if (currentModelBusy())
@@ -697,7 +709,7 @@ void ModelTestTaskManager::snapshotCurrentDatasetSelection()
 
 bool ModelTestTaskManager::commitCurrentDatasetSelection()
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return false;
 
     // 手动运行测试前把当前数据集选择与参数一起提交落库，保证本次运行
@@ -830,7 +842,7 @@ bool ModelTestTaskManager::markAutomaticThresholdApplied(const QString &task_uui
 
 void ModelTestTaskManager::handleEvaluationCompleted(const QString &cache_key)
 {
-    if (shutting_down_ || applying_best_threshold_ || current_evaluation_ == nullptr
+    if (shutting_down_ || shutdown_requested_ || applying_best_threshold_ || current_evaluation_ == nullptr
         || evaluation_cache_.value(cache_key, nullptr) != current_evaluation_)
         return;
 
@@ -1002,7 +1014,7 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
 
 void ModelTestTaskManager::handleParameterChanged(const QString &group_name, const QString &parameter_name)
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return;
 
     scheduleSave();
@@ -1048,7 +1060,7 @@ void ModelTestTaskManager::handleParameterChanged(const QString &group_name, con
 
 void ModelTestTaskManager::handleTaskRevisionChanged()
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return;
 
     if (current_test_params_ != nullptr)
@@ -1107,7 +1119,7 @@ void ModelTestTaskManager::handleTaskRevisionChanged()
 
 void ModelTestTaskManager::handleTaskStartRequested(const TaskIdentity &identity)
 {
-    if (shutting_down_)
+    if (shutting_down_ || shutdown_requested_)
         return;
 
     if (task_manager_ == nullptr)

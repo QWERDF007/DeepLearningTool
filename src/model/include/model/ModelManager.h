@@ -63,6 +63,7 @@ public:
      * 该入口由项目关闭栅栏调用，幂等；关闭后不再接受 TensorBoard 启动请求。
      */
     void shutdown();
+    void beginShutdown();
 
     Q_PROPERTY(int method READ method CONSTANT FINAL)
     Q_PROPERTY(QAbstractItemModel *userVisibleModel READ userVisibleModel CONSTANT FINAL)
@@ -514,6 +515,7 @@ private:
     ModelOperationWorkflow::HandlePtr trackOperation(ModelOperationWorkflow::HandlePtr handle);
 
     std::atomic_bool                               shutting_down_{false};
+    std::atomic_bool                               shutdown_requested_{false};
     QList<ModelOperationWorkflow::HandlePtr>       operation_handles_;
 };
 

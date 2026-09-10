@@ -136,6 +136,13 @@ void RoiClusterController::shutdown()
     }
 }
 
+void RoiClusterController::requestShutdown()
+{
+    shutdown_requested_ = true;
+    if (cancellation_token_ != nullptr)
+        cancellation_token_->store(true, std::memory_order_release);
+}
+
 bool RoiClusterController::enabled() const
 {
     return enabled_;
@@ -168,7 +175,7 @@ QString RoiClusterController::lastSummary() const
 
 QString RoiClusterController::validationError() const
 {
-    if (shutting_down_.load(std::memory_order_acquire))
+    if (shutting_down_.load(std::memory_order_acquire) || shutdown_requested_.load(std::memory_order_acquire))
         return QStringLiteral("标注聚类控制器正在关闭");
     if (running_)
         return QString("标注聚类正在运行");

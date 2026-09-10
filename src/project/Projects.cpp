@@ -104,6 +104,14 @@ void Project::shutdown()
     // 确保等待期间不再接受新数据，并让下游 Feature/Model 释放期间能正确终止。
     if (data_manager_ != nullptr)
         data_manager_->beginShutdown();
+    if (model_manager_ != nullptr)
+        model_manager_->beginShutdown();
+    if (model_task_controller_ != nullptr)
+        model_task_controller_->beginShutdown();
+    if (model_test_task_manager_ != nullptr)
+        model_test_task_manager_->beginShutdown();
+    if (feature_manager_ != nullptr)
+        feature_manager_->requestShutdown();
 
     // This is the only project-level shutdown order.  Earlier layers may
     // still need later layers while they stop (for example Feature uses

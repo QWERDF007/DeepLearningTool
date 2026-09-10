@@ -46,6 +46,7 @@ public:
 
     /** @brief 等待当前搜索线程收敛并丢弃迟到结果。 */
     void shutdown();
+    void requestShutdown();
 
     bool enabled() const;
     bool isRunning() const;
@@ -169,6 +170,7 @@ private:
     QPointer<::QThread> worker_thread_;
     std::shared_ptr<std::atomic_bool> cancellation_token_;
     std::atomic_bool  shutting_down_{false};
+    bool shutdown_started_{false};
 };
 
 } // namespace dltool::feature

@@ -169,6 +169,14 @@ void ImageClusterController::shutdown()
     }
 }
 
+void ImageClusterController::requestShutdown()
+{
+    shutdown_requested_ = true;
+    ++current_request_id_;
+    if (cancellation_token_ != nullptr)
+        cancellation_token_->store(true, std::memory_order_release);
+}
+
 bool ImageClusterController::enabled() const
 {
     return enabled_;
@@ -201,7 +209,7 @@ QString ImageClusterController::lastSummary() const
 
 QString ImageClusterController::validationError() const
 {
-    if (shutting_down_.load(std::memory_order_acquire))
+    if (shutting_down_.load(std::memory_order_acquire) || shutdown_requested_.load(std::memory_order_acquire))
         return QStringLiteral("图像聚类控制器正在关闭");
     if (running_)
     {

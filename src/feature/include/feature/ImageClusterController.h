@@ -119,6 +119,7 @@ public:
 
     /** @brief 等待聚类及其数据集应用链路收敛，并丢弃迟到结果。 */
     void shutdown();
+    void requestShutdown();
 
     bool enabled() const;
     bool isRunning() const;
@@ -176,6 +177,7 @@ private:
     std::shared_ptr<std::atomic_bool> cancellation_token_;
     std::atomic<uint64_t> current_request_id_{0};
     std::atomic_bool    shutting_down_{false};
+    std::atomic_bool    shutdown_requested_{false};
 };
 
 } // namespace dltool::feature

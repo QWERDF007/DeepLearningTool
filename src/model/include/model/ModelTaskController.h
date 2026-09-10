@@ -89,6 +89,7 @@ public:
 
     /** 在项目关闭前取消外部进程和 C++ 评估，并等待评估线程收敛。 */
     void shutdown();
+    void beginShutdown();
 
     /**
      * @brief 删除指定模型任务记录。
@@ -310,6 +311,7 @@ private:
     /// 当前执行的后台准备句柄；按完整任务身份隔离项目和任务重启。
     QHash<TaskIdentity, dltool::data::DataOperationWorkflow::HandlePtr> preparation_operations_;
     bool                                                        shutting_down_{false};
+    bool                                                        shutdown_requested_{false};
 
     /// 待合并的任务状态更新缓冲（task_id -> 指标字段），由节流定时器统一落库。
     QHash<int, QVariantMap> pending_extra_updates_;

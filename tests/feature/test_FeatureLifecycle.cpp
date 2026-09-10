@@ -433,6 +433,32 @@ private slots:
         QCOMPARE(controller.lastError(), QStringLiteral("标注聚类控制器正在关闭"));
     }
 
+    void searchShutdownRequestRejectsWorkBeforeWaiting()
+    {
+        dltool::feature::FeatureManager manager(nullptr, nullptr, nullptr, nullptr);
+        auto *search = manager.imageSearch();
+        search->requestShutdown();
+        search->requestShutdown();
+        QCOMPARE(search->validationError(), QStringLiteral("图像搜索控制器正在关闭"));
+        QVERIFY(!search->search({1}, {}));
+        QCOMPARE(search->lastError(), QStringLiteral("图像搜索控制器正在关闭"));
+        search->shutdown();
+        QVERIFY(!search->isRunning());
+    }
+
+    void featureManagerRequestShutdownGatesAllStarts()
+    {
+        dltool::feature::FeatureManager manager(nullptr, nullptr, nullptr, nullptr);
+        manager.requestShutdown();
+        QVERIFY(!manager.imageSearch()->search({1}, {}));
+        QVERIFY(!manager.imageCluster()->cluster({1}));
+        QVERIFY(!manager.roiCluster()->cluster({1}));
+        QVERIFY(!manager.fewShotLearning()->startFsSam2());
+        const auto result = manager.smartAnnotation()->infer({}, {}, {});
+        QVERIFY(!result.value(QStringLiteral("success")).toBool());
+        manager.shutdown();
+    }
+
     void featureManagerShutdownPropagatesToChildren()
     {
         dltool::feature::FeatureManager manager(nullptr, nullptr, nullptr, nullptr);

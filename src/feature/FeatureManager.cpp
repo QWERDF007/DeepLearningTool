@@ -158,6 +158,16 @@ void FeatureManager::shutdown()
         image_search_->shutdown();
 }
 
+void FeatureManager::requestShutdown()
+{
+    if (image_search_ != nullptr) image_search_->requestShutdown();
+    if (roi_search_ != nullptr) roi_search_->requestShutdown();
+    if (image_cluster_ != nullptr) image_cluster_->requestShutdown();
+    if (roi_cluster_ != nullptr) roi_cluster_->requestShutdown();
+    if (smart_annotation_ != nullptr) smart_annotation_->requestShutdown();
+    if (few_shot_learning_ != nullptr) few_shot_learning_->requestShutdown();
+}
+
 ImageSearchController *FeatureManager::imageSearch() const
 {
     return image_search_;

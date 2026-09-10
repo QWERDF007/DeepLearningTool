@@ -68,6 +68,7 @@ public:
 
     /** @brief 等待执行器与模型加载线程收敛并丢弃迟到结果。 */
     void shutdown();
+    void requestShutdown();
 
     /**
      * @brief 智能标注功能是否启用
@@ -183,6 +184,7 @@ private:
     std::shared_ptr<std::atomic_bool> loading_cancellation_token_;
     std::shared_ptr<std::atomic_bool> infer_cancellation_token_;
     std::atomic_bool           shutting_down_{false};
+    std::atomic_bool           shutdown_requested_{false};
     quint64                    current_request_id_{0};
 
     SmartAnnotationExecutor   *executor_{nullptr};

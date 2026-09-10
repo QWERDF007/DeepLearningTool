@@ -48,6 +48,7 @@ public:
 
     /** @brief 关闭所有项目级 feature 控制器并等待后台任务收敛。 */
     void shutdown();
+    void requestShutdown();
 
     ImageSearchController *imageSearch() const;
     RoiSearchController *roiSearch() const;

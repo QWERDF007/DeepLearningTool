@@ -48,6 +48,7 @@ public:
 
     /** @brief 等待聚类线程收敛，并丢弃迟到结果。 */
     void shutdown();
+    void requestShutdown();
 
     bool enabled() const;
     bool isRunning() const;
@@ -133,6 +134,7 @@ private:
     QPointer<::QThread> worker_thread_;
     std::shared_ptr<std::atomic_bool> cancellation_token_;
     std::atomic_bool    shutting_down_{false};
+    std::atomic_bool    shutdown_requested_{false};
 };
 
 } // namespace dltool::feature

@@ -250,6 +250,16 @@ void FewShotLearningController::shutdown()
         data_manager_->waitForOperations();
 }
 
+void FewShotLearningController::requestShutdown()
+{
+    shutdown_requested_ = true;
+    if (running_)
+    {
+        current_run_.stop_requested = true;
+        stopRunTasks();
+    }
+}
+
 bool FewShotLearningController::enabled() const
 {
     return enabled_;

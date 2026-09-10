@@ -47,6 +47,69 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-10 — 核对 Feature 关闭接口边界
+
+**目标**
+- 继续实现项目关闭的统一取消/等待两阶段。
+
+**当前状态**
+- ModelTestTaskManager 的关闭请求已接入主要入口并通过基础关闭测试；但 Feature 控制器（Search、Cluster、SmartAnnotation、FewShotLearning）仅公开 `shutdown()`，各自将取消和线程等待耦合，FeatureManager 无法先广播取消再统一等待。
+- 已为全部 Feature 控制器增加独立 `shutdown_requested_` 闸门；requestShutdown 先设置请求状态并取消当前工作，公开启动/验证入口开始拒绝新工作，shutdown 仍负责等待和释放。Feature 的完整顺序观测仍未完成，未提交。
+
+**验证证据**
+- 本轮 `cmake --build build --config Release --parallel 4` → 全量 Release 构建成功，退出码 0；未运行全量测试，不作为完整两阶段验收证据。
+- `cmake --build build --config Release --target dltool_feature_lifecycle_tests --parallel 4` → 成功；`ctest --test-dir build -C Release -R '^dltool_feature_lifecycle_tests$' --output-on-failure` → 1/1 通过，2.85 秒；另项目关闭 CTest 1/1 通过，仍未覆盖广播顺序。
+- `cmake --build build --config Release --target dltool_model_project_shutdown_test --parallel 4` → 成功；`ctest --test-dir build -C Release -R '^dltool_model_project_shutdown_test$' --output-on-failure` → 1/1 通过，0.47 秒；仅验证基础关闭，未覆盖广播顺序。
+
+**下一步**
+- 为 Feature 控制器确认并实现公共取消请求接口，再从 Project 统一广播、按依赖等待；增加 ProjectManager 关闭顺序观测测试后提交。
+
+## 2026-09-10 — 继续收敛项目关闭闸门
+
+**目标**
+- 将项目关闭取消广播初版接入真正的“拒绝新工作、再等待”生命周期。
+
+**当前状态**
+- 已发现初版若直接让 `beginShutdown()` 设置既有 `shutting_down_`，会使后续 `shutdown()` 提前返回，跳过等待和终态处理；当前未提交代码已保留取消广播但不能作为完成实现。
+- 增加独立 `shutdown_requested_` 状态并接入 ModelManager 的操作追踪、ModelTaskController 的任务入口；保留 `shutting_down_` 负责第二阶段等待/释放，避免 begin 后 shutdown 提前返回。ModelTestTaskManager 已记录请求状态但仍需逐一接入其全部创建入口，Feature 尚未拆分等待。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_project_shutdown_test --parallel 4` → 成功；`ctest --test-dir build -C Release -R '^dltool_model_project_shutdown_test$' --output-on-failure` → 1/1 通过，0.51 秒。该证据仍不覆盖全部入口和统一等待。
+
+**下一步**
+- 增加独立关闭请求状态和幂等完成状态，补 ProjectManager 公开入口并发测试；完成后再提交，避免提交半成品关闭协议。
+
+## 2026-09-10 — 核对 ModelTestTaskManager 关闭闸门入口
+
+**目标**
+- 将关闭请求状态接入测试任务创建、切换、修改、评估和参数入口。
+
+**当前状态**
+- 已将 `shutdown_requested_` 接入 ModelTestTaskManager 的模型切换、任务创建/切换/重命名/删除、数据集选择提交、评估完成、参数变更、状态变更及任务启动入口；beginShutdown 先置请求状态再取消评估，第二阶段仍由 shutdown 完成等待。Feature 等待阶段仍未拆分，未提交。
+
+**验证证据**
+- `rg -n -B 3 -A 5 'if (shutting_down_' src/model/ModelTestTaskManager.cpp` → 定位 create/switch/rename/delete/selection/evaluation/parameter/start 等入口。
+- `cmake --build build --config Release --target dltool_model_project_shutdown_test --parallel 4` → 成功；`ctest --test-dir build -C Release -R '^dltool_model_project_shutdown_test$' --output-on-failure` → 1/1 通过，0.41 秒；尚未覆盖所有关闭顺序。
+
+**下一步**
+- 逐项替换入口判断并构建测试；随后拆 Feature 取消与等待阶段，补并发关闭顺序断言。
+
+## 2026-09-10 — 实施项目关闭取消广播初版
+
+**目标**
+- Ticket 03/04：在项目关闭等待前广播模型操作、模型任务准备和评估取消。
+
+**当前状态**
+- 新增 `ModelManager`、`ModelTaskController`、`ModelTestTaskManager` 的 `beginShutdown()`，Project 在现有 DataManager 闸门后调用；Release 构建和项目关闭 CTest 通过。
+- 初版尚未完成“拒绝新工作”的独立状态闸门，Feature 控制器仍在其 shutdown 内等待；因此未提交，也不能宣称两阶段验收完成。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_project_shutdown_test --parallel 4` → 成功。
+- `ctest --test-dir build -C Release -R '^dltool_model_project_shutdown_test$' --output-on-failure` → 1/1 通过，1.19 秒。
+
+**下一步**
+- 为 beginShutdown 增加各管理器的持久化关闭请求状态并让所有启动入口拒绝新工作；拆出 Feature 的取消广播与等待阶段，再补并发关闭顺序测试。
+
 ## 2026-09-10 — 收敛 Schema 正本派生错误
 
 **目标**

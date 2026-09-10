@@ -1043,10 +1043,20 @@ void SmartAnnotationController::shutdown()
     setRunning(false);
 }
 
+void SmartAnnotationController::requestShutdown()
+{
+    shutdown_requested_ = true;
+    if (loading_cancellation_token_ != nullptr)
+        loading_cancellation_token_->store(true, std::memory_order_release);
+    if (infer_cancellation_token_ != nullptr)
+        infer_cancellation_token_->store(true, std::memory_order_release);
+    ++current_request_id_;
+}
+
 /// 清除模型缓存并重置状态
 void SmartAnnotationController::clearCache()
 {
-    if (shutting_down_.load(std::memory_order_acquire))
+    if (shutting_down_.load(std::memory_order_acquire) || shutdown_requested_.load(std::memory_order_acquire))
         return;
     if (loading_cancellation_token_ != nullptr)
         loading_cancellation_token_->store(true, std::memory_order_release);

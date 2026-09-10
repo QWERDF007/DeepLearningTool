@@ -130,6 +130,14 @@ void ModelManager::shutdown()
         tensorboard_runner_->shutdown();
 }
 
+void ModelManager::beginShutdown()
+{
+    shutdown_requested_ = true;
+    for (const auto &handle : operation_handles_)
+        if (handle)
+            handle->requestCancel();
+}
+
 QString ModelManager::projectDatabasePath() const
 {
     return database_ != nullptr ? database_->path() : QString();
@@ -137,7 +145,7 @@ QString ModelManager::projectDatabasePath() const
 
 ModelOperationWorkflow::HandlePtr ModelManager::trackOperation(ModelOperationWorkflow::HandlePtr handle)
 {
-    if (handle == nullptr || shutting_down_)
+    if (handle == nullptr || shutting_down_ || shutdown_requested_)
         return {};
 
     operation_handles_.erase(
