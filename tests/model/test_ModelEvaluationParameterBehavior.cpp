@@ -4,6 +4,7 @@
 
 #include "database/DataBase.h"
 #include "database/ModelTaskDataBase.h"
+#include "model/AggregateEvaluation.h"
 #include "model/AnomalyPreprocessingTransform.h"
 #include "model/EvaluationDataset.h"
 #include "model/EvaluationViewModelRegistry.h"
@@ -1918,6 +1919,86 @@ private slots:
         QVERIFY(inference1->setValueForName(QStringLiteral("batch_size"), old_batch1 + 10));
         QCOMPARE(inference1->valueForName(QStringLiteral("batch_size")).toInt(), old_batch1 + 10);
         task_manager->clearTasks();
+    }
+
+    void concurrentEvaluationsAndAggregationsConvergeSafelyOnShutdown()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 dog = fixture.addClass(QStringLiteral("Dog"), QStringLiteral("normal"));
+        for (int i = 0; i < 6; ++i)
+        {
+            const qint64 img = fixture.addImage(QStringLiteral("sample_%1").arg(i));
+            fixture.addDetectionLabel(img, (i % 2 == 0) ? cat : dog, 10, 10, 30, 30);
+            const QVariant pred = QVariantList{QVariantMap{
+                {QStringLiteral("class_id"), (i % 2 == 0) ? cat : dog},
+                {QStringLiteral("score"), 0.85},
+                {QStringLiteral("x"), 10.0},
+                {QStringLiteral("y"), 10.0},
+                {QStringLiteral("width"), 30.0},
+                {QStringLiteral("height"), 30.0}
+            }};
+            fixture.writePrediction(img, pred);
+        }
+        QVERIFY(fixture.writeImageList());
+
+        QThreadPool shared_pool;
+        shared_pool.setMaxThreadCount(4);
+
+        std::unique_ptr<ModelEvaluationViewModel> vm1(EvaluationViewModelRegistry::instance().createViewModel(
+            evaluation::Method::Detection, nullptr, &shared_pool));
+        std::unique_ptr<ModelEvaluationViewModel> vm2(EvaluationViewModelRegistry::instance().createViewModel(
+            evaluation::Method::Detection, nullptr, &shared_pool));
+        QVERIFY(vm1 != nullptr && vm2 != nullptr);
+
+        ModelEvaluationOptions options1;
+        options1.method                 = evaluation::Method::Detection;
+        options1.model_uuid             = QStringLiteral("model-eval-1");
+        options1.test_task_uuid         = QStringLiteral("task-eval-1");
+        options1.project_database_path  = fixture.projectDatabasePath();
+        options1.dataset_file_list_path = fixture.fileListPath();
+        options1.confidence_threshold   = 0.5;
+        options1.iou_threshold          = 0.5;
+
+        ModelEvaluationOptions options2 = options1;
+        options2.model_uuid             = QStringLiteral("model-eval-2");
+        options2.test_task_uuid         = QStringLiteral("task-eval-2");
+
+        vm1->setEvaluationOptions(options1);
+        vm2->setEvaluationOptions(options2);
+
+        // 启动两个并发评估
+        vm1->evaluate(true);
+        vm2->evaluate(true);
+
+        // 在评估与聚合运行期间，同时发出关闭请求
+        QElapsedTimer shutdown_timer;
+        shutdown_timer.start();
+
+        // 1. 先向全部 VM 发送取消请求
+        vm1->beginShutdown();
+        vm2->beginShutdown();
+
+        // 2. 由共享线程池的拥有者等待线程收敛
+        shared_pool.waitForDone();
+
+        // 3. 收敛耗时不能超长（表明协作取消正常工作，没有挂起或死锁）
+        QVERIFY2(shutdown_timer.elapsed() < 3000,
+                 qPrintable(QString("评估收敛超时: %1 ms").arg(shutdown_timer.elapsed())));
+
+        // 4. 断言已关闭的 VM 没有迟到发布有效结果
+        QVERIFY(!vm1->available());
+        QVERIFY(!vm2->available());
+        QVERIFY(!vm1->loading());
+        QVERIFY(!vm2->loading());
+
+        // 5. 再次验证聚合取消令牌已正确被触发
+        EvaluationAggregateInput agg_input;
+        agg_input.cancel_token = std::make_shared<std::atomic_bool>(true);
+        const EvaluationAggregateOutput agg_out = aggregateEvaluation(agg_input, agg_input.cancel_token);
+        QVERIFY(agg_out.instance_metrics.empty());
+        QVERIFY(agg_out.image_metrics.empty());
     }
 };
 
