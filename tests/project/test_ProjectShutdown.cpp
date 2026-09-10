@@ -2,6 +2,11 @@
 #include "data/DataManager.h"
 #include "core/CoreDef.h"
 #include "database/DataBase.h"
+#include "feature/FeatureManager.h"
+#include "feature/ImageClusterController.h"
+#include "feature/SmartAnnotationController.h"
+#include "model/ModelManager.h"
+#include "model/ModelTaskController.h"
 #include "project/Projects.h"
 #include "ui/ProgressManager.h"
 #include <spdlog/spdlog.h>
@@ -202,6 +207,80 @@ private slots:
         QVERIFY(database.getAllDatasets(dataset_ids, dataset_names, database_error));
         QVERIFY(!std::any_of(dataset_names.cbegin(), dataset_names.cend(),
                              [](const QString &name) { return name == QStringLiteral("关闭期间不应创建"); }));
+    }
+
+    void rejectsQueuedFeatureAndModelOperationsDuringProjectShutdown()
+    {
+        QTemporaryDir project_directory;
+        QVERIFY(project_directory.isValid());
+
+        auto *manager = dltool::project::ProjectManager::getInstance();
+        QVERIFY(manager != nullptr);
+        if (manager->currentProject() != nullptr)
+            manager->closeProject();
+
+        const QString project_path = QDir(project_directory.path()).filePath(QStringLiteral("shutdown-feature-model.dlpro"));
+        auto *project = manager->createProject(
+            QStringLiteral("关闭组件测试"),
+            static_cast<int>(dltool::core::DeepLearningMethod::AnomalyDetection),
+            project_path,
+            QStringLiteral("项目关闭期间组件拒绝测试"),
+            project_directory.path());
+        QVERIFY(project != nullptr);
+        auto *data_manager = project->dataManager();
+        auto *model_manager = project->modelManager();
+        auto *task_controller = project->modelTaskController();
+        auto *feature_manager = project->featureManager();
+        QVERIFY(data_manager != nullptr && model_manager != nullptr && task_controller != nullptr && feature_manager != nullptr);
+
+        // 创建一个模型记录
+        QString add_model_err;
+        const auto model_record = model_manager->addModelRecord(
+            QStringLiteral("TestModel"), QStringLiteral("anomalib"), QStringLiteral("patchcore"), &add_model_err);
+        QVERIFY2(model_record.isValid(), qPrintable(add_model_err));
+
+        std::atomic_bool queued_slot_ran{false};
+        std::atomic_bool model_task_accepted{false};
+        std::atomic_bool cluster_accepted{false};
+        std::atomic_bool infer_accepted{false};
+        std::atomic_bool add_model_accepted{false};
+
+        auto *operation = new BlockingProjectDatabaseDataIO(project_path, data_manager);
+        connect(operation, &dltool::data::DataIO::importFinished, this,
+                [model_manager, task_controller, feature_manager, model_uuid = model_record.uuid,
+                 &queued_slot_ran, &model_task_accepted, &cluster_accepted, &infer_accepted, &add_model_accepted]()
+                {
+                    queued_slot_ran.store(true, std::memory_order_release);
+
+                    // 尝试在关闭阶段启动模型任务 -> 必须被拒绝
+                    const int task_id = task_controller->startModelTask(model_uuid, dltool::model::ModelTaskType::Train);
+                    if (task_id >= 0)
+                        model_task_accepted.store(true, std::memory_order_release);
+
+                    // 尝试在关闭阶段启动聚类 -> 必须被拒绝
+                    if (feature_manager->imageCluster()->cluster({1}))
+                        cluster_accepted.store(true, std::memory_order_release);
+
+                    // 尝试在关闭阶段启动推理 -> 必须被拒绝
+                    const auto infer_res = feature_manager->smartAnnotation()->infer(QStringLiteral("fake.jpg"), {}, {});
+                    if (infer_res.value(QStringLiteral("success")).toBool())
+                        infer_accepted.store(true, std::memory_order_release);
+
+                    // 尝试在关闭阶段添加模型 -> 必须被拒绝
+                    if (model_manager->addModel(QStringLiteral("LateModel"), QStringLiteral("anomalib"), QStringLiteral("patchcore")))
+                        add_model_accepted.store(true, std::memory_order_release);
+                },
+                Qt::QueuedConnection);
+        operation->startCancellationNotification();
+
+        manager->closeProject();
+
+        QVERIFY(queued_slot_ran.load(std::memory_order_acquire));
+        QVERIFY(!model_task_accepted.load(std::memory_order_acquire));
+        QVERIFY(!cluster_accepted.load(std::memory_order_acquire));
+        QVERIFY(!infer_accepted.load(std::memory_order_acquire));
+        QVERIFY(!add_model_accepted.load(std::memory_order_acquire));
+        QVERIFY(manager->currentProject() == nullptr);
     }
 
     void repeatedCloseAndSwitchProjectLeavesCleanState()

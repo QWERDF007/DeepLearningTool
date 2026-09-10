@@ -924,6 +924,66 @@ private slots:
         QVERIFY(!QDir(staging_pred).exists());
         QVERIFY(!QFile::exists(staging_db));
     }
+
+    void shutdownRequestGatesNewTasksAndPreservesState()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(kControllerTestMethod, &database, nullptr);
+        QString error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("ShutdownGateModel"),
+                                                         QStringLiteral("controller-test"),
+                                                         QStringLiteral("ControllerModel"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        // 预设训练状态
+        QVariantMap train_info{
+            {QStringLiteral("epoch"), 10},
+            {QStringLiteral("progress"), 50},
+            {QStringLiteral("last_epoch"), 9},
+            {QStringLiteral("best_map"), 0.88}
+        };
+        QVERIFY(model_manager.updateModelExtraData(record.uuid, QVariantMap{{QStringLiteral("train"), train_info}}));
+
+        // 验证预设已成功存入
+        const auto record_before = model_manager.modelRecordForUuid(record.uuid);
+        const auto extra_before = record_before.value(QStringLiteral("extra_data")).toMap();
+        QCOMPARE(extra_before.value(QStringLiteral("train")).toMap().value(QStringLiteral("epoch")).toInt(), 10);
+
+        TaskManager task_manager_instance;
+        ModelTaskController controller(kControllerTestMethod, fixture.rootPath(), &model_manager, nullptr,
+                                       &task_manager_instance);
+
+        // 触发两阶段关闭第一阶段：请求关闭
+        controller.beginShutdown();
+        QVERIFY(controller.isShutdownRequested());
+        QVERIFY(!controller.isShuttingDown());
+
+        // 验证请求关闭后拒绝所有任务创建和启动
+        QCOMPARE(controller.addModelTask(record.uuid, ModelTaskType::Train), -1);
+        QCOMPARE(controller.startModelTask(record.uuid, ModelTaskType::Train), -1);
+        QCOMPARE(controller.startModelTestTask(record.uuid, QStringLiteral("test-scope-uuid")), -1);
+        QVERIFY(!controller.stopModelTask(record.uuid, ModelTaskType::Train));
+        QVERIFY(!controller.deleteModelTask(record.uuid, ModelTaskType::Train));
+
+        // 关键验证：已有的 train extra_data 绝未被 resetModelTaskState 清除或重置
+        const auto record_after = model_manager.modelRecordForUuid(record.uuid);
+        const auto extra_after = record_after.value(QStringLiteral("extra_data")).toMap();
+        const auto train_after = extra_after.value(QStringLiteral("train")).toMap();
+        QCOMPARE(train_after.value(QStringLiteral("epoch")).toInt(), 10);
+        QCOMPARE(train_after.value(QStringLiteral("progress")).toInt(), 50);
+        QCOMPARE(train_after.value(QStringLiteral("best_map")).toDouble(), 0.88);
+
+        // 验证 task_manager 中没有创建任何任务记录
+        QCOMPARE(task_manager_instance.rowCount(), 0);
+
+        // 第二阶段完成关闭
+        controller.shutdown();
+        QVERIFY(controller.isShuttingDown());
+        QVERIFY(controller.isShutdownRequested());
+    }
 };
 
 REGISTER_TEST(ModelTaskControllerTest)

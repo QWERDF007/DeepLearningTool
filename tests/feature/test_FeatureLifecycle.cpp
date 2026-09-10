@@ -448,17 +448,58 @@ private slots:
 
     void featureManagerRequestShutdownGatesAllStarts()
     {
-        dltool::feature::FeatureManager manager(nullptr, nullptr, nullptr, nullptr);
+        ClusterTestFixture fixture;
+        QVERIFY(fixture.init());
+        ClusterSettingsScope settings_scope;
+
+        dltool::feature::FeatureManager manager(fixture.data_manager.get(), nullptr, nullptr, nullptr);
+        QVERIFY(manager.imageCluster()->validationError().isEmpty());
+
         manager.requestShutdown();
-        QVERIFY(!manager.imageSearch()->search({1}, {}));
-        QVERIFY(!manager.imageCluster()->cluster({1}));
-        QVERIFY(!manager.roiCluster()->cluster({1}));
+
+        // 1. 图像聚类入口校验被拒绝且不启动 worker
+        QCOMPARE(manager.imageCluster()->validationError(), QStringLiteral("图像聚类控制器正在关闭"));
+        QVERIFY(!manager.imageCluster()->cluster({fixture.dataset_id}));
+        QCOMPARE(manager.imageCluster()->lastError(), QStringLiteral("图像聚类控制器正在关闭"));
+        QVERIFY(!manager.imageCluster()->isRunning());
+
+        // 2. 标注聚类入口校验被拒绝且不启动 worker
+        QCOMPARE(manager.roiCluster()->validationError(), QStringLiteral("标注聚类控制器正在关闭"));
+        QVERIFY(!manager.roiCluster()->cluster({QVariantMap{{QStringLiteral("dataset_id"), fixture.dataset_id}}}));
+        QCOMPARE(manager.roiCluster()->lastError(), QStringLiteral("标注聚类控制器正在关闭"));
+        QVERIFY(!manager.roiCluster()->isRunning());
+
+        // 3. 图像搜索入口校验被拒绝且不启动 worker
+        QCOMPARE(manager.imageSearch()->validationError(), QStringLiteral("图像搜索控制器正在关闭"));
+        QVERIFY(!manager.imageSearch()->search({fixture.image_ids[0]}, {fixture.dataset_id}));
+        QCOMPARE(manager.imageSearch()->lastError(), QStringLiteral("图像搜索控制器正在关闭"));
+        QVERIFY(!manager.imageSearch()->isRunning());
+
+        // 4. 小样本学习入口校验被拒绝且不启动 worker
+        QCOMPARE(manager.fewShotLearning()->validationError(), QStringLiteral("小样本学习控制器正在关闭"));
         QVERIFY(!manager.fewShotLearning()->startFsSam2());
         QCOMPARE(manager.fewShotLearning()->lastError(), QStringLiteral("小样本学习控制器正在关闭"));
-        QCOMPARE(manager.fewShotLearning()->validationError(), QStringLiteral("小样本学习控制器正在关闭"));
-        const auto result = manager.smartAnnotation()->infer({}, {}, {});
-        QVERIFY(!result.value(QStringLiteral("success")).toBool());
+        QVERIFY(!manager.fewShotLearning()->running());
+
+        // 5. 智能标注推理入口被拒绝
+        const auto infer_res = manager.smartAnnotation()->infer(fixture.image_paths[0], {}, {});
+        QVERIFY(!infer_res.value(QStringLiteral("success")).toBool());
+        QCOMPARE(infer_res.value(QStringLiteral("error")).toString(), QStringLiteral("智能标注控制器正在关闭"));
+
+        // 6. 验证数据库状态未发生任何写入或污染
+        const int64_t count = fixture.database->getImagesCount(fixture.dataset_id);
+        QCOMPARE(count, static_cast<int64_t>(fixture.image_ids.size()));
+        std::vector<int64_t> datasets;
+        std::vector<QString> dataset_names;
+        QString db_err;
+        QVERIFY(fixture.database->getAllDatasets(datasets, dataset_names, db_err));
+        QCOMPARE(datasets.size(), static_cast<size_t>(1));
+
+        // 7. 第二阶段清理平稳幂等完成
         manager.shutdown();
+        QVERIFY(!manager.imageCluster()->isRunning());
+        QVERIFY(!manager.roiCluster()->isRunning());
+        QVERIFY(!manager.imageSearch()->isRunning());
     }
 
     void featureManagerShutdownPropagatesToChildren()
