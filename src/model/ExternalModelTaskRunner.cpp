@@ -149,11 +149,19 @@ ExternalModelTaskRunner::~ExternalModelTaskRunner()
     shutdown();
 }
 
+void ExternalModelTaskRunner::requestStopAll()
+{
+    shutting_down_ = true;
+    const auto keys = external_processes_.keys();
+    for (const auto &identity : keys)
+    {
+        stop(identity);
+    }
+}
+
 void ExternalModelTaskRunner::shutdown()
 {
-    if (shutting_down_)
-        return;
-    shutting_down_ = true;
+    requestStopAll();
     waitForDone();
 }
 

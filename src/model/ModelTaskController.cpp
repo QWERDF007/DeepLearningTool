@@ -209,7 +209,7 @@ void ModelTaskController::beginShutdown()
 {
     shutdown_requested_ = true;
     if (external_task_runner_ != nullptr)
-        external_task_runner_->shutdown();
+        external_task_runner_->requestStopAll();
     for (const auto &operation : preparation_operations_)
         if (operation != nullptr)
             operation->requestCancel();

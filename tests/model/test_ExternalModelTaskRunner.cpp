@@ -182,6 +182,43 @@ private slots:
         QVERIFY(runner.stop(second.identity));
         QVERIFY(runner.waitForDone(5000));
     }
+
+    void requestStopAllIsNonBlockingAndAllowsGracefulWait()
+    {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+
+        ExternalModelTaskRunner runner;
+        const QString program = qEnvironmentVariable("ComSpec", QStringLiteral("C:/Windows/System32/cmd.exe"));
+
+        ExternalProcessSpec spec;
+        spec.identity          = {60, QStringLiteral("run-nonblocking"), QStringLiteral("proj")};
+        spec.program           = program;
+        spec.arguments         = {QStringLiteral("/C"), QStringLiteral("ping -n 10 127.0.0.1 >NUL")};
+        spec.working_directory = temp.path();
+        spec.log_path          = QDir(temp.path()).filePath(QStringLiteral("nonblocking.log"));
+
+        QString error;
+        QVERIFY2(runner.start(spec, &error), qPrintable(error));
+        QTRY_VERIFY_WITH_TIMEOUT(runner.hasRunningTask(spec.identity), 3000);
+
+        // 两阶段关闭第一阶段：requestStopAll 必须非阻塞立即返回
+        QElapsedTimer timer;
+        timer.start();
+        runner.requestStopAll();
+        const qint64 elapsed = timer.elapsed();
+        QVERIFY2(elapsed < 500, qPrintable(QStringLiteral("requestStopAll 耗时超长，发生阻塞: %1 ms").arg(elapsed)));
+
+        // 关闭请求后应拒绝启动新任务
+        ExternalProcessSpec new_spec = spec;
+        new_spec.identity.task_id    = 61;
+        QVERIFY(!runner.start(new_spec, &error));
+        QVERIFY(error.contains(QStringLiteral("关闭")));
+
+        // 第二阶段：waitForDone 等待优雅收敛
+        QVERIFY(runner.waitForDone(5000));
+        QVERIFY(!runner.hasRunningTask(spec.identity));
+    }
 };
 
 REGISTER_TEST(ExternalModelTaskRunnerTest)

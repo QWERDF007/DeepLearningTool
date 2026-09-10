@@ -30,6 +30,9 @@ public:
     /** @brief 停止全部外部进程并等待收敛，关闭后拒绝新的进程。 */
     void shutdown();
 
+    /** @brief 请求停止全部外部进程（两阶段关闭第一阶段），设置关闭标志并向全部进程发送终止信号，不阻塞等待。 */
+    void requestStopAll();
+
     /**
      * @brief 检查指定任务是否正在运行
      * @param identity 逻辑任务与本次执行身份
