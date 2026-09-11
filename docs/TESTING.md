@@ -64,7 +64,7 @@ ctest --test-dir build -C Release -N -L ordinary
 
 | 参数 | 默认值 |
 | --- | --- |
-| `--project-root` | `F:\tmp\pro` |
+| `--project-root` | 系统临时目录下的 `dlt_test_pro` |
 | `--project-name` | `测试项目` |
 | `--dataset-name` | `测试数据集` |
 | `--python-env` | `D:\Software\anaconda3\envs\py312` |
