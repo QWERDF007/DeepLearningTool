@@ -2,6 +2,8 @@
 #include "database/DatabaseSchema.h"
 
 #include <QCoreApplication>
+
+#include <functional>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -60,6 +62,12 @@ private slots:
 
     /// tags 关系的添加与移除对图像与标注各自生效且互不影响。
     void tagRelationsScopeByTargetType();
+
+    /// 原子划分：后续 target 校验失败时，前面 target 的数据集、图像、标注、tag 全部回滚（零残留）。
+    void splitDatasetAtomicRollsBackAllTargetsWhenLaterTargetFails();
+
+    /// 原子复制：中途取消时整个事务回滚，输出列表清空且各表零残留。
+    void copyImagesAtomicCancellingMidwayPersistsNothing();
 };
 
 void DatabaseRepositoriesTest::modelRoundtripPersistsAfterReopen()
@@ -167,6 +175,123 @@ void DatabaseRepositoriesTest::tagRelationsScopeByTargetType()
     QCOMPARE(image_ids.size(), size_t{0});
     QCOMPARE(label_ids.size(), size_t{1});
     QCOMPARE(label_tag_ids.front().size(), size_t{1});
+}
+
+void DatabaseRepositoriesTest::splitDatasetAtomicRollsBackAllTargetsWhenLaterTargetFails()
+{
+    RepositoryFixture fixture(QStringLiteral("split_rollback"));
+    QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+    // target1 携带图像与标注（标注含 tag），target2 空名触发事务内失败。
+    ProjectDataBase::ImageSnapshot snapshot;
+    snapshot.path = QStringLiteral("sub/a.png");
+    ProjectDataBase::LabelSnapshot label;
+    label.label_class_id = 1;
+    label.label_type     = 0;
+    label.data           = {1, 2, 3, 4};
+    label.tag_ids        = {11};
+    snapshot.labels.push_back(label);
+
+    std::vector<ProjectDataBase::DatasetSplitTarget> targets;
+    targets.push_back({QStringLiteral("划分A"), {snapshot}});
+    targets.push_back({QStringLiteral("   "), {}});
+
+    ProjectDataBase::AtomicSplitOutput output;
+    QString err;
+    QVERIFY(!fixture.db()->splitDatasetAtomic(targets, output, err));
+    QCOMPARE(err, QStringLiteral("子数据集名称不能为空"));
+    QVERIFY(output.dataset_ids.empty());
+    QVERIFY(output.image_ids.empty());
+    QVERIFY(output.label_ids.empty());
+
+    // 四表零残留。
+    std::vector<int64_t> dataset_ids;
+    std::vector<QString> dataset_names;
+    QVERIFY(fixture.db()->getAllDatasets(dataset_ids, dataset_names, err));
+    QVERIFY(dataset_ids.empty());
+
+    std::vector<int64_t> img_dataset_ids;
+    std::vector<int64_t> image_ids;
+    std::vector<QString> paths;
+    std::vector<std::vector<uint8_t>> extra_data;
+    QVERIFY(fixture.db()->getAllImages(img_dataset_ids, image_ids, paths, extra_data, err));
+    QVERIFY(image_ids.empty());
+
+    std::vector<int64_t>              label_ids;
+    std::vector<int64_t>              label_image_ids;
+    std::vector<int64_t>              label_class_ids;
+    std::vector<int64_t>              label_types;
+    std::vector<std::vector<uint8_t>> labels_data;
+    QVERIFY(fixture.db()->getAllLabels(label_ids, label_image_ids, label_class_ids, label_types, labels_data, err));
+    QVERIFY(label_ids.empty());
+
+    std::vector<int64_t>              tag_image_ids;
+    std::vector<std::vector<int64_t>> image_tag_ids;
+    std::vector<int64_t>              tag_label_ids;
+    std::vector<std::vector<int64_t>> label_tag_ids;
+    QVERIFY(fixture.db()->getAllTags(tag_image_ids, image_tag_ids, tag_label_ids, label_tag_ids, err));
+    QVERIFY(tag_label_ids.empty());
+}
+
+void DatabaseRepositoriesTest::copyImagesAtomicCancellingMidwayPersistsNothing()
+{
+    RepositoryFixture fixture(QStringLiteral("copy_cancel"));
+    QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+    int64_t target_dataset_id = -1;
+    QString err;
+    QVERIFY(fixture.db()->addDataset(QStringLiteral("复制目标"), target_dataset_id, err));
+
+    ProjectDataBase::ImageSnapshot snapshot;
+    snapshot.path = QStringLiteral("src/a.png");
+    ProjectDataBase::LabelSnapshot label;
+    label.label_class_id = 1;
+    label.label_type     = 0;
+    label.data           = {5, 6, 7, 8};
+    label.tag_ids        = {22};
+    snapshot.labels.push_back(label);
+
+    // 第 1 次调用是入口预检（放行），第 2 次在第 1 项写入前（放行），
+    // 第 3 次在第 2 项写入前（取消）——精确命中事务内检查点。
+    std::vector<int64_t> new_image_ids;
+    new_image_ids.reserve(2);
+    ProjectDataBase::ImageSnapshot second = snapshot;
+    second.path                          = QStringLiteral("src/b.png");
+    const std::vector<ProjectDataBase::ImageSnapshot> images = {snapshot, second};
+
+    int call_index = 0;
+    const std::function<bool()> is_cancelled = [&call_index]()
+    {
+        ++call_index;
+        return call_index >= 3;
+    };
+
+    ProjectDataBase::AtomicCopyOutput output;
+    QVERIFY(!fixture.db()->copyImagesAtomic(target_dataset_id, images, output, err, is_cancelled));
+    QCOMPARE(err, QStringLiteral("操作已取消"));
+    QVERIFY(output.image_ids.empty());
+    QVERIFY(output.label_ids.empty());
+
+    // 回滚后目标数据集下无任何图像、标注、tag。
+    std::vector<int64_t> image_ids;
+    std::vector<QString> paths;
+    QVERIFY(fixture.db()->getImages(target_dataset_id, image_ids, paths, err));
+    QVERIFY(image_ids.empty());
+
+    std::vector<int64_t>              label_ids;
+    std::vector<int64_t>              label_image_ids;
+    std::vector<int64_t>              label_class_ids;
+    std::vector<int64_t>              label_types;
+    std::vector<std::vector<uint8_t>> labels_data;
+    QVERIFY(fixture.db()->getAllLabels(label_ids, label_image_ids, label_class_ids, label_types, labels_data, err));
+    QVERIFY(label_ids.empty());
+
+    std::vector<int64_t>              tag_image_ids;
+    std::vector<std::vector<int64_t>> image_tag_ids;
+    std::vector<int64_t>              tag_label_ids;
+    std::vector<std::vector<int64_t>> label_tag_ids;
+    QVERIFY(fixture.db()->getAllTags(tag_image_ids, image_tag_ids, tag_label_ids, label_tag_ids, err));
+    QVERIFY(tag_label_ids.empty());
 }
 
 int main(int argc, char *argv[])

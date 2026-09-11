@@ -151,4 +151,24 @@ bool DatasetRepository::deleteDatasetsWithContents(DatabaseContext &context, con
     }
 }
 
+bool DatasetRepository::datasetExistsById(DatabaseContext &context, const int64_t dataset_id, bool &exists)
+{
+    auto &db = context.db();
+    const auto rows = db(sqlpp::select(DatasetsTable.id).from(DatasetsTable).where(DatasetsTable.id == dataset_id));
+    exists = !rows.empty();
+    return true;
+}
+
+bool DatasetRepository::findDatasetIdByName(DatabaseContext &context, const QString &name, int64_t &dataset_id)
+{
+    auto &db = context.db();
+    const auto rows = db(sqlpp::select(DatasetsTable.id)
+                             .from(DatasetsTable)
+                             .where(DatasetsTable.name == name.toUtf8().constData()));
+    if (rows.empty())
+        return false;
+    dataset_id = static_cast<int64_t>(rows.front().id);
+    return true;
+}
+
 } // namespace dltool::database

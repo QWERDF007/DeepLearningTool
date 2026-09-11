@@ -1,5 +1,6 @@
 #include "ImageRepository.h"
 
+#include "TagIdCodec.h"
 #include "database/ddl/ImagesTable.h"
 #include "database/ddl/LabelsTable.h"
 #include "database/ddl/TagsTable.h"
@@ -297,6 +298,55 @@ int64_t ImageRepository::getImagesCount(DatabaseContext &context, const int64_t 
     catch (const std::exception &)
     {
         return 0;
+    }
+}
+
+void ImageRepository::updateImagesDatasetId(DatabaseContext &context, const std::vector<int64_t> &image_ids,
+                                            const int64_t target_dataset_id)
+{
+    auto &db = context.db();
+    db(sqlpp::update(ImagesTable)
+           .set(ImagesTable.datasetId = target_dataset_id)
+           .where(ImagesTable.id.in(sqlpp::value_list(image_ids))));
+}
+
+void ImageRepository::insertImageSnapshot(DatabaseContext &context, const int64_t dataset_id,
+                                          const ProjectDataBase::ImageSnapshot &image, int64_t &new_image_id,
+                                          std::vector<int64_t> &new_label_ids)
+{
+    auto &db = context.db();
+
+    db(sqlpp::insert_into(ImagesTable)
+           .set(ImagesTable.datasetId = dataset_id,
+                ImagesTable.path      = image.path.toUtf8().constData(),
+                ImagesTable.extraData = image.extra_data));
+    new_image_id = static_cast<int64_t>(db.last_insert_id());
+
+    if (!image.tag_ids.empty())
+    {
+        db(sqlpp::insert_into(TagsTable)
+               .set(TagsTable.imageId = new_image_id,
+                    TagsTable.tagIds  = detail::encodeTagIds(image.tag_ids),
+                    TagsTable.type    = detail::kImageTagType));
+    }
+
+    for (const auto &label : image.labels)
+    {
+        db(sqlpp::insert_into(LabelsTable)
+               .set(LabelsTable.imageId      = new_image_id,
+                    LabelsTable.labelClassId = label.label_class_id,
+                    LabelsTable.regionType   = label.label_type,
+                    LabelsTable.region       = label.data));
+        const int64_t new_label_id = static_cast<int64_t>(db.last_insert_id());
+        new_label_ids.push_back(new_label_id);
+
+        if (!label.tag_ids.empty())
+        {
+            db(sqlpp::insert_into(TagsTable)
+                   .set(TagsTable.labelId = new_label_id,
+                        TagsTable.tagIds  = detail::encodeTagIds(label.tag_ids),
+                        TagsTable.type    = detail::kLabelTagType));
+        }
     }
 }
 

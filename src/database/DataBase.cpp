@@ -58,50 +58,6 @@ const auto ModelsTable          = Models{};
 // 让短事务结束后读取自动继续，而不是把瞬时写锁当作致命错误。
 constexpr int kSqliteBusyTimeoutMs = 5000;
 
-namespace {
-
-void insertImageSnapshot(sqlpp::pooled_connection<sqlpp::sqlite3::connection_base> &db,
-                         const int64_t dataset_id,
-                         const ProjectDataBase::ImageSnapshot &image,
-                         int64_t &new_image_id,
-                         std::vector<int64_t> &new_label_ids)
-{
-    db(sqlpp::insert_into(ImagesTable)
-           .set(ImagesTable.datasetId = dataset_id,
-                ImagesTable.path      = image.path.toUtf8().constData(),
-                ImagesTable.extraData = image.extra_data));
-    new_image_id = static_cast<int64_t>(db.last_insert_id());
-
-    if (!image.tag_ids.empty())
-    {
-        db(sqlpp::insert_into(TagsTable)
-               .set(TagsTable.imageId = new_image_id,
-                    TagsTable.tagIds  = detail::encodeTagIds(image.tag_ids),
-                    TagsTable.type    = detail::kImageTagType));
-    }
-
-    for (const auto &label : image.labels)
-    {
-        db(sqlpp::insert_into(LabelsTable)
-               .set(LabelsTable.imageId      = new_image_id,
-                    LabelsTable.labelClassId = label.label_class_id,
-                    LabelsTable.regionType   = label.label_type,
-                    LabelsTable.region       = label.data));
-        const int64_t new_label_id = static_cast<int64_t>(db.last_insert_id());
-        new_label_ids.push_back(new_label_id);
-
-        if (!label.tag_ids.empty())
-        {
-            db(sqlpp::insert_into(TagsTable)
-                   .set(TagsTable.labelId = new_label_id,
-                        TagsTable.tagIds  = detail::encodeTagIds(label.tag_ids),
-                        TagsTable.type    = detail::kLabelTagType));
-        }
-    }
-}
-
-} // namespace
-
 DataBase::DataBase(const QString &path, QObject *parent)
     : QObject(parent)
     , path_(path)
@@ -612,10 +568,13 @@ bool ProjectDataBase::moveImagesAtomic(const std::vector<int64_t> &image_ids,
     {
         auto db = pool_->get();
 
-        auto dataset_data = db(sqlpp::select(DatasetsTable.id)
-                                   .from(DatasetsTable)
-                                   .where(DatasetsTable.id == target_dataset_id));
-        if (dataset_data.empty())
+        bool target_exists = false;
+        {
+            DatabaseContext context(db);
+            if (!DatasetRepository::datasetExistsById(context, target_dataset_id, target_exists))
+                return false;
+        }
+        if (!target_exists)
         {
             err_msg = QString("目标数据集不存在: %1").arg(target_dataset_id);
             return false;
@@ -635,9 +594,10 @@ bool ProjectDataBase::moveImagesAtomic(const std::vector<int64_t> &image_ids,
                 }
                 const size_t count = std::min(kBatchSize, image_ids.size() - i);
                 std::vector<int64_t> batch(image_ids.begin() + i, image_ids.begin() + i + count);
-                db(sqlpp::update(ImagesTable)
-                       .set(ImagesTable.datasetId = target_dataset_id)
-                       .where(ImagesTable.id.in(sqlpp::value_list(batch))));
+                {
+                    DatabaseContext context(db);
+                    ImageRepository::updateImagesDatasetId(context, batch, target_dataset_id);
+                }
             }
 
             if (is_cancelled && is_cancelled())
@@ -690,10 +650,13 @@ bool ProjectDataBase::copyImagesAtomic(const int64_t target_dataset_id,
     {
         auto db = pool_->get();
 
-        auto dataset_data = db(sqlpp::select(DatasetsTable.id)
-                                   .from(DatasetsTable)
-                                   .where(DatasetsTable.id == target_dataset_id));
-        if (dataset_data.empty())
+        bool target_exists = false;
+        {
+            DatabaseContext context(db);
+            if (!DatasetRepository::datasetExistsById(context, target_dataset_id, target_exists))
+                return false;
+        }
+        if (!target_exists)
         {
             err_msg = QString("目标数据集不存在: %1").arg(target_dataset_id);
             return false;
@@ -715,7 +678,11 @@ bool ProjectDataBase::copyImagesAtomic(const int64_t target_dataset_id,
                 }
 
                 int64_t new_image_id = -1;
-                insertImageSnapshot(db, target_dataset_id, image, new_image_id, output.label_ids);
+                {
+                    DatabaseContext context(db);
+                    ImageRepository::insertImageSnapshot(context, target_dataset_id, image, new_image_id,
+                                                         output.label_ids);
+                }
                 output.image_ids.push_back(new_image_id);
             }
 
@@ -800,38 +767,47 @@ bool ProjectDataBase::splitDatasetAtomic(const std::vector<DatasetSplitTarget> &
                     return false;
                 }
 
-                auto existing = db(sqlpp::select(DatasetsTable.id)
-                                      .from(DatasetsTable)
-                                      .where(DatasetsTable.name == target.name.toUtf8().constData()));
-                if (!existing.empty())
                 {
-                    tx.rollback();
-                    output.dataset_ids.clear();
-                    output.image_ids.clear();
-                    output.label_ids.clear();
-                    err_msg = QString("子数据集已存在: %1").arg(target.name);
-                    return false;
-                }
-
-                db(sqlpp::insert_into(DatasetsTable).set(DatasetsTable.name = target.name.toUtf8().constData()));
-                const int64_t new_dataset_id = static_cast<int64_t>(db.last_insert_id());
-                output.dataset_ids.push_back(new_dataset_id);
-
-                for (const auto &image : target.images)
-                {
-                    if (is_cancelled && is_cancelled())
+                    DatabaseContext context(db);
+                    int64_t existing_id = -1;
+                    if (DatasetRepository::findDatasetIdByName(context, target.name, existing_id))
                     {
                         tx.rollback();
                         output.dataset_ids.clear();
                         output.image_ids.clear();
                         output.label_ids.clear();
-                        err_msg = QStringLiteral("操作已取消");
+                        err_msg = QString("子数据集已存在: %1").arg(target.name);
                         return false;
                     }
 
-                    int64_t new_image_id = -1;
-                    insertImageSnapshot(db, new_dataset_id, image, new_image_id, output.label_ids);
-                    output.image_ids.push_back(new_image_id);
+                    int64_t new_dataset_id = -1;
+                    if (!DatasetRepository::addDataset(context, target.name, new_dataset_id, err_msg))
+                    {
+                        tx.rollback();
+                        output.dataset_ids.clear();
+                        output.image_ids.clear();
+                        output.label_ids.clear();
+                        return false;
+                    }
+                    output.dataset_ids.push_back(new_dataset_id);
+
+                    for (const auto &image : target.images)
+                    {
+                        if (is_cancelled && is_cancelled())
+                        {
+                            tx.rollback();
+                            output.dataset_ids.clear();
+                            output.image_ids.clear();
+                            output.label_ids.clear();
+                            err_msg = QStringLiteral("操作已取消");
+                            return false;
+                        }
+
+                        int64_t new_image_id = -1;
+                        ImageRepository::insertImageSnapshot(context, new_dataset_id, image, new_image_id,
+                                                             output.label_ids);
+                        output.image_ids.push_back(new_image_id);
+                    }
                 }
             }
 
@@ -925,19 +901,25 @@ bool ProjectDataBase::applyClusterAtomic(const std::vector<ClusterTarget> &targe
                     return false;
                 }
 
+                DatabaseContext context(db);
+
                 int64_t target_dataset_id = -1;
-                auto existing = db(sqlpp::select(DatasetsTable.id)
-                                      .from(DatasetsTable)
-                                      .where(DatasetsTable.name == target.target_dataset_name.toUtf8().constData()));
-                if (!existing.empty())
+                if (DatasetRepository::findDatasetIdByName(context, target.target_dataset_name, target_dataset_id))
                 {
-                    target_dataset_id = static_cast<int64_t>(existing.front().id);
+                    // 目标数据集已存在，复用。
                 }
                 else
                 {
-                    db(sqlpp::insert_into(DatasetsTable)
-                           .set(DatasetsTable.name = target.target_dataset_name.toUtf8().constData()));
-                    target_dataset_id = static_cast<int64_t>(db.last_insert_id());
+                    if (!DatasetRepository::addDataset(context, target.target_dataset_name, target_dataset_id,
+                                                       err_msg))
+                    {
+                        tx.rollback();
+                        output.dataset_ids_by_name.clear();
+                        output.created_dataset_ids.clear();
+                        output.new_image_ids.clear();
+                        output.new_label_ids.clear();
+                        return false;
+                    }
                     output.created_dataset_ids.push_back(target_dataset_id);
                 }
                 output.dataset_ids_by_name[target.target_dataset_name] = target_dataset_id;
@@ -960,9 +942,7 @@ bool ProjectDataBase::applyClusterAtomic(const std::vector<ClusterTarget> &targe
                         const size_t count = std::min(kBatchSize, target.move_image_ids.size() - i);
                         std::vector<int64_t> batch(target.move_image_ids.begin() + i,
                                                    target.move_image_ids.begin() + i + count);
-                        db(sqlpp::update(ImagesTable)
-                               .set(ImagesTable.datasetId = target_dataset_id)
-                               .where(ImagesTable.id.in(sqlpp::value_list(batch))));
+                        ImageRepository::updateImagesDatasetId(context, batch, target_dataset_id);
                     }
                     output.moved_image_count += target.move_image_ids.size();
                 }
@@ -982,7 +962,8 @@ bool ProjectDataBase::applyClusterAtomic(const std::vector<ClusterTarget> &targe
                             return false;
                         }
                         int64_t new_image_id = -1;
-                        insertImageSnapshot(db, target_dataset_id, image, new_image_id, output.new_label_ids);
+                        ImageRepository::insertImageSnapshot(context, target_dataset_id, image, new_image_id,
+                                                             output.new_label_ids);
                         output.new_image_ids.push_back(new_image_id);
                         output.copied_image_count += 1;
                     }
