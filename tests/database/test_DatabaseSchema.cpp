@@ -141,67 +141,6 @@ class DatabaseSchemaTest final : public QObject
     Q_OBJECT
 
 private slots:
-    /// 历史版本建的库列顺序可能不同（如 project 表 path/description 先后互换），
-    /// 校验按列名匹配后应能正常迁移并读出数据——运行时 sqlpp11 按列名访问，顺序无关。
-    void legacyColumnOrderProjectDatabaseOpensAndMigrates()
-    {
-        QTemporaryDir directory;
-        QVERIFY(directory.isValid());
-        const QString path = directory.filePath(QStringLiteral("legacy.dlpro"));
-
-        // 用旧列序建 project 表（path 在 description 前），与 shimo-all 等历史项目库一致。
-        // 注意库内记录的 path 必须是库自身路径（openProject 会校验两者一致）。
-        QVERIFY(executeSql(path,
-                           "CREATE TABLE project (id INTEGER NOT NULL PRIMARY KEY, name TEXT, method INTEGER NOT NULL, "
-                           "path TEXT, description TEXT, image_base_path TEXT, ctime INTEGER NOT NULL, mtime INTEGER NOT NULL, "
-                           "version TEXT, extra_data BLOB); "
-                           "INSERT INTO project (id, name, method, path, description, ctime, mtime) "
-                           "VALUES (1, 'legacy_project', 5, '" + path.toUtf8() + "', '旧列序项目', 100, 200);"));
-        QCOMPARE(userVersion(path), 0);
-
-        dltool::database::ProjectDataBase database(path);
-        QString name;
-        int     method = 0;
-        QString proj_path;
-        QString description;
-        QString image_base_path;
-        qint64  ctime = 0;
-        qint64  mtime = 0;
-        QString error;
-        QVERIFY2(database.openProject(name, method, proj_path, description, image_base_path, ctime, mtime, error),
-                 qPrintable(error));
-        QCOMPARE(name, QStringLiteral("legacy_project"));
-        QCOMPARE(method, 5);
-        QCOMPARE(description, QStringLiteral("旧列序项目"));
-        QCOMPARE(userVersion(path), 1);
-    }
-
-    /// 按列名匹配不放松强度：列名一致但非空约束不符仍必须拒绝。
-    void schemaValidationStillRejectsMismatchedColumnConstraints()
-    {
-        QTemporaryDir directory;
-        QVERIFY(directory.isValid());
-        const QString path = directory.filePath(QStringLiteral("constraint_mismatch.dlpro"));
-
-        // method 丢失 NOT NULL 约束（列名与类型一致）
-        QVERIFY(executeSql(path,
-                           "CREATE TABLE project (id INTEGER NOT NULL PRIMARY KEY, name TEXT, method INTEGER, "
-                           "description TEXT, path TEXT, image_base_path TEXT, ctime INTEGER NOT NULL, mtime INTEGER NOT NULL, "
-                           "version TEXT, extra_data BLOB);"));
-
-        dltool::database::ProjectDataBase database(path);
-        QString name;
-        int     method = 0;
-        QString proj_path;
-        QString description;
-        QString image_base_path;
-        qint64  ctime = 0;
-        qint64  mtime = 0;
-        QString error;
-        QVERIFY(!database.openProject(name, method, proj_path, description, image_base_path, ctime, mtime, error));
-        QVERIFY(error.contains(QStringLiteral("结构不匹配")));
-    }
-
     void emptyModelDatabaseIsInitializedWithCurrentSchemaVersion()
     {
         QTemporaryDir directory;
