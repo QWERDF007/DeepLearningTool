@@ -26,7 +26,6 @@
 #include <map>
 #include <memory>
 #include <vector>
-
 class QQmlApplicationEngine;
 
 namespace dltool::database {
@@ -34,6 +33,8 @@ class ProjectDataBase;
 } // namespace dltool::database
 
 namespace dltool::data {
+
+class DataExportService;
 
 class DATA_API DataManager : public QObject
 {
@@ -527,10 +528,12 @@ private:
     bool dataset_deletion_running_{false};
     bool image_operation_running_{false};
     bool data_operation_running_{false};
-    std::shared_ptr<std::atomic_bool> active_export_cancel_token_;
     std::vector<DataOperationWorkflow::HandlePtr> operation_handles_;
     bool                               shutting_down_{false};
     bool                               cleaned_up_{false};
+
+    /// 用例服务（模块私有实现，见 src/data/DataManagerServices.h）。
+    std::unique_ptr<DataExportService> export_service_;
 };
 
 } // namespace dltool::data
