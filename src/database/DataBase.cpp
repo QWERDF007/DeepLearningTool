@@ -1,5 +1,9 @@
 #include "database/DataBase.h"
 
+#include "Repositories/DatabaseContext.h"
+#include "Repositories/ModelRepository.h"
+#include "Repositories/TagIdCodec.h"
+#include "Repositories/TagRepository.h"
 #include "database/DatabaseSchema.h"
 #include "database/ddl/DatasetsTable.h"
 #include "database/ddl/ImagesTable.h"
@@ -52,58 +56,6 @@ constexpr int kSqliteBusyTimeoutMs = 5000;
 
 namespace {
 
-using TagIds = std::vector<int64_t>;
-
-constexpr int kImageTagType = static_cast<int>(TagType::Image);
-constexpr int kLabelTagType = static_cast<int>(TagType::Label);
-
-// A tag relation stores the complete set of tag-class IDs for one image or label.
-// Keeping the encoding here makes the database schema independent from Qt containers.
-std::vector<uint8_t> encodeTagIds(const TagIds &tag_ids)
-{
-    std::vector<uint8_t> encoded;
-    encoded.reserve(tag_ids.size() * sizeof(int64_t));
-    for (const int64_t tag_id : tag_ids)
-    {
-        const uint64_t value = static_cast<uint64_t>(tag_id);
-        for (size_t byte_index = 0; byte_index < sizeof(value); ++byte_index)
-            encoded.push_back(static_cast<uint8_t>((value >> (byte_index * 8)) & 0xff));
-    }
-    return encoded;
-}
-
-TagIds decodeTagIds(const std::vector<uint8_t> &encoded)
-{
-    if (encoded.empty() || encoded.size() % sizeof(int64_t) != 0)
-        return {};
-
-    TagIds tag_ids;
-    tag_ids.reserve(encoded.size() / sizeof(int64_t));
-    for (size_t offset = 0; offset < encoded.size(); offset += sizeof(int64_t))
-    {
-        uint64_t value = 0;
-        for (size_t byte_index = 0; byte_index < sizeof(value); ++byte_index)
-            value |= static_cast<uint64_t>(encoded[offset + byte_index]) << (byte_index * 8);
-        tag_ids.push_back(static_cast<int64_t>(value));
-    }
-    return tag_ids;
-}
-
-void appendTagId(TagIds &tag_ids, const int64_t tag_id)
-{
-    if (std::find(tag_ids.begin(), tag_ids.end(), tag_id) == tag_ids.end())
-        tag_ids.push_back(tag_id);
-}
-
-bool removeTagId(TagIds &tag_ids, const int64_t tag_id)
-{
-    const auto found = std::remove(tag_ids.begin(), tag_ids.end(), tag_id);
-    if (found == tag_ids.end())
-        return false;
-    tag_ids.erase(found, tag_ids.end());
-    return true;
-}
-
 void insertImageSnapshot(sqlpp::pooled_connection<sqlpp::sqlite3::connection_base> &db,
                          const int64_t dataset_id,
                          const ProjectDataBase::ImageSnapshot &image,
@@ -120,8 +72,8 @@ void insertImageSnapshot(sqlpp::pooled_connection<sqlpp::sqlite3::connection_bas
     {
         db(sqlpp::insert_into(TagsTable)
                .set(TagsTable.imageId = new_image_id,
-                    TagsTable.tagIds  = encodeTagIds(image.tag_ids),
-                    TagsTable.type    = kImageTagType));
+                    TagsTable.tagIds  = detail::encodeTagIds(image.tag_ids),
+                    TagsTable.type    = detail::kImageTagType));
     }
 
     for (const auto &label : image.labels)
@@ -138,8 +90,8 @@ void insertImageSnapshot(sqlpp::pooled_connection<sqlpp::sqlite3::connection_bas
         {
             db(sqlpp::insert_into(TagsTable)
                    .set(TagsTable.labelId = new_label_id,
-                        TagsTable.tagIds  = encodeTagIds(label.tag_ids),
-                        TagsTable.type    = kLabelTagType));
+                        TagsTable.tagIds  = detail::encodeTagIds(label.tag_ids),
+                        TagsTable.type    = detail::kLabelTagType));
         }
     }
 }
@@ -1777,23 +1729,22 @@ bool ProjectDataBase::deleteLabelClasses(const std::vector<int64_t> &label_class
 bool ProjectDataBase::getAllTagClasses(std::vector<int64_t> &tag_class_ids, std::vector<QString> &names,
                                        std::vector<std::vector<uint8_t>> &extra_data, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!TagRepository::getAllTagClasses(context, tag_class_ids, names, extra_data, err_msg))
         {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
+            tx.rollback();
             return false;
         }
-        auto db   = pool_->get();
-        auto data = db(sqlpp::select(TagClassesTable.id, TagClassesTable.name, TagClassesTable.extraData)
-                           .from(TagClassesTable)
-                           .unconditionally());
-        for (const auto &row : data)
-        {
-            tag_class_ids.emplace_back(row.id);
-            names.emplace_back(QString::fromStdString(row.name));
-            extra_data.emplace_back(row.extraData.is_null() ? std::vector<uint8_t>{} : row.extraData.value());
-        }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -1806,17 +1757,22 @@ bool ProjectDataBase::getAllTagClasses(std::vector<int64_t> &tag_class_ids, std:
 bool ProjectDataBase::addTagClass(const QString &name, const std::vector<uint8_t> &extra_data,
                                   int64_t &tag_class_id, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!TagRepository::addTagClass(context, name, extra_data, tag_class_id, err_msg))
         {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
+            tx.rollback();
             return false;
         }
-        auto db = pool_->get();
-        db(sqlpp::insert_into(TagClassesTable)
-               .set(TagClassesTable.name = name.toUtf8().constData(), TagClassesTable.extraData = extra_data));
-        tag_class_id = static_cast<int64_t>(db.last_insert_id());
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -1829,17 +1785,22 @@ bool ProjectDataBase::addTagClass(const QString &name, const std::vector<uint8_t
 bool ProjectDataBase::updateTagClass(const int64_t tag_class_id, const QString &name,
                                      const std::vector<uint8_t> &extra_data, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!TagRepository::updateTagClass(context, tag_class_id, name, extra_data, err_msg))
         {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
+            tx.rollback();
             return false;
         }
-        auto db = pool_->get();
-        db(sqlpp::update(TagClassesTable)
-               .set(TagClassesTable.name = name.toUtf8().constData(), TagClassesTable.extraData = extra_data)
-               .where(TagClassesTable.id == tag_class_id));
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -1851,43 +1812,22 @@ bool ProjectDataBase::updateTagClass(const int64_t tag_class_id, const QString &
 
 bool ProjectDataBase::deleteTagClass(const int64_t tag_class_id, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
-            return false;
-        }
         auto db = pool_->get();
         auto tx = sqlpp::start_transaction(db);
-        try
-        {
-            auto data = db(sqlpp::select(TagsTable.id, TagsTable.tagIds).from(TagsTable).unconditionally());
-            for (const auto &row : data)
-            {
-                TagIds tag_ids = decodeTagIds(row.tagIds);
-                if (!removeTagId(tag_ids, tag_class_id))
-                    continue;
-
-                if (tag_ids.empty())
-                {
-                    db(sqlpp::remove_from(TagsTable).where(TagsTable.id == row.id));
-                }
-                else
-                {
-                    db(sqlpp::update(TagsTable)
-                           .set(TagsTable.tagIds = encodeTagIds(tag_ids))
-                           .where(TagsTable.id == row.id));
-                }
-            }
-            db(sqlpp::remove_from(TagClassesTable).where(TagClassesTable.id == tag_class_id));
-            tx.commit();
-        }
-        catch (...)
+        DatabaseContext context(db);
+        if (!TagRepository::deleteTagClass(context, tag_class_id, err_msg))
         {
             tx.rollback();
-            throw;
+            return false;
         }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -1903,37 +1843,22 @@ bool ProjectDataBase::getAllTags(std::vector<int64_t> &image_ids,
                                  std::vector<std::vector<int64_t>> &label_tag_ids,
                                  QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!TagRepository::getAllTags(context, image_ids, image_tag_ids, label_ids, label_tag_ids, err_msg))
         {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
+            tx.rollback();
             return false;
         }
-        image_ids.clear();
-        image_tag_ids.clear();
-        label_ids.clear();
-        label_tag_ids.clear();
-
-        auto db   = pool_->get();
-        auto data = db(sqlpp::select(TagsTable.imageId, TagsTable.labelId, TagsTable.tagIds, TagsTable.type)
-                           .from(TagsTable)
-                           .unconditionally());
-        for (const auto &row : data)
-        {
-            const TagIds tag_ids = decodeTagIds(row.tagIds);
-            const int type = static_cast<int>(row.type.value());
-            if (type == kImageTagType && !row.imageId.is_null())
-            {
-                image_ids.emplace_back(row.imageId.value());
-                image_tag_ids.emplace_back(tag_ids);
-            }
-            else if (type == kLabelTagType && !row.labelId.is_null())
-            {
-                label_ids.emplace_back(row.labelId.value());
-                label_tag_ids.emplace_back(tag_ids);
-            }
-        }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -1946,47 +1871,26 @@ bool ProjectDataBase::getAllTags(std::vector<int64_t> &image_ids,
 bool ProjectDataBase::addTagsToImages(const std::vector<int64_t> &image_ids, const int64_t tag_id,
                                       QString &err_msg) const
 {
-    if (image_ids.empty())
-        return true;
     if (pool_ == nullptr)
     {
-        err_msg = QString("打开数据库失败, %1").arg(path_);
+        err_msg = QString("打开数据库失败, ").arg(path_);
         return false;
     }
-    auto db = pool_->get();
-    auto tx = sqlpp::start_transaction(db);
     try
     {
-        for (const int64_t image_id : image_ids)
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!TagRepository::addTagsToImages(context, image_ids, tag_id, err_msg))
         {
-            auto data = db(sqlpp::select(TagsTable.id, TagsTable.tagIds)
-                               .from(TagsTable)
-                               .where(TagsTable.imageId == image_id && TagsTable.type == kImageTagType));
-            if (data.empty())
-            {
-                db(sqlpp::insert_into(TagsTable).set(TagsTable.imageId = image_id,
-                                                     TagsTable.tagIds = encodeTagIds({tag_id}),
-                                                     TagsTable.type = kImageTagType));
-                continue;
-            }
-
-            const auto &row = data.front();
-            TagIds tag_ids  = decodeTagIds(row.tagIds);
-            const size_t old_size = tag_ids.size();
-            appendTagId(tag_ids, tag_id);
-            if (tag_ids.size() != old_size)
-            {
-                db(sqlpp::update(TagsTable)
-                       .set(TagsTable.tagIds = encodeTagIds(tag_ids))
-                       .where(TagsTable.id == row.id));
-            }
+            tx.rollback();
+            return false;
         }
         tx.commit();
         return true;
     }
     catch (const std::exception &e)
     {
-        tx.rollback();
         err_msg = e.what();
         return false;
     }
@@ -1995,35 +1899,20 @@ bool ProjectDataBase::addTagsToImages(const std::vector<int64_t> &image_ids, con
 bool ProjectDataBase::removeTagsFromImages(const std::vector<int64_t> &image_ids, const int64_t tag_id,
                                            QString &err_msg) const
 {
-    if (image_ids.empty())
-        return true;
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
-            return false;
-        }
         auto db = pool_->get();
         auto tx = sqlpp::start_transaction(db);
-        for (const int64_t image_id : image_ids)
+        DatabaseContext context(db);
+        if (!TagRepository::removeTagsFromImages(context, image_ids, tag_id, err_msg))
         {
-            auto data = db(sqlpp::select(TagsTable.id, TagsTable.tagIds)
-                               .from(TagsTable)
-                               .where(TagsTable.imageId == image_id && TagsTable.type == kImageTagType));
-            if (data.empty())
-                continue;
-
-            const auto &row = data.front();
-            TagIds tag_ids  = decodeTagIds(row.tagIds);
-            if (!removeTagId(tag_ids, tag_id))
-                continue;
-            if (tag_ids.empty())
-                db(sqlpp::remove_from(TagsTable).where(TagsTable.id == row.id));
-            else
-                db(sqlpp::update(TagsTable)
-                       .set(TagsTable.tagIds = encodeTagIds(tag_ids))
-                       .where(TagsTable.id == row.id));
+            tx.rollback();
+            return false;
         }
         tx.commit();
         return true;
@@ -2037,18 +1926,22 @@ bool ProjectDataBase::removeTagsFromImages(const std::vector<int64_t> &image_ids
 
 bool ProjectDataBase::removeTagsForImages(const std::vector<int64_t> &image_ids, QString &err_msg) const
 {
-    if (image_ids.empty())
-        return true;
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!TagRepository::removeTagsForImages(context, image_ids, err_msg))
         {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
+            tx.rollback();
             return false;
         }
-        auto db = pool_->get();
-        db(sqlpp::remove_from(TagsTable).where(TagsTable.imageId.in(sqlpp::value_list(image_ids))
-                                               && TagsTable.type == kImageTagType));
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -2061,47 +1954,26 @@ bool ProjectDataBase::removeTagsForImages(const std::vector<int64_t> &image_ids,
 bool ProjectDataBase::addTagsToLabels(const std::vector<int64_t> &label_ids, const int64_t tag_id,
                                       QString &err_msg) const
 {
-    if (label_ids.empty())
-        return true;
     if (pool_ == nullptr)
     {
-        err_msg = QString("打开数据库失败, %1").arg(path_);
+        err_msg = QString("打开数据库失败, ").arg(path_);
         return false;
     }
-    auto db = pool_->get();
-    auto tx = sqlpp::start_transaction(db);
     try
     {
-        for (const int64_t label_id : label_ids)
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!TagRepository::addTagsToLabels(context, label_ids, tag_id, err_msg))
         {
-            auto data = db(sqlpp::select(TagsTable.id, TagsTable.tagIds)
-                               .from(TagsTable)
-                               .where(TagsTable.labelId == label_id && TagsTable.type == kLabelTagType));
-            if (data.empty())
-            {
-                db(sqlpp::insert_into(TagsTable).set(TagsTable.labelId = label_id,
-                                                     TagsTable.tagIds = encodeTagIds({tag_id}),
-                                                     TagsTable.type = kLabelTagType));
-                continue;
-            }
-
-            const auto &row = data.front();
-            TagIds tag_ids  = decodeTagIds(row.tagIds);
-            const size_t old_size = tag_ids.size();
-            appendTagId(tag_ids, tag_id);
-            if (tag_ids.size() != old_size)
-            {
-                db(sqlpp::update(TagsTable)
-                       .set(TagsTable.tagIds = encodeTagIds(tag_ids))
-                       .where(TagsTable.id == row.id));
-            }
+            tx.rollback();
+            return false;
         }
         tx.commit();
         return true;
     }
     catch (const std::exception &e)
     {
-        tx.rollback();
         err_msg = e.what();
         return false;
     }
@@ -2110,35 +1982,20 @@ bool ProjectDataBase::addTagsToLabels(const std::vector<int64_t> &label_ids, con
 bool ProjectDataBase::removeTagsFromLabels(const std::vector<int64_t> &label_ids, const int64_t tag_id,
                                            QString &err_msg) const
 {
-    if (label_ids.empty())
-        return true;
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
-            return false;
-        }
         auto db = pool_->get();
         auto tx = sqlpp::start_transaction(db);
-        for (const int64_t label_id : label_ids)
+        DatabaseContext context(db);
+        if (!TagRepository::removeTagsFromLabels(context, label_ids, tag_id, err_msg))
         {
-            auto data = db(sqlpp::select(TagsTable.id, TagsTable.tagIds)
-                               .from(TagsTable)
-                               .where(TagsTable.labelId == label_id && TagsTable.type == kLabelTagType));
-            if (data.empty())
-                continue;
-
-            const auto &row = data.front();
-            TagIds tag_ids  = decodeTagIds(row.tagIds);
-            if (!removeTagId(tag_ids, tag_id))
-                continue;
-            if (tag_ids.empty())
-                db(sqlpp::remove_from(TagsTable).where(TagsTable.id == row.id));
-            else
-                db(sqlpp::update(TagsTable)
-                       .set(TagsTable.tagIds = encodeTagIds(tag_ids))
-                       .where(TagsTable.id == row.id));
+            tx.rollback();
+            return false;
         }
         tx.commit();
         return true;
@@ -2152,18 +2009,22 @@ bool ProjectDataBase::removeTagsFromLabels(const std::vector<int64_t> &label_ids
 
 bool ProjectDataBase::removeTagsForLabels(const std::vector<int64_t> &label_ids, QString &err_msg) const
 {
-    if (label_ids.empty())
-        return true;
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!TagRepository::removeTagsForLabels(context, label_ids, err_msg))
         {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
+            tx.rollback();
             return false;
         }
-        auto db = pool_->get();
-        db(sqlpp::remove_from(TagsTable).where(TagsTable.labelId.in(sqlpp::value_list(label_ids))
-                                               && TagsTable.type == kLabelTagType));
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -2179,44 +2040,24 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
                                    std::vector<qint64> &ctimes, std::vector<qint64> &mtimes,
                                    std::vector<std::vector<uint8_t>> &extra_data, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("open database failed: ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("open database failed: %1").arg(path_);
-            return false;
-        }
-
-        model_ids.clear();
-        uuids.clear();
-        names.clear();
-        framework_names.clear();
-        model_architectures.clear();
-        ctimes.clear();
-        mtimes.clear();
-        extra_data.clear();
-
         auto db = pool_->get();
         if (!detail::ensureProjectSchema(db, &err_msg))
             return false;
-        auto data
-            = db(sqlpp::select(ModelsTable.id, ModelsTable.uuid, ModelsTable.name, ModelsTable.frameworkName,
-                               ModelsTable.modelArchitecture, ModelsTable.ctime, ModelsTable.mtime,
-                               ModelsTable.extraData)
-                     .from(ModelsTable)
-                     .unconditionally()
-                     .order_by(ModelsTable.id.asc()));
-        for (const auto &row : data)
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!ModelRepository::getAllModels(context, model_ids, uuids, names, framework_names, model_architectures, ctimes, mtimes, extra_data, err_msg))
         {
-            model_ids.emplace_back(row.id);
-            uuids.emplace_back(QString::fromStdString(row.uuid));
-            names.emplace_back(QString::fromStdString(row.name));
-            framework_names.emplace_back(QString::fromStdString(row.frameworkName));
-            model_architectures.emplace_back(QString::fromStdString(row.modelArchitecture));
-            ctimes.emplace_back(row.ctime);
-            mtimes.emplace_back(row.mtime);
-            extra_data.emplace_back(row.extraData.is_null() ? std::vector<uint8_t>{} : row.extraData.value());
+            tx.rollback();
+            return false;
         }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -2230,28 +2071,24 @@ bool ProjectDataBase::addModel(const QString &uuid, const QString &name, const Q
                                const QString &model_architecture, const qint64 ctime, const qint64 mtime,
                                int64_t &model_id, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("open database failed: ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("open database failed: %1").arg(path_);
-            return false;
-        }
-
         auto db = pool_->get();
         if (!detail::ensureProjectSchema(db, &err_msg))
             return false;
-
-        const QByteArray uuid_bytes               = uuid.toUtf8();
-        const QByteArray name_bytes               = name.toUtf8();
-        const QByteArray framework_name_bytes     = framework_name.toUtf8();
-        const QByteArray model_architecture_bytes = model_architecture.toUtf8();
-        db(sqlpp::insert_into(ModelsTable)
-               .set(ModelsTable.uuid = uuid_bytes.constData(), ModelsTable.name = name_bytes.constData(),
-                    ModelsTable.frameworkName     = framework_name_bytes.constData(),
-                    ModelsTable.modelArchitecture = model_architecture_bytes.constData(),
-                    ModelsTable.ctime = ctime, ModelsTable.mtime = mtime));
-        model_id = static_cast<int64_t>(db.last_insert_id());
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!ModelRepository::addModel(context, uuid, name, framework_name, model_architecture, ctime, mtime, model_id, err_msg))
+        {
+            tx.rollback();
+            return false;
+        }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -2264,22 +2101,24 @@ bool ProjectDataBase::addModel(const QString &uuid, const QString &name, const Q
 bool ProjectDataBase::updateModelName(const int64_t model_id, const QString &name, const qint64 mtime,
                                       QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("open database failed: ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("open database failed: %1").arg(path_);
-            return false;
-        }
-
         auto db = pool_->get();
         if (!detail::ensureProjectSchema(db, &err_msg))
             return false;
-
-        const QByteArray name_bytes = name.toUtf8();
-        db(sqlpp::update(ModelsTable)
-               .set(ModelsTable.name = name_bytes.constData(), ModelsTable.mtime = mtime)
-               .where(ModelsTable.id == model_id));
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!ModelRepository::updateModelName(context, model_id, name, mtime, err_msg))
+        {
+            tx.rollback();
+            return false;
+        }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -2292,20 +2131,24 @@ bool ProjectDataBase::updateModelName(const int64_t model_id, const QString &nam
 bool ProjectDataBase::updateModelExtraData(const int64_t model_id, const std::vector<uint8_t> &extra_data,
                                            QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("open database failed: ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("open database failed: %1").arg(path_);
-            return false;
-        }
-
         auto db = pool_->get();
         if (!detail::ensureProjectSchema(db, &err_msg))
             return false;
-        db(sqlpp::update(ModelsTable)
-               .set(ModelsTable.extraData = extra_data)
-               .where(ModelsTable.id == model_id));
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!ModelRepository::updateModelExtraData(context, model_id, extra_data, err_msg))
+        {
+            tx.rollback();
+            return false;
+        }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -2317,20 +2160,24 @@ bool ProjectDataBase::updateModelExtraData(const int64_t model_id, const std::ve
 
 bool ProjectDataBase::updateModelMtime(const int64_t model_id, const qint64 mtime, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("open database failed: ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("open database failed: %1").arg(path_);
-            return false;
-        }
-
         auto db = pool_->get();
         if (!detail::ensureProjectSchema(db, &err_msg))
             return false;
-        db(sqlpp::update(ModelsTable)
-               .set(ModelsTable.mtime = mtime)
-               .where(ModelsTable.id == model_id));
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!ModelRepository::updateModelMtime(context, model_id, mtime, err_msg))
+        {
+            tx.rollback();
+            return false;
+        }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -2342,18 +2189,24 @@ bool ProjectDataBase::updateModelMtime(const int64_t model_id, const qint64 mtim
 
 bool ProjectDataBase::deleteModel(const int64_t model_id, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("open database failed: ").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("open database failed: %1").arg(path_);
-            return false;
-        }
-
         auto db = pool_->get();
         if (!detail::ensureProjectSchema(db, &err_msg))
             return false;
-        db(sqlpp::remove_from(ModelsTable).where(ModelsTable.id == model_id));
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!ModelRepository::deleteModel(context, model_id, err_msg))
+        {
+            tx.rollback();
+            return false;
+        }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
