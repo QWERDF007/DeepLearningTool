@@ -625,81 +625,33 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
             return;
         }
 
-        std::vector<QString> batch_image_paths;
-        std::vector<int64_t> batch_image_widths;
-        std::vector<int64_t> batch_image_heights;
-        batch_image_paths.reserve(DataIO::ImportBatchImageCount);
-        batch_image_widths.reserve(DataIO::ImportBatchImageCount);
-        batch_image_heights.reserve(DataIO::ImportBatchImageCount);
-
-        size_t emitted_images    = 0;
-        bool   sent_classes      = false;
-        auto   flush_image_batch = [&]() -> bool
-        {
-            if (batch_image_paths.empty())
-                return true;
-
-            std::map<QString, QString> batch_label_class_info;
-            if (!sent_classes)
-            {
-                batch_label_class_info = label_class_info;
-                sent_classes           = true;
-            }
-
-            emitted_images += batch_image_paths.size();
-            emit dataBatchReady(dataset_id, std::move(batch_image_paths), std::move(batch_image_widths),
-                                std::move(batch_image_heights), std::move(batch_label_class_info), {},
-                                static_cast<int64_t>(emitted_images), static_cast<int64_t>(images.size()));
-
-            batch_image_paths.clear();
-            batch_image_widths.clear();
-            batch_image_heights.clear();
-            batch_image_paths.reserve(DataIO::ImportBatchImageCount);
-            batch_image_widths.reserve(DataIO::ImportBatchImageCount);
-            batch_image_heights.reserve(DataIO::ImportBatchImageCount);
-            return !isCancelRequested();
-        };
+        ImportBatchEmitter emitter(*this, dataset_id);
+        for (const auto &[class_name, class_color] : label_class_info) emitter.pushLabelClass(class_name, class_color);
 
         updateProgress(40, QString("正在分批写入 COCO 图像..."));
+        int64_t pushed_images = 0;
         for (const CocoImage &image : images)
         {
-            batch_image_paths.push_back(image.image_path);
-            batch_image_widths.push_back(image.width);
-            batch_image_heights.push_back(image.height);
+            emitter.pushImage(image.image_path, image.width, image.height);
+            ++pushed_images;
 
-            if (batch_image_paths.size() >= DataIO::ImportBatchImageCount)
+            if (!emitter.flushIfFullByImages(pushed_images, static_cast<int64_t>(images.size())))
             {
-                if (!flush_image_batch())
-                {
-                    emit importFinished(false, {}, {});
-                    return;
-                }
+                emit importFinished(false, {}, {});
+                return;
             }
         }
 
-        if (!flush_image_batch())
+        if (!emitter.flush(pushed_images, static_cast<int64_t>(images.size())))
         {
             emit importFinished(false, {}, {});
             return;
         }
 
         updateProgress(60, QString("正在流式解析 COCO 标注..."));
-        std::vector<ImportedLabel> batch_labels;
-        batch_labels.reserve(DataIO::ImportBatchImageCount);
         int processed_annotations = 0;
         int skipped_annotations   = 0;
         int imported_label_count  = 0;
-
-        auto flush_label_batch = [&]() -> bool
-        {
-            if (batch_labels.empty())
-                return true;
-            emit dataBatchReady(dataset_id, {}, {}, {}, {}, std::move(batch_labels),
-                                static_cast<int64_t>(images.size()), static_cast<int64_t>(images.size()));
-            batch_labels.clear();
-            batch_labels.reserve(DataIO::ImportBatchImageCount);
-            return !isCancelRequested();
-        };
 
         struct CocoAnnotationResult
         {
@@ -822,8 +774,9 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
             {
                 skipped_annotations += result.skipped;
                 imported_label_count += static_cast<int>(result.labels.size());
-                for (auto &label : result.labels) batch_labels.push_back(std::move(label));
-                if (batch_labels.size() >= DataIO::ImportBatchImageCount && !flush_label_batch())
+                for (auto &label : result.labels) emitter.pushLabel(std::move(label));
+                if (!emitter.flushIfFullByLabels(static_cast<int64_t>(images.size()),
+                                                 static_cast<int64_t>(images.size())))
                     return false;
             }
             return !isCancelRequested();
@@ -865,7 +818,7 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
             return;
         }
 
-        if (!flush_label_batch())
+        if (!emitter.flush(static_cast<int64_t>(images.size()), static_cast<int64_t>(images.size())))
         {
             emit importFinished(false, {}, {});
             return;

@@ -224,39 +224,11 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir, const int 
             return;
         }
 
-        std::vector<QString>       batch_image_paths;
-        std::vector<int64_t>       batch_image_widths;
-        std::vector<int64_t>       batch_image_heights;
-        std::map<QString, QString> batch_label_class_info;
-        std::vector<ImportedLabel> batch_labels;
-        batch_image_paths.reserve(DataIO::ImportBatchImageCount);
-        batch_image_widths.reserve(DataIO::ImportBatchImageCount);
-        batch_image_heights.reserve(DataIO::ImportBatchImageCount);
+        ImportBatchEmitter emitter(*this, dataset_id);
 
-        int                        color_index      = 0;
-        int                        processed_images = 0;
-        int                        valid_images     = 0;
-        std::map<QString, QString> class_colors;
-
-        auto flush_batch = [&]() -> bool
-        {
-            if (batch_image_paths.empty() && batch_labels.empty())
-                return true;
-
-            emit dataBatchReady(dataset_id, std::move(batch_image_paths), std::move(batch_image_widths),
-                                std::move(batch_image_heights), std::move(batch_label_class_info),
-                                std::move(batch_labels), processed_images, total_images);
-
-            batch_image_paths.clear();
-            batch_image_widths.clear();
-            batch_image_heights.clear();
-            batch_label_class_info.clear();
-            batch_labels.clear();
-            batch_image_paths.reserve(DataIO::ImportBatchImageCount);
-            batch_image_widths.reserve(DataIO::ImportBatchImageCount);
-            batch_image_heights.reserve(DataIO::ImportBatchImageCount);
-            return !isCancelRequested();
-        };
+        int color_index      = 0;
+        int processed_images = 0;
+        int valid_images     = 0;
 
         struct FolderImportItem
         {
@@ -268,11 +240,7 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir, const int 
         items.reserve(static_cast<std::size_t>(total_images));
         for (const FolderClassInfo &cls : classes)
         {
-            if (class_colors.find(cls.name) == class_colors.end())
-            {
-                class_colors[cls.name]           = DatasetIO::generateDefaultColor(color_index++);
-                batch_label_class_info[cls.name] = class_colors[cls.name];
-            }
+            emitter.pushLabelClass(cls.name, DatasetIO::generateDefaultColor(color_index++));
             for (const QString &image_path : cls.image_paths) items.push_back({image_path, cls.name});
         }
 
@@ -310,8 +278,8 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir, const int 
             if (!results[index].valid)
                 continue;
             ++valid_images;
-            batch_image_paths.push_back(results[index].label.image_path);
-            batch_labels.push_back(std::move(results[index].label));
+            emitter.pushImage(results[index].label.image_path);
+            emitter.pushLabel(std::move(results[index].label));
 
             if (processed_images % std::max(1, total_images / 10) == 0 || processed_images == total_images)
             {
@@ -319,14 +287,14 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir, const int 
                 updateProgress(progress, QString("已处理文件夹图像 %1/%2").arg(processed_images).arg(total_images));
             }
 
-            if (batch_image_paths.size() >= DataIO::ImportBatchImageCount && !flush_batch())
+            if (!emitter.flushIfFullByImages(processed_images, total_images))
             {
                 emit importFinished(false, {}, {});
                 return;
             }
         }
 
-        if (!flush_batch())
+        if (!emitter.flush(processed_images, total_images))
         {
             emit importFinished(false, {}, {});
             return;

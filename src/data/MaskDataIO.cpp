@@ -340,34 +340,13 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
             return;
         }
 
-        std::vector<QString>       batch_image_paths;
-        std::vector<int64_t>       batch_image_widths;
-        std::vector<int64_t>       batch_image_heights;
-        std::map<QString, QString> batch_label_class_info;
-        std::vector<ImportedLabel> batch_labels;
+        ImportBatchEmitter emitter(*this, dataset_id);
         std::map<QString, QString> label_class_colors;
 
         int processed_masks       = 0;
         int valid_masks           = 0;
         int skipped_masks         = 0;
         int generated_label_count = 0;
-
-        auto flush_batch = [&]() -> bool
-        {
-            if (batch_image_paths.empty() && batch_labels.empty())
-                return true;
-
-            emit dataBatchReady(dataset_id, std::move(batch_image_paths), std::move(batch_image_widths),
-                                std::move(batch_image_heights), std::move(batch_label_class_info),
-                                std::move(batch_labels), processed_masks, static_cast<int64_t>(mask_files.size()));
-
-            batch_image_paths.clear();
-            batch_image_widths.clear();
-            batch_image_heights.clear();
-            batch_label_class_info.clear();
-            batch_labels.clear();
-            return !isCancelRequested();
-        };
 
         struct MaskImportResult
         {
@@ -446,14 +425,12 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
                 if (label_class_colors.find(result.label_class_name) == label_class_colors.end())
                     label_class_colors[result.label_class_name]
                         = DatasetIO::generateDefaultColor(static_cast<int>(label_class_colors.size()));
-                batch_label_class_info[result.label_class_name] = label_class_colors[result.label_class_name];
+                emitter.pushLabelClass(result.label_class_name, label_class_colors[result.label_class_name]);
 
                 for (const ImportedLabel &label : result.labels)
                 {
-                    batch_image_paths.push_back(result.image_path);
-                    batch_image_widths.push_back(result.image_width);
-                    batch_image_heights.push_back(result.image_height);
-                    batch_labels.push_back(label);
+                    emitter.pushImage(result.image_path, result.image_width, result.image_height);
+                    emitter.pushLabel(label);
                 }
             }
 
@@ -464,14 +441,14 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
                 updateProgress(progress, QString("已处理 Mask %1/%2").arg(processed_masks).arg(mask_files.size()));
             }
 
-            if (batch_labels.size() >= DataIO::ImportBatchImageCount && !flush_batch())
+            if (!emitter.flushIfFullByLabels(processed_masks, static_cast<int>(mask_files.size())))
             {
                 emit importFinished(false, {}, {});
                 return;
             }
         }
 
-        if (!flush_batch())
+        if (!emitter.flush(processed_masks, static_cast<int>(mask_files.size())))
         {
             emit importFinished(false, {}, {});
             return;

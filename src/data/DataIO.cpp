@@ -247,12 +247,7 @@ bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, cons
         return false;
     }
 
-    std::vector<QString> batch_image_paths;
-    std::vector<int64_t> batch_image_widths;
-    std::vector<int64_t> batch_image_heights;
-    batch_image_paths.reserve(DataIO::ImportBatchImageCount);
-    batch_image_widths.reserve(DataIO::ImportBatchImageCount);
-    batch_image_heights.reserve(DataIO::ImportBatchImageCount);
+    ImportBatchEmitter emitter(*this, dataset_id);
 
     const int total_images = static_cast<int>(image_files.size());
 
@@ -280,23 +275,6 @@ bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, cons
     int valid_images = 0;
     int skipped      = 0;
 
-    auto flush_batch = [&]() -> bool
-    {
-        if (batch_image_paths.empty())
-            return true;
-
-        emit dataBatchReady(dataset_id, std::move(batch_image_paths), std::move(batch_image_widths),
-                            std::move(batch_image_heights), {}, {}, processed, total_images);
-
-        batch_image_paths.clear();
-        batch_image_widths.clear();
-        batch_image_heights.clear();
-        batch_image_paths.reserve(DataIO::ImportBatchImageCount);
-        batch_image_widths.reserve(DataIO::ImportBatchImageCount);
-        batch_image_heights.reserve(DataIO::ImportBatchImageCount);
-        return !isCancelRequested();
-    };
-
     for (std::size_t index = 0; index < image_files.size(); ++index)
     {
         if (isCancelRequested())
@@ -314,11 +292,9 @@ bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, cons
         }
 
         ++valid_images;
-        batch_image_paths.push_back(image_path);
-        batch_image_widths.push_back(results[index].width);
-        batch_image_heights.push_back(results[index].height);
+        emitter.pushImage(image_path, results[index].width, results[index].height);
 
-        if (batch_image_paths.size() >= DataIO::ImportBatchImageCount && !flush_batch())
+        if (!emitter.flushIfFullByImages(processed, total_images))
         {
             emit importFinished(false, {}, {});
             return false;
@@ -331,7 +307,7 @@ bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, cons
         }
     }
 
-    if (!flush_batch())
+    if (!emitter.flush(processed, total_images))
     {
         emit importFinished(false, {}, {});
         return false;

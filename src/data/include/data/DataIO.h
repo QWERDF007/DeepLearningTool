@@ -121,6 +121,47 @@ protected:
     void runInThread(std::function<void()> work, std::function<void(const QString &error)> on_failure = {});
     bool importImagesOnly(int64_t dataset_id, const QString &image_dir, const QString &format_name,
                           int thread_count);
+
+    /**
+     * @brief 导入批次发射器。
+     *
+     * 独占导入批次的累积、批次阈值冲刷与 dataBatchReady 发射。发射完成后
+     * 由实际提交者裁决取消：返回 false 表示发射后已请求取消，调用方应
+     * 立即以失败终止导入，已提交的批次保持有效。仅供 DataIO 派生类的
+     * doImport 工作函数与基类导入路径使用。
+     */
+    class ImportBatchEmitter
+    {
+    public:
+        ImportBatchEmitter(DataIO &owner, int64_t dataset_id);
+
+        /// 累积一条图像批次条目（无尺寸信息，消费方自行读取）。
+        void pushImage(const QString &image_path);
+        /// 累积一条带尺寸的图像批次条目。
+        void pushImage(const QString &image_path, int64_t width, int64_t height);
+        /// 累积一条标注批次条目。
+        void pushLabel(ImportedLabel label);
+        /// 登记批次内类别与其颜色，随下一次冲刷一并发射。
+        void pushLabelClass(const QString &name, const QString &color);
+
+        /// 图像数达到批次阈值时冲刷；未达阈值无操作。
+        bool flushIfFullByImages(int64_t processed, int64_t total);
+        /// 标注数达到批次阈值时冲刷；未达阈值无操作。
+        bool flushIfFullByLabels(int64_t processed, int64_t total);
+        /// 无条件冲刷剩余批次。
+        bool flush(int64_t processed, int64_t total);
+
+    private:
+        bool flushOnce(int64_t processed, int64_t total);
+
+        DataIO                   &owner_;
+        int64_t                   dataset_id_;
+        std::vector<QString>      image_paths_;
+        std::vector<int64_t>      image_widths_;
+        std::vector<int64_t>      image_heights_;
+        std::map<QString, QString> label_class_info_;
+        std::vector<ImportedLabel> labels_;
+    };
 };
 
 // ============================================================================

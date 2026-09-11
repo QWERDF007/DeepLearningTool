@@ -312,14 +312,7 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
 
         const int total_images = static_cast<int>(image_files.size());
 
-        std::vector<QString>       batch_image_paths;
-        std::vector<int64_t>       batch_image_widths;
-        std::vector<int64_t>       batch_image_heights;
-        std::map<QString, QString> batch_label_class_info;
-        std::vector<ImportedLabel> batch_labels;
-        batch_image_paths.reserve(DataIO::ImportBatchImageCount);
-        batch_image_widths.reserve(DataIO::ImportBatchImageCount);
-        batch_image_heights.reserve(DataIO::ImportBatchImageCount);
+        ImportBatchEmitter emitter(*this, dataset_id);
 
         std::map<QString, QString> label_class_colors;
         int                        color_index         = 0;
@@ -328,26 +321,6 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
         int                        skipped_images      = 0;
         int                        parsed_annotations  = 0;
         int                        skipped_annotations = 0;
-
-        auto flush_batch = [&]() -> bool
-        {
-            if (batch_image_paths.empty() && batch_labels.empty())
-                return true;
-
-            emit dataBatchReady(dataset_id, std::move(batch_image_paths), std::move(batch_image_widths),
-                                std::move(batch_image_heights), std::move(batch_label_class_info),
-                                std::move(batch_labels), processed_images, total_images);
-
-            batch_image_paths.clear();
-            batch_image_widths.clear();
-            batch_image_heights.clear();
-            batch_label_class_info.clear();
-            batch_labels.clear();
-            batch_image_paths.reserve(DataIO::ImportBatchImageCount);
-            batch_image_widths.reserve(DataIO::ImportBatchImageCount);
-            batch_image_heights.reserve(DataIO::ImportBatchImageCount);
-            return !isCancelRequested();
-        };
 
         struct LabelMeImportResult
         {
@@ -434,9 +407,7 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
             else
             {
                 ++valid_images;
-                batch_image_paths.push_back(image_path);
-                batch_image_widths.push_back(result.width);
-                batch_image_heights.push_back(result.height);
+                emitter.pushImage(image_path, result.width, result.height);
 
                 if (result.parsed_annotation)
                     ++parsed_annotations;
@@ -447,11 +418,11 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
                 {
                     if (label_class_colors.find(label.label_class_name) == label_class_colors.end())
                     {
-                        const QString color                            = DatasetIO::generateDefaultColor(color_index++);
-                        label_class_colors[label.label_class_name]     = color;
-                        batch_label_class_info[label.label_class_name] = color;
+                        const QString color                     = DatasetIO::generateDefaultColor(color_index++);
+                        label_class_colors[label.label_class_name] = color;
+                        emitter.pushLabelClass(label.label_class_name, color);
                     }
-                    batch_labels.push_back(label);
+                    emitter.pushLabel(label);
                 }
             }
 
@@ -461,17 +432,14 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
                 updateProgress(progress, QString("已处理 LabelMe 图像 %1/%2").arg(processed_images).arg(total_images));
             }
 
-            if (batch_image_paths.size() >= DataIO::ImportBatchImageCount)
+            if (!emitter.flushIfFullByImages(processed_images, total_images))
             {
-                if (!flush_batch())
-                {
-                    emit importFinished(false, {}, {});
-                    return;
-                }
+                emit importFinished(false, {}, {});
+                return;
             }
         }
 
-        if (!flush_batch())
+        if (!emitter.flush(processed_images, total_images))
         {
             emit importFinished(false, {}, {});
             return;
