@@ -1,6 +1,6 @@
 #include "database/DataBase.h"
 
-#include "DatabaseSchema.h"
+#include "database/DatabaseSchema.h"
 #include "database/ddl/DatasetsTable.h"
 #include "database/ddl/ImagesTable.h"
 #include "database/ddl/LabelClassesTable.h"

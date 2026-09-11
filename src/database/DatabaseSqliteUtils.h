@@ -1,6 +1,6 @@
 #pragma once
 
-#include "DatabaseSchema.h"
+#include "database/DatabaseSchema.h"
 #include "database/ModelDatabaseTypes.h"
 
 #include <sqlpp11/connection.h>
