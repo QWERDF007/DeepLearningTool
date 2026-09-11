@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/AsyncOperationWorkflow.h"
 #include "dltool/model/Export.h"
 #include "model/ModelLifecycle.h"
 
@@ -7,16 +8,15 @@
 #include <QObject>
 #include <QString>
 
-#include <atomic>
-#include <condition_variable>
 #include <functional>
-#include <memory>
-#include <mutex>
 
 namespace dltool::model {
 
 /**
- * @brief 统一的模型操作异步流水线。
+ * @brief 模型操作的领域适配层。
+ *
+ * 生命周期（句柄、取消、异常、完成投递、等待）全部由 common::AsyncOperationWorkflow
+ * 提供；本层只保留模型领域结果、生命周期资源适配和进度展示。
  *
  * 所有耗时的模型操作（如模型复制、恢复扫描等）遵循流水线：
  *   提交纯值快照 -> 工作线程自有数据库与文件服务 -> GUI 线程一次性提交结果 -> 进度收尾
@@ -26,70 +26,24 @@ namespace dltool::model {
 class MODEL_API ModelOperationWorkflow final
 {
 public:
-    class MODEL_API Handle final
+    /** 模型操作的展示选项，字段定义见 common::AsyncOperationOptions。 */
+    using Options = common::AsyncOperationOptions;
+
+    /**
+     * @brief 模型操作的领域结果。
+     *
+     * 提交语义由 worker 裁决：提交前取消回滚，提交后取消仍保留已提交成功。
+     */
+    struct MODEL_API Result final : common::AsyncOperationResult
     {
-    public:
-        /** 请求工作函数尽快取消。已完成操作返回 false。 */
-        bool requestCancel();
-        /** 返回是否已经发出取消请求。 */
-        bool isCancellationRequested() const;
-        /** 返回后台工作函数是否已经退出。 */
-        bool isFinished() const;
-        /** 返回完成回调是否已经执行，或因 context 销毁而被丢弃。 */
-        bool isCompletionFinished() const;
-        /** 等待工作函数退出并完成通知入队；timeout_ms 小于 0 表示无限等待。 */
-        bool waitForDone(int timeout_ms = -1) const;
-
-    private:
-        struct State
-        {
-            std::shared_ptr<std::atomic_bool> cancel_requested = std::make_shared<std::atomic_bool>(false);
-            mutable std::mutex                mutex;
-            mutable std::condition_variable   condition;
-            bool                              finished{false};
-            bool                              completion_finished{false};
-            bool                              context_destroyed{false};
-        };
-
-        explicit Handle(std::shared_ptr<State> state);
-        std::shared_ptr<State> state_;
-
-        friend class ModelOperationWorkflow;
+        ModelLifecycleResult lifecycle_result; ///< 生命周期执行结果。
+        qint64               model_id{-1};     ///< 受影响的模型 ID。
+        QString              uuid;             ///< 受影响的模型身份。
+        QString              name;             ///< 受影响的模型名称。
     };
 
-    using HandlePtr = std::shared_ptr<Handle>;
-
-    struct Result
-    {
-        bool                 success{false};
-        bool                 cancelled{false};
-        QString              error;
-        qint64               elapsed_ms{0};
-        ModelLifecycleResult lifecycle_result;
-        qint64               model_id{-1};
-        QString              uuid;
-        QString              name;
-
-        /** 工作函数可用该方法在合适的批次边界响应取消请求。 */
-        bool cancellationRequested() const noexcept
-        {
-            return cancel_token_ != nullptr && cancel_token_->load(std::memory_order_relaxed);
-        }
-
-    private:
-        std::shared_ptr<std::atomic_bool> cancel_token_;
-
-        friend class ModelOperationWorkflow;
-    };
-
-    struct Options
-    {
-        QString title;
-        QString start_message;
-        int     initial_progress{5};
-        bool    manage_progress{true};
-        QString task_id;
-    };
+    using Handle    = common::AsyncOperationWorkflow::Handle;
+    using HandlePtr = common::AsyncOperationWorkflow::HandlePtr;
 
     using Work          = std::function<void(Result &)>;
     using LifecycleWork = std::function<void(ModelLifecycle &lifecycle, Result &result)>;
@@ -97,11 +51,23 @@ public:
 
     /**
      * @brief 在后台线程执行任意工作，并在 context 线程回调完成阶段。
+     * @param context 完成回调所属线程对象；为空时不执行操作。
+     * @param options 进度与日志展示选项。
+     * @param work 后台工作函数，必须使用冻结的纯值输入。
+     * @param completion 完成回调，可为空。
+     * @return 操作句柄；参数无效时返回空。
      */
     static HandlePtr start(QObject *context, Options options, Work work, Completion completion = {});
 
     /**
      * @brief 在后台线程创建独立的数据库连接与存储服务，执行 ModelLifecycle 相关操作。
+     * @param context 完成回调所属线程对象。
+     * @param project_database_path 项目数据库路径。
+     * @param project_dir 项目目录。
+     * @param options 进度与日志展示选项。
+     * @param work 接收工作线程自有生命周期对象的执行函数。
+     * @param completion 完成回调，可为空。
+     * @return 操作句柄；参数无效时返回空。
      */
     static HandlePtr startLifecycle(QObject *context, const QString &project_database_path,
                                     const QString &project_dir, Options options,
@@ -109,6 +75,15 @@ public:
 
     /**
      * @brief 异步复制模型。
+     * @param context 完成回调所属线程对象。
+     * @param project_database_path 项目数据库路径。
+     * @param project_dir 项目目录。
+     * @param source 源模型记录。
+     * @param target 目标模型记录。
+     * @param copy_train_weights 是否复制训练权重。
+     * @param options 进度与日志展示选项。
+     * @param completion 完成回调，可为空。
+     * @return 操作句柄；参数无效时返回空。
      */
     static HandlePtr startCopy(QObject *context, const QString &project_database_path,
                                const QString &project_dir, const ModelLifecycleRecord &source,
@@ -117,6 +92,12 @@ public:
 
     /**
      * @brief 异步恢复未完成的模型操作。
+     * @param context 完成回调所属线程对象。
+     * @param project_database_path 项目数据库路径。
+     * @param project_dir 项目目录。
+     * @param options 进度与日志展示选项。
+     * @param completion 完成回调，可为空。
+     * @return 操作句柄；参数无效时返回空。
      */
     static HandlePtr startRecovery(QObject *context, const QString &project_database_path,
                                    const QString &project_dir, Options options,
@@ -124,12 +105,15 @@ public:
 
     /**
      * @brief 在当前 context 线程排空一组模型操作的完成回调。
+     * @param handles 待等待的句柄列表。
+     * @param timeout_ms 等待上限；负数表示无限等待。
+     * @return 全部 worker 退出且完成通知已收敛返回 true。
      */
     static bool waitForCompletions(const QList<HandlePtr> &handles, int timeout_ms = -1);
 
 private:
     static void beginProgress(const Options &options);
-    static void finishProgress(const Options &options, const Result &result);
+    static void finishProgress(const Options &options, const common::AsyncOperationResult &result);
 };
 
 } // namespace dltool::model
