@@ -3,83 +3,17 @@
 #include "database/DataBase.h"
 #include "ui/ProgressManager.h"
 
+#include <QUuid>
 #include <spdlog/spdlog.h>
 
-#include <QCoreApplication>
-#include <QElapsedTimer>
-#include <QEventLoop>
-#include <QMetaObject>
-#include <QPointer>
-#include <QThread>
-#include <QUuid>
-#include <algorithm>
-#include <exception>
 #include <utility>
 
 namespace dltool::data {
 
-DataOperationWorkflow::Handle::Handle(std::shared_ptr<State> state)
-    : state_(std::move(state))
-{
-}
-
-bool DataOperationWorkflow::Handle::requestCancel()
-{
-    if (state_ == nullptr)
-        return false;
-
-    std::lock_guard lock(state_->mutex);
-    if (state_->finished)
-        return false;
-    state_->cancel_requested->store(true, std::memory_order_relaxed);
-    return true;
-}
-
-bool DataOperationWorkflow::Handle::isCancellationRequested() const
-{
-    return state_ != nullptr && state_->cancel_requested->load(std::memory_order_relaxed);
-}
-
-bool DataOperationWorkflow::Handle::isFinished() const
-{
-    if (state_ == nullptr)
-        return true;
-
-    std::lock_guard lock(state_->mutex);
-    return state_->finished;
-}
-
-bool DataOperationWorkflow::Handle::isCompletionFinished() const
-{
-    if (state_ == nullptr)
-        return true;
-
-    std::lock_guard lock(state_->mutex);
-    return state_->completion_finished;
-}
-
-bool DataOperationWorkflow::Handle::waitForDone(const int timeout_ms) const
-{
-    if (state_ == nullptr)
-        return true;
-
-    std::unique_lock lock(state_->mutex);
-    if (timeout_ms < 0)
-    {
-        state_->condition.wait(lock, [this]() { return state_->finished; });
-        return true;
-    }
-
-    return state_->condition.wait_for(lock, std::chrono::milliseconds(timeout_ms),
-                                      [this]() { return state_->finished; });
-}
-
 void DataOperationWorkflow::beginProgress(const Options &options)
 {
     if (!options.manage_progress || options.title.isEmpty())
-    {
         return;
-    }
 
     auto *progress = ui::ProgressManager::getInstance();
     progress->startTask(options.title, options.task_id);
@@ -93,162 +27,43 @@ void DataOperationWorkflow::beginProgress(const Options &options)
     }
 }
 
-void DataOperationWorkflow::finishProgress(const Options &options, const Result &result)
+void DataOperationWorkflow::finishProgress(const Options &options, const common::AsyncOperationResult &result)
 {
     if (!options.manage_progress || options.title.isEmpty())
-    {
         return;
-    }
 
     const bool success = result.success && !result.cancelled;
     ui::ProgressManager::getInstance()->finishTask(options.task_id, success);
 }
 
 DataOperationWorkflow::HandlePtr DataOperationWorkflow::start(QObject *context, Options options, Work work,
-                                                              Completion completion)
+                                                             Completion completion)
 {
     if (context == nullptr || !work)
         return {};
 
     if (options.manage_progress && options.task_id.isEmpty())
     {
-        options.task_id = QStringLiteral("workflow_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+        options.task_id = QStringLiteral("data_workflow_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
     }
 
     beginProgress(options);
 
-    const auto state  = std::make_shared<Handle::State>();
-    const auto handle = HandlePtr(new Handle(state));
-    QPointer<QObject> callback_context(context);
-    QThread *worker_thread = QThread::create(
-        [callback_context, state, options = std::move(options), work = std::move(work),
-         completion = std::move(completion)]() mutable
-        {
-            Result result;
-            result.cancel_token_ = state->cancel_requested;
-            QElapsedTimer timer;
-            timer.start();
-
-            try
-            {
-                work(result);
-            }
-            catch (const std::exception &e)
-            {
-                result.success = false;
-                result.error   = QString(e.what());
-            }
-            catch (...)
-            {
-                result.success = false;
-                result.error   = QString("后台数据操作发生未知异常");
-            }
-
-            result.elapsed_ms = timer.elapsed();
-            // 取消由实际提交者裁决：提交前取消回滚，提交后必须发布真实结果；
-            // 禁止工作流仅根据收到取消请求就把已提交成功改成失败。
-            result.cancelled   = result.cancellationRequested() && !result.success;
-
-            bool callback_scheduled = false;
-            if (callback_context)
-            {
-                bool context_destroyed = false;
-                {
-                    std::lock_guard lock(state->mutex);
-                    context_destroyed = state->context_destroyed;
-                }
-
-                callback_scheduled = !context_destroyed && QMetaObject::invokeMethod(
-                    callback_context.data(),
-                    [callback_context, state, options = std::move(options), result = std::move(result),
-                     completion = std::move(completion)]() mutable
-                    {
-                        bool context_destroyed = false;
-                        {
-                            std::lock_guard lock(state->mutex);
-                            context_destroyed = state->context_destroyed;
-                        }
-                        if (!callback_context || context_destroyed)
-                        {
-                            finishProgress(options, result);
-                            std::lock_guard lock(state->mutex);
-                            state->completion_finished = true;
-                            state->condition.notify_all();
-                            return;
-                        }
-
-                        try
-                        {
-                            if (completion)
-                                completion(result);
-                            finishProgress(options, result);
-                        }
-                        catch (const std::exception &e)
-                        {
-                            spdlog::error("数据操作完成回调异常: {}", e.what());
-                        }
-                        catch (...)
-                        {
-                            spdlog::error("数据操作完成回调发生未知异常");
-                        }
-
-                        {
-                            std::lock_guard lock(state->mutex);
-                            state->completion_finished = true;
-                        }
-                        state->condition.notify_all();
-                    },
-                    Qt::QueuedConnection);
-            }
-
-            if (!callback_scheduled)
-            {
-                finishProgress(options, result);
-                std::lock_guard lock(state->mutex);
-                state->completion_finished = true;
-            }
-
-            {
-                std::lock_guard lock(state->mutex);
-                state->finished = true;
-            }
-            state->condition.notify_all();
-        });
-
-    // context 可能在项目关闭时先销毁。先发出协作式取消，再等待工作函数结束，
-    // 保证后台工作不会继续访问 context 所属的 DataManager、DataIO 或内存模型。
-    QObject::connect(context, &QObject::destroyed, worker_thread,
-                     [state]()
-                     {
-                         state->cancel_requested->store(true, std::memory_order_relaxed);
-                         {
-                             std::lock_guard lock(state->mutex);
-                             state->context_destroyed    = true;
-                             state->completion_finished = true;
-                         }
-                         state->condition.notify_all();
-
-                         // The caller that owns the destroyed context is often
-                         // the project close barrier and will wait on the handle.
-                         // Do not block QObject destruction here; marking the
-                         // callback as discarded is sufficient to let that
-                         // barrier wait for the worker without a GUI deadlock.
-                     });
-    QObject::connect(worker_thread, &QThread::finished, worker_thread, &QObject::deleteLater);
-    worker_thread->start();
-    return handle;
+    return common::AsyncOperationWorkflow::start<Result>(
+        context, std::move(work), std::move(completion),
+        [options](const common::AsyncOperationResult &result) { finishProgress(options, result); });
 }
 
 DataOperationWorkflow::HandlePtr DataOperationWorkflow::startDatabase(QObject *context, const QString &database_path,
-                                                                       Options options, DatabaseWork work,
-                                                                       Completion completion)
+                                                                      Options options, DatabaseWork work,
+                                                                      Completion completion)
 {
     if (!work)
         return {};
 
     return start(
         context, std::move(options),
-        [database_path, work = std::move(work)](Result &result) mutable
+        [database_path, work = std::move(work)](Result &result)
         {
             dltool::database::ProjectDataBase database(database_path);
             work(database, result);
@@ -258,58 +73,7 @@ DataOperationWorkflow::HandlePtr DataOperationWorkflow::startDatabase(QObject *c
 
 bool DataOperationWorkflow::waitForCompletions(const QList<HandlePtr> &handles, const int timeout_ms)
 {
-    QElapsedTimer timer;
-    timer.start();
-
-    const auto remainingMilliseconds = [&timer, timeout_ms]()
-    {
-        if (timeout_ms < 0)
-            return -1;
-        return std::max(0, timeout_ms - static_cast<int>(timer.elapsed()));
-    };
-
-    for (;;)
-    {
-        bool pending = false;
-        for (const auto &handle : handles)
-        {
-            if (handle != nullptr && (!handle->isFinished() || !handle->isCompletionFinished()))
-            {
-                pending = true;
-                break;
-            }
-        }
-
-        if (!pending)
-            return true;
-
-        const int remaining = remainingMilliseconds();
-        if (remaining == 0)
-            return false;
-
-        if (QCoreApplication::instance() != nullptr)
-        {
-            const int event_slice = remaining < 0 ? 10 : std::min(10, remaining);
-            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, event_slice);
-            continue;
-        }
-
-        bool waited_for_worker = false;
-        for (const auto &handle : handles)
-        {
-            if (handle != nullptr && !handle->isFinished())
-            {
-                handle->waitForDone(remaining < 0 ? 10 : std::min(10, remaining));
-                waited_for_worker = true;
-                break;
-            }
-        }
-
-        // Without a Qt event loop a queued completion cannot execute. Return
-        // once workers have stopped instead of sleeping forever on the callback.
-        if (!waited_for_worker)
-            return false;
-    }
+    return common::AsyncOperationWorkflow::waitForCompletions(handles, timeout_ms);
 }
 
 } // namespace dltool::data
