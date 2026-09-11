@@ -9,6 +9,9 @@
 
 #include <sqlite3.h>
 
+#include <string>
+#include <vector>
+
 namespace {
 
 bool executeSql(const QString &path, const char *sql, QString *error = nullptr)
@@ -528,7 +531,14 @@ int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     DatabaseSchemaTest test;
-    return QTest::qExec(&test, argc, argv);
+    // 临时诊断：本机 stdout 捕获失效，强制结果写文件
+    std::vector<std::string> arg_storage;
+    for (int i = 0; i < argc; ++i) arg_storage.push_back(argv[i]);
+    arg_storage.push_back("-o");
+    arg_storage.push_back((QCoreApplication::applicationDirPath() + "/schema_test_result.txt").toStdString());
+    std::vector<char *> ptrs;
+    for (auto &a : arg_storage) ptrs.push_back(a.data());
+    return QTest::qExec(&test, static_cast<int>(ptrs.size()), ptrs.data());
 }
 
 #include "test_DatabaseSchema.moc"

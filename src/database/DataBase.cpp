@@ -1,7 +1,9 @@
 #include "database/DataBase.h"
 
 #include "Repositories/DatabaseContext.h"
+#include "Repositories/DatasetRepository.h"
 #include "Repositories/ModelRepository.h"
+#include "Repositories/ProjectRepository.h"
 #include "Repositories/TagIdCodec.h"
 #include "Repositories/TagRepository.h"
 #include "database/DatabaseSchema.h"
@@ -209,23 +211,24 @@ bool ProjectDataBase::initProject(const QString &name, const int method, const Q
                                   const QString &description, const QString image_base_path, const qint64 ctime,
                                   const qint64 mtime, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("打开数据库失败, %1").arg(path);
-            return false;
-        }
-        // create project table
         auto db = pool_->get();
         if (!detail::ensureProjectSchema(db, &err_msg))
             return false;
-        db(sqlpp::insert_into(ProjectTable)
-               .set(ProjectTable.name = name.toUtf8().constData(), ProjectTable.method = method,
-                    ProjectTable.path          = path.toUtf8().constData(),
-                    ProjectTable.description   = description.toUtf8().constData(),
-                    ProjectTable.imageBasePath = image_base_path.toUtf8().constData(), ProjectTable.ctime = ctime,
-                    ProjectTable.mtime = mtime));
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!ProjectRepository::initProject(context, name, method, path, description, image_base_path, ctime, mtime, err_msg))
+        {
+            tx.rollback();
+            return false;
+        }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -238,36 +241,25 @@ bool ProjectDataBase::initProject(const QString &name, const int method, const Q
 bool ProjectDataBase::openProject(QString &name, int &method, QString &path, QString &description,
                                   QString image_base_path, qint64 &ctime, qint64 &mtime, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("打开数据库失败, %1").arg(path);
-            return false;
-        }
         auto db = pool_->get();
         if (!detail::ensureProjectSchema(db, &err_msg))
             return false;
-        auto data
-            = db(sqlpp::select(ProjectTable.name, ProjectTable.method, ProjectTable.path, ProjectTable.description,
-                               ProjectTable.imageBasePath, ProjectTable.ctime, ProjectTable.mtime)
-                     .from(ProjectTable)
-                     .unconditionally());
-        if (!data.empty())
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!ProjectRepository::openProject(context, path_, name, method, path, description, image_base_path, ctime, mtime, err_msg))
         {
-            const auto &row = data.front();
-
-            name            = QString::fromStdString(row.name);
-            method          = row.method;
-            path            = QString::fromStdString(row.path);
-            description     = QString::fromStdString(row.description);
-            image_base_path = QString::fromStdString(row.imageBasePath);
-            ctime           = row.ctime;
-            mtime           = row.mtime;
-
-            data.pop_front();
+            tx.rollback();
+            return false;
         }
-        return path == path_;
+        tx.commit();
+        return true;
     }
     catch (const std::exception &e)
     {
@@ -279,21 +271,24 @@ bool ProjectDataBase::openProject(QString &name, int &method, QString &path, QSt
 bool ProjectDataBase::updateProject(const QString &name, const QString &path, const QString &description,
                                     const QString &image_base_path, const qint64 mtime, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("打开数据库失败, %1").arg(path);
-            return false;
-        }
         auto db = pool_->get();
         if (!detail::ensureProjectSchema(db, &err_msg))
             return false;
-        db(sqlpp::update(ProjectTable)
-               .set(ProjectTable.name = name.toUtf8().constData(), ProjectTable.path = path.toUtf8().constData(),
-                    ProjectTable.description   = description.toUtf8().constData(),
-                    ProjectTable.imageBasePath = image_base_path.toUtf8().constData(), ProjectTable.mtime = mtime)
-               .unconditionally());
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!ProjectRepository::updateProject(context, name, path, description, image_base_path, mtime, err_msg))
+        {
+            tx.rollback();
+            return false;
+        }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -305,170 +300,44 @@ bool ProjectDataBase::updateProject(const QString &name, const QString &path, co
 
 bool ProjectDataBase::getProjectBaseInfo(const QString &path, QString &name, qint64 &mtime, QString &err_msg)
 {
-    try
-    {
-        if (!QFile::exists(path))
-            return false;
-        sqlpp::sqlite3::connection db = DataBase::connect(path, SQLITE_OPEN_READONLY);
-        if (!detail::ensureSchema(db.native_handle(), detail::SchemaKind::Project, &err_msg))
-            return false;
-        auto data = db(sqlpp::select(ProjectTable.name, ProjectTable.mtime).from(ProjectTable).unconditionally());
-        if (!data.empty())
-        {
-            const auto &row = data.front();
-
-            name  = QString::fromStdString(row.name);
-            mtime = row.mtime;
-
-            data.pop_front();
-        }
-        return true;
-    }
-    catch (const std::exception &e)
-    {
-        err_msg = e.what();
-        return false;
-    }
+    return ProjectRepository::getProjectBaseInfo(path, name, mtime, err_msg);
 }
 
-bool ProjectDataBase::updateProjectBaseInfo(const QString &path, const QString &new_name,
-                                            const QString &new_description, const qint64 new_mtime, QString &err_msg)
+bool ProjectDataBase::updateProjectBaseInfo(const QString &path, const QString &new_name, const QString &new_description,
+                                      const qint64 new_mtime, QString &err_msg)
 {
-    try
-    {
-        sqlpp::sqlite3::connection db = DataBase::connect(path, SQLITE_OPEN_READWRITE);
-        if (!detail::ensureSchema(db.native_handle(), detail::SchemaKind::Project, &err_msg))
-            return false;
-        db(sqlpp::update(ProjectTable)
-               .set(ProjectTable.name        = new_name.toUtf8().constData(),
-                    ProjectTable.description = new_description.toUtf8().constData(), ProjectTable.mtime = new_mtime)
-               .unconditionally());
-        return true;
-    }
-    catch (const std::exception &e)
-    {
-        err_msg = e.what();
-        return false;
-    }
+    return ProjectRepository::updateProjectBaseInfo(path, new_name, new_description, new_mtime, err_msg);
 }
 
 bool ProjectDataBase::getProjectInfo(const QString &path, QVariantMap &project_info, QString &err_msg)
 {
-    try
-    {
-        sqlpp::sqlite3::connection db = DataBase::connect(path, SQLITE_OPEN_READONLY);
-        if (!detail::ensureSchema(db.native_handle(), detail::SchemaKind::Project, &err_msg))
-            return false;
-
-        auto data
-            = db(sqlpp::select(ProjectTable.name, ProjectTable.method, ProjectTable.path, ProjectTable.description,
-                               ProjectTable.imageBasePath, ProjectTable.ctime, ProjectTable.mtime)
-                     .from(ProjectTable)
-                     .unconditionally());
-        if (!data.empty())
-        {
-            const auto &row = data.front();
-
-            project_info.insert("name", QString::fromStdString(row.name));
-            project_info.insert("method", static_cast<int>(row.method));
-            project_info.insert("path", QString::fromStdString(row.path));
-            project_info.insert("description", QString::fromStdString(row.description));
-            project_info.insert("image_base_path", QString::fromStdString(row.imageBasePath));
-            project_info.insert("ctime", QDateTime::fromSecsSinceEpoch(row.ctime).toString("yyyy/MM/dd hh:mm"));
-            project_info.insert("mtime", QDateTime::fromSecsSinceEpoch(row.mtime).toString("yyyy/MM/dd hh:mm"));
-
-            data.pop_front();
-        }
-        return true;
-    }
-    catch (const std::exception &e)
-    {
-        err_msg = e.what();
-        return false;
-    }
+    return ProjectRepository::getProjectInfo(path, project_info, err_msg);
 }
 
 bool ProjectDataBase::getLabelInfo(const QString &path, QVariantMap &label_info, QString &err_msg)
 {
-    try
-    {
-        label_info.insert("label_classes", "");
-        label_info.insert("label_instances_images", "");
-
-        sqlpp::sqlite3::connection db = DataBase::connect(path, SQLITE_OPEN_READONLY);
-        if (!detail::ensureSchema(db.native_handle(), detail::SchemaKind::Project, &err_msg))
-            return false;
-
-        QString classes_info;
-        int     label_classes_cnt = 0;
-        // 查询每个类别的标注实例数量
-        auto    query1 = sqlpp::select(LabelClassesTable.name, count(LabelsTable.id))
-                          .from(LabelClassesTable.left_outer_join(LabelsTable)
-                                    .on(LabelClassesTable.id == LabelsTable.labelClassId))
-                          .unconditionally()
-                          .group_by(LabelClassesTable.id, LabelClassesTable.name)
-                          .order_by(count(LabelsTable.id).desc());
-        for (const auto &row : db(query1))
-        {
-            ++label_classes_cnt;
-            classes_info
-                += QString("%1 (%2), ").arg(QString::fromStdString(row.name)).arg(static_cast<int64_t>(row.count));
-        }
-        if (label_classes_cnt)
-        {
-            classes_info.chop(2);
-            label_info["label_classes"] = QString("%1 : %2").arg(label_classes_cnt).arg(classes_info);
-        }
-
-        QString image_instances_info;
-        int     image_cnt{0}, labelled_image_cnt{0}, label_cnt{0};
-        // 查询每个图像的标注实例数量
-        auto    query2 = sqlpp::select(LabelsTable.imageId, count(LabelsTable.id))
-                          .from(LabelsTable)
-                          .unconditionally()
-                          .group_by(LabelsTable.imageId);
-        for (const auto &row : db(query2))
-        {
-            ++labelled_image_cnt;
-            label_cnt += row.count;
-        }
-        // 查询图像数量
-        auto query3 = sqlpp::select(count(ImagesTable.id)).from(ImagesTable).unconditionally();
-        auto data   = db(query3);
-        if (!data.empty())
-        {
-            image_cnt = data.front().count;
-        }
-
-        image_instances_info
-            = QString("%1 个实例在 %2 张图像中 / %3 图像").arg(label_cnt).arg(labelled_image_cnt).arg(image_cnt);
-        label_info["label_instances_images"] = image_instances_info;
-        return true;
-    }
-    catch (const std::exception &e)
-    {
-        err_msg = e.what();
-        return false;
-    }
+    return ProjectRepository::getLabelInfo(path, label_info, err_msg);
 }
 
 bool ProjectDataBase::getAllDatasets(std::vector<int64_t> &dataset_ids, std::vector<QString> &names,
                                      QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!DatasetRepository::getAllDatasets(context, dataset_ids, names, err_msg))
         {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
+            tx.rollback();
             return false;
         }
-        auto db   = pool_->get();
-        auto data = db(sqlpp::select(DatasetsTable.id, DatasetsTable.name).from(DatasetsTable).unconditionally());
-        for (const auto &row : data)
-        {
-            dataset_ids.emplace_back(row.id);
-            names.emplace_back(QString::fromStdString(row.name));
-        }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -480,16 +349,22 @@ bool ProjectDataBase::getAllDatasets(std::vector<int64_t> &dataset_ids, std::vec
 
 bool ProjectDataBase::addDataset(const QString &name, int64_t &dataset_id, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!DatasetRepository::addDataset(context, name, dataset_id, err_msg))
         {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
+            tx.rollback();
             return false;
         }
-        auto db = pool_->get();
-        db(sqlpp::insert_into(DatasetsTable).set(DatasetsTable.name = name.toUtf8().constData()));
-        dataset_id = static_cast<int64_t>(db.last_insert_id());
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -502,42 +377,27 @@ bool ProjectDataBase::addDataset(const QString &name, int64_t &dataset_id, QStri
 bool ProjectDataBase::addDatasets(const std::vector<QString> &names, std::vector<int64_t> &dataset_ids,
                                   QString &err_msg) const
 {
-    dataset_ids.clear();
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
-            return false;
-        }
-        if (names.empty())
-        {
-            return true;
-        }
-
         auto db = pool_->get();
         auto tx = sqlpp::start_transaction(db);
-        try
-        {
-            dataset_ids.reserve(names.size());
-            for (const QString &name : names)
-            {
-                db(sqlpp::insert_into(DatasetsTable).set(DatasetsTable.name = name.toUtf8().constData()));
-                dataset_ids.emplace_back(static_cast<int64_t>(db.last_insert_id()));
-            }
-            tx.commit();
-            return true;
-        }
-        catch (...)
+        DatabaseContext context(db);
+        if (!DatasetRepository::addDatasets(context, names, dataset_ids, err_msg))
         {
             tx.rollback();
-            throw;
+            return false;
         }
+        tx.commit();
+        return true;
     }
     catch (const std::exception &e)
     {
         err_msg = e.what();
-        dataset_ids.clear();
         return false;
     }
 }
@@ -586,17 +446,22 @@ int64_t ProjectDataBase::getImagesCount(const int64_t dataset_id) const
 
 bool ProjectDataBase::updateDataset(const int64_t dataset_id, const QString &name, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!DatasetRepository::updateDataset(context, dataset_id, name, err_msg))
         {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
+            tx.rollback();
             return false;
         }
-        auto db = pool_->get();
-        db(sqlpp::update(DatasetsTable)
-               .set(DatasetsTable.name = name.toUtf8().constData())
-               .where(DatasetsTable.id == dataset_id));
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -608,15 +473,22 @@ bool ProjectDataBase::updateDataset(const int64_t dataset_id, const QString &nam
 
 bool ProjectDataBase::deleteDataset(const int64_t dataset_id, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
     try
     {
-        if (pool_ == nullptr)
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        DatabaseContext context(db);
+        if (!DatasetRepository::deleteDataset(context, dataset_id, err_msg))
         {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
+            tx.rollback();
             return false;
         }
-        auto db = pool_->get();
-        db(sqlpp::remove_from(DatasetsTable).where(DatasetsTable.id == dataset_id));
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -628,51 +500,22 @@ bool ProjectDataBase::deleteDataset(const int64_t dataset_id, QString &err_msg) 
 
 bool ProjectDataBase::deleteDatasetsWithContents(const std::vector<int64_t> &dataset_ids, QString &err_msg) const
 {
-    if (dataset_ids.empty())
+    if (pool_ == nullptr)
     {
-        return true;
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
     }
-
     try
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
-            return false;
-        }
-
-        std::vector<int64_t> unique_dataset_ids = dataset_ids;
-        std::sort(unique_dataset_ids.begin(), unique_dataset_ids.end());
-        unique_dataset_ids.erase(std::unique(unique_dataset_ids.begin(), unique_dataset_ids.end()),
-                                 unique_dataset_ids.end());
-
         auto db = pool_->get();
         auto tx = sqlpp::start_transaction(db);
-        try
-        {
-            // Use a subquery instead of expanding every image ID in the caller.  Apart from
-            // being much smaller, this keeps all dependent-row cleanup in one SQLite transaction.
-            const auto images_in_datasets
-                = sqlpp::select(ImagesTable.id)
-                      .from(ImagesTable)
-                      .where(ImagesTable.datasetId.in(sqlpp::value_list(unique_dataset_ids)));
-
-            const auto labels_in_datasets
-                = sqlpp::select(LabelsTable.id).from(LabelsTable).where(LabelsTable.imageId.in(images_in_datasets));
-
-            db(sqlpp::remove_from(TagsTable).where(TagsTable.labelId.in(labels_in_datasets)));
-            db(sqlpp::remove_from(TagsTable).where(TagsTable.imageId.in(images_in_datasets)));
-            db(sqlpp::remove_from(LabelsTable).where(LabelsTable.imageId.in(images_in_datasets)));
-            db(sqlpp::remove_from(ImagesTable)
-                   .where(ImagesTable.datasetId.in(sqlpp::value_list(unique_dataset_ids))));
-            db(sqlpp::remove_from(DatasetsTable).where(DatasetsTable.id.in(sqlpp::value_list(unique_dataset_ids))));
-            tx.commit();
-        }
-        catch (...)
+        DatabaseContext context(db);
+        if (!DatasetRepository::deleteDatasetsWithContents(context, dataset_ids, err_msg))
         {
             tx.rollback();
-            throw;
+            return false;
         }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
