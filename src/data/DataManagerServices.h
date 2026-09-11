@@ -19,6 +19,7 @@
 #include "data/LabelClasses.h"
 #include "data/ImageTags.h"
 
+#include <QVariantList>
 #include <QString>
 #include <functional>
 
@@ -27,6 +28,9 @@ class ProjectDataBase;
 }
 
 namespace dltool::data {
+
+class ImageInfoListModel;
+class GlobalFilter;
 
 /// 导出准备工作回调签名（与 DataManager::DatasetExportWork 等价，避免依赖公开头）。
 using DatasetExportWorkFn = std::function<void(const DatasetExportSource &, DataOperationWorkflow::Result &)>;
@@ -40,6 +44,8 @@ struct DataManagerServices
     LabelClassesListModel             *label_classes{nullptr};
     ImageTagsListModel                *image_tags{nullptr};
     LabelInstancesListModel           *label_source{nullptr};
+    ImageInfoListModel                *image_info{nullptr};
+    GlobalFilter                      *global_filter{nullptr};
     int                                method{0};
     QString                            project_dir;
 
@@ -54,6 +60,16 @@ struct DataManagerServices
     /// 数据操作运行闸门：阻断标签类别与标签类的变更并广播状态。
     std::function<void(bool)>  set_data_operation_running;
     std::function<bool()>      is_data_operation_running;
+
+    /// 信号发射钩子（信号本体保留在 DataManager facade 上）。
+    std::function<void(bool, const QString &)>              emit_data_import_finished;
+    std::function<void(bool, QVariantList, const QString &)> emit_import_label_classes_scanned;
+    std::function<void(bool, const QString &)>              emit_dataset_split_finished;
+    std::function<void()>                                   emit_image_operation_running_changed;
+    std::function<void()>                                   emit_dataset_deletion_running_changed;
+
+    /// facade 私有的派生模型重建（导入成功提交后调用）。
+    std::function<void()> rebuild_label_relations;
 
     /// 准备阶段工作流入口（ DataManager::runDatasetExportAsync 的门面）。
     std::function<DataOperationWorkflow::HandlePtr(QObject *context, DatasetExportRequest request,

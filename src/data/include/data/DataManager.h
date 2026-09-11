@@ -35,6 +35,8 @@ class ProjectDataBase;
 namespace dltool::data {
 
 class DataExportService;
+class DataImportService;
+struct DataManagerServices;
 
 class DATA_API DataManager : public QObject
 {
@@ -224,10 +226,7 @@ public:
      * Consumers which derive expensive, project-wide statistics from model change
      * notifications use this to defer their work until dataImportFinished.
      */
-    bool importRunning() const
-    {
-        return import_running_;
-    }
+    bool importRunning() const;
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
     Q_INVOKABLE std::vector<int64_t> getAllDatasetIds() const;
@@ -436,6 +435,8 @@ signals:
 private:
     void init(const int method);
     void startAsyncLabelLoading();
+    /// 装配用例服务共享上下文（模型构建完成后调用）。
+    DataManagerServices makeServices();
     DataOperationWorkflow::HandlePtr trackOperation(DataOperationWorkflow::HandlePtr handle);
     void waitForDataIoOperations(const QList<QPointer<DataIO>> &operations);
     void commitLabelsLoaded(std::shared_ptr<std::vector<LoadedLabelInstance>> labels, bool success,
@@ -458,10 +459,6 @@ private:
     void rebuildLabelRelations(bool notify_image_model = true);
 
     void requestDataOperationCancel();
-    void startImportData(const int64_t dataset_id, const int data_format, const QString &image_dir,
-                         const QString &data_dir, const std::map<QString, QString> &label_class_groups);
-    void handleImportSessionFinished(bool success, const QString &message,
-                                     const dltool::data::ImportDatabaseWriter::Stats &stats);
     bool addLabelsInternal(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                            const std::vector<QVariantMap> &data, QString *err_msg = nullptr,
                            bool refresh_dependent_models = true, std::vector<int64_t> *added_label_ids = nullptr);
@@ -517,10 +514,6 @@ private:
 
     int method_{0}; // 标签数据类型
 
-    bool          import_running_{false};
-    QString       current_import_task_id_;
-    QElapsedTimer import_elapsed_timer_;
-
     bool labels_loading_{false};
     bool labels_changed_during_loading_{false};
     bool labels_reload_after_dataset_deletion_{false};
@@ -534,6 +527,7 @@ private:
 
     /// 用例服务（模块私有实现，见 src/data/DataManagerServices.h）。
     std::unique_ptr<DataExportService> export_service_;
+    std::unique_ptr<DataImportService> import_service_;
 };
 
 } // namespace dltool::data

@@ -2,6 +2,7 @@
 
 #include "DataExportService.h"
 #include "DataManagerServices.h"
+#include "DataImportService.h"
 #include "common/Utils.h"
 #include "data/CategoryStatisticsModel.h"
 #include "data/DataFormat.h"
@@ -124,6 +125,46 @@ DataManager::~DataManager()
     shutdown();
 }
 
+bool DataManager::importRunning() const
+{
+    return import_service_ != nullptr && import_service_->importRunning();
+}
+
+DataManagerServices DataManager::makeServices()
+{
+    DataManagerServices services;
+    services.database      = database_;
+    services.datasets      = datasets_;
+    services.image_source  = image_source_;
+    services.label_classes = label_classes_;
+    services.image_tags    = image_tags_;
+    services.label_source  = label_source_;
+    services.image_info    = image_info_;
+    services.global_filter = global_filter_;
+    services.method        = method_;
+    services.project_dir   = project_dir_;
+    services.host          = this;
+    services.shutting_down = [this]() { return shutting_down_; };
+    services.track_operation = [this](DataOperationWorkflow::HandlePtr handle)
+    { return trackOperation(std::move(handle)); };
+    services.set_data_operation_running = [this](const bool running) { setDataOperationRunning(running); };
+    services.is_data_operation_running  = [this]() { return isDataOperationRunning(); };
+    services.emit_data_import_finished  = [this](const bool success, const QString &message)
+    { emit dataImportFinished(success, message); };
+    services.emit_import_label_classes_scanned = [this](const bool success, QVariantList label_classes,
+                                                        const QString &message)
+    { emit importLabelClassesScanned(success, std::move(label_classes), message); };
+    services.rebuild_label_relations = [this]() { rebuildLabelRelations(); };
+    services.run_dataset_export_async = [this](QObject *context, DatasetExportRequest request,
+                                               DataOperationWorkflow::Options options, DatasetExportWorkFn work,
+                                               DataOperationWorkflow::Completion completion)
+    {
+        return runDatasetExportAsync(context, std::move(request), std::move(options), std::move(work),
+                                     std::move(completion));
+    };
+    return services;
+}
+
 void DataManager::requestDataOperationCancel()
 {
     if (export_service_)
@@ -184,7 +225,8 @@ void DataManager::shutdown()
     requestDataOperationCancel();
 
     waitForDataIoOperations(io_operations);
-    import_running_ = false;
+    if (import_service_)
+        import_service_->resetImportSession();
     labels_loading_ = false;
     setDataOperationRunning(false);
     waitForOperations();
@@ -203,7 +245,7 @@ void DataManager::waitForOperations()
     // operation to start its final model update/copy step.
     for (;;)
     {
-        bool pending = import_running_ || data_operation_running_;
+        bool pending = (import_service_ != nullptr && import_service_->importRunning()) || data_operation_running_;
 
         const QList<DataIO *> io_children = findChildren<DataIO *>();
         for (DataIO *io : io_children)
@@ -240,7 +282,8 @@ void DataManager::waitForOperations()
                     break;
                 }
             }
-            if (!import_running_ && !data_operation_running_ && !has_live_handle)
+            if ((import_service_ == nullptr || !import_service_->importRunning()) && !data_operation_running_
+                && !has_live_handle)
                 return;
             pending = true;
         }
@@ -344,29 +387,9 @@ void DataManager::init(const int method)
     label_class_filter_items_->populateFromLabelClasses(label_classes_);
     custom_filter_items_->populateFromCustomConditions();
 
-    // 用例服务共享上下文：模型就绪后装配，后续用例服务在此登记。
-    DataManagerServices services;
-    services.database     = database_;
-    services.datasets     = datasets_;
-    services.image_source = image_source_;
-    services.label_classes = label_classes_;
-    services.image_tags    = image_tags_;
-    services.label_source  = label_source_;
-    services.method        = method_;
-    services.project_dir   = project_dir_;
-    services.host          = this;
-    services.shutting_down = [this]() { return shutting_down_; };
-    services.track_operation = [this](DataOperationWorkflow::HandlePtr handle) { return trackOperation(std::move(handle)); };
-    services.set_data_operation_running = [this](const bool running) { setDataOperationRunning(running); };
-    services.is_data_operation_running  = [this]() { return isDataOperationRunning(); };
-    services.run_dataset_export_async   = [this](QObject *context, DatasetExportRequest request,
-                                               DataOperationWorkflow::Options options, DatasetExportWorkFn work,
-                                               DataOperationWorkflow::Completion completion)
-    {
-        return runDatasetExportAsync(context, std::move(request), std::move(options), std::move(work),
-                                     std::move(completion));
-    };
-    export_service_ = std::make_unique<DataExportService>(std::move(services));
+    // 用例服务共享上下文：模型就绪后装配。
+    export_service_ = std::make_unique<DataExportService>(makeServices());
+    import_service_ = std::make_unique<DataImportService>(makeServices());
 
     connect(global_filter_, &GlobalFilter::customFilterSearchResultsChanged, this,
             [this](bool has_image_search_results, bool has_label_search_results)
@@ -1324,262 +1347,23 @@ void DataManager::commitDatasetSplit(const std::shared_ptr<DatasetSplitCopyResul
 void DataManager::importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                              const QString &data_dir)
 {
-    if (shutting_down_)
-        return;
-    startImportData(dataset_id, data_format, image_dir, data_dir, {});
+    if (import_service_)
+        import_service_->importData(dataset_id, data_format, image_dir, data_dir, {});
 }
 
 void DataManager::scanImportLabelClasses(const int data_format, const QString &image_dir, const QString &data_dir)
 {
-    if (shutting_down_)
-        return;
-
-    if (isDataOperationRunning())
-    {
-        const QString message = QString("已有数据操作正在运行");
-        ui::SignalHelper::notifyWarn(QString("导入失败"), message);
-        emit importLabelClassesScanned(false, {}, message);
-        return;
-    }
-
-    if (!data::DataFormat::isImportDataFormatSupported(method_, data_format))
-    {
-        const QString message = QString("当前项目类型不支持该导入格式");
-        spdlog::error("扫描导入类别失败, 项目类型 {} 不支持数据格式: {}", method_, data_format);
-        ui::SignalHelper::notifyError(QString("导入失败"), message);
-        emit importLabelClassesScanned(false, {}, message);
-        return;
-    }
-
-    const QString clean_image_dir = dltool::common::cleanPath(image_dir);
-    if (clean_image_dir.isEmpty())
-    {
-        const QString message = QString("导入图像路径为空");
-        spdlog::error("扫描导入类别失败, {}", message.toUtf8().constData());
-        ui::SignalHelper::notifyError(QString("导入失败"), message);
-        emit importLabelClassesScanned(false, {}, message);
-        return;
-    }
-
-    const QFileInfo image_dir_info(clean_image_dir);
-    if (!image_dir_info.isAbsolute() || !image_dir_info.exists())
-    {
-        const QString message = QString("图像路径不存在或路径无效: %1").arg(image_dir);
-        spdlog::error("扫描导入类别失败, {}", message.toUtf8().constData());
-        ui::SignalHelper::notifyError(QString("导入失败"), message);
-        emit importLabelClassesScanned(false, {}, message);
-        return;
-    }
-
-    const QString clean_data_dir = dltool::common::cleanPath(data_dir);
-    if (!clean_data_dir.isEmpty())
-    {
-        const QFileInfo data_dir_info(clean_data_dir);
-        if (!data_dir_info.isAbsolute() || !data_dir_info.exists())
-        {
-            const QString message = QString("标注路径不存在或路径无效: %1").arg(data_dir);
-            spdlog::error("扫描导入类别失败, {}", message.toUtf8().constData());
-            ui::SignalHelper::notifyError(QString("导入失败"), message);
-            emit importLabelClassesScanned(false, {}, message);
-            return;
-        }
-    }
-
-    DataIO *scanner = DataIO::createIO(data_format, this);
-    if (!scanner)
-    {
-        const QString message = QString("不支持的数据格式");
-        spdlog::error("无法为格式 {} 创建扫描器", data_format);
-        ui::SignalHelper::notifyError(QString("导入失败"), message);
-        emit importLabelClassesScanned(false, {}, message);
-        return;
-    }
-
-    setDataOperationRunning(true);
-    scanner->setTargetMethod(method_);
-    qRegisterMetaType<std::map<QString, QString>>("std::map<QString, QString>");
-
-    const QString scan_task_id = QStringLiteral("scan_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
-    scanner->setTaskId(scan_task_id);
-    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
-                              Q_ARG(QString, "扫描导入类别"), Q_ARG(QString, scan_task_id));
-
-    connect(
-        scanner, &DataIO::labelClassesScanned, this,
-        [this, scanner, scan_task_id](bool success, const std::map<QString, QString> &label_class_info, const QString &message)
-        {
-            if (shutting_down_)
-            {
-                scanner->deleteLater();
-                return;
-            }
-
-            QVariantList label_classes;
-            if (success)
-            {
-                for (const auto &[name, color] : label_class_info)
-                {
-                    const int     label_class_id  = label_classes_ ? label_classes_->getLabelClassId(name) : -1;
-                    const QString effective_color = label_class_id >= 0 && label_classes_
-                                                      ? label_classes_->getLabelClassColor(label_class_id)
-                                                      : color;
-                    const QString group           = label_class_id >= 0 && label_classes_
-                                                      ? label_classes_->getLabelClassGroup(label_class_id)
-                                                      : defaultLabelClassGroup();
-
-                    QVariantMap item;
-                    item.insert(QStringLiteral("label_class_id"), label_class_id);
-                    item.insert(QStringLiteral("name"), name);
-                    item.insert(QStringLiteral("color"), effective_color);
-                    item.insert(QStringLiteral("group"), normalizeLabelClassGroup(group));
-                    item.insert(QStringLiteral("group_name"), labelClassGroupDisplayName(group));
-                    item.insert(QStringLiteral("existing"), label_class_id >= 0);
-                    label_classes.append(item);
-                }
-            }
-
-            const int     level            = success ? spdlog::level::info : spdlog::level::err;
-            const QString progress_message = message.isEmpty() ? QString("导入类别扫描完成") : message;
-            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                      Q_ARG(int, level), Q_ARG(QString, progress_message), Q_ARG(QString, scan_task_id));
-            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "finishTask", Qt::QueuedConnection,
-                                      Q_ARG(QString, scan_task_id), Q_ARG(bool, success));
-
-            if (!success)
-            {
-                const QString err_msg = message.isEmpty() ? QString("扫描导入类别失败") : message;
-                spdlog::error("{}", err_msg.toUtf8().constData());
-                ui::SignalHelper::notifyError(QString("导入失败"), err_msg);
-            }
-
-            scanner->deleteLater();
-            setDataOperationRunning(false);
-            // 先释放扫描状态，再通知 QML。QML 可能在收到信号后立即启动正式导入。
-            emit importLabelClassesScanned(success, label_classes, message);
-        },
-        Qt::QueuedConnection);
-
-    scanner->startScanLabelClasses(clean_image_dir, clean_data_dir);
+    if (import_service_)
+        import_service_->scanImportLabelClasses(data_format, image_dir, data_dir);
 }
 
 void DataManager::importDataWithLabelClassGroups(const int64_t dataset_id, const int data_format,
                                                  const QString &image_dir, const QString &data_dir,
                                                  const QVariantMap &label_class_groups)
 {
-    if (shutting_down_)
-        return;
-    startImportData(dataset_id, data_format, image_dir, data_dir, parseLabelClassGroupMap(label_class_groups));
-}
-
-void DataManager::startImportData(const int64_t dataset_id, const int data_format, const QString &image_dir,
-                                  const QString &data_dir, const std::map<QString, QString> &label_class_groups)
-{
-    if (shutting_down_)
-        return;
-
-    if (isDataOperationRunning())
-    {
-        const QString message = QString("已有数据操作正在运行");
-        spdlog::warn("导入数据失败, 已有数据操作正在运行");
-        ui::SignalHelper::notifyWarn(QString("导入失败"), message);
-        emit dataImportFinished(false, message);
-        return;
-    }
-
-    // 验证数据格式是否支持当前项目类型
-    if (!data::DataFormat::isImportDataFormatSupported(method_, data_format))
-    {
-        const QString message = QString("当前项目类型不支持该导入格式");
-        spdlog::error("导入数据失败, 项目类型 {} 不支持数据格式: {}", method_, data_format);
-        ui::SignalHelper::notifyError(QString("导入失败"), message);
-        emit dataImportFinished(false, message);
-        return;
-    }
-
-    const QString clean_image_dir = dltool::common::cleanPath(image_dir);
-    if (clean_image_dir.isEmpty())
-    {
-        const QString message = QString("导入图像路径为空");
-        spdlog::error("导入数据失败, {}", message.toUtf8().constData());
-        ui::SignalHelper::notifyError(QString("导入失败"), message);
-        emit dataImportFinished(false, message);
-        return;
-    }
-
-    const QFileInfo image_dir_info(clean_image_dir);
-    if (!image_dir_info.isAbsolute() || !image_dir_info.exists())
-    {
-        const QString message = QString("图像路径不存在或路径无效: %1").arg(image_dir);
-        spdlog::error("导入数据失败, {}", message.toUtf8().constData());
-        ui::SignalHelper::notifyError(QString("导入失败"), message);
-        emit dataImportFinished(false, message);
-        return;
-    }
-
-    const QString clean_data_dir = dltool::common::cleanPath(data_dir);
-    if (!clean_data_dir.isEmpty())
-    {
-        const QFileInfo data_dir_info(clean_data_dir);
-        if (!data_dir_info.isAbsolute() || !data_dir_info.exists())
-        {
-            const QString message = QString("标注路径不存在或路径无效: %1").arg(data_dir);
-            spdlog::error("导入数据失败, {}", message.toUtf8().constData());
-            ui::SignalHelper::notifyError(QString("导入失败"), message);
-            emit dataImportFinished(false, message);
-            return;
-        }
-    }
-
-    QString db_check_err_msg;
-    if (database_ == nullptr || !database_->checkIntegrity(db_check_err_msg))
-    {
-        const QString message = QString("项目数据库检查失败，无法导入数据: %1").arg(db_check_err_msg);
-        spdlog::error("{}", message.toUtf8().constData());
-        ui::SignalHelper::notifyError(QString("导入失败"), message);
-        emit dataImportFinished(false, message);
-        return;
-    }
-
-    // 使用工厂函数创建导入器
-    // 重构后：DataManager 不再直接实例化具体的导入器类
-    // 而是通过工厂函数获取，实现了依赖倒置原则
-    DataIO *importer = DataIO::createIO(data_format, this);
-    if (!importer)
-    {
-        const QString message = QString("不支持的数据格式");
-        spdlog::error("无法为格式 {} 创建导入器", data_format);
-        ui::SignalHelper::notifyError(QString("导入失败"), message);
-        emit dataImportFinished(false, message);
-        return;
-    }
-    setDataOperationRunning(true);
-    // 显示进度对话框
-    // 下面这样会在 UI 线程 (ProgressManager 所在线程) 中调用, 异步调用
-    const QString import_task_id = QStringLiteral("import_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
-    importer->setTaskId(import_task_id);
-    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
-                              Q_ARG(QString, "导入数据"), Q_ARG(QString, import_task_id));
-    importer->setTargetMethod(method_);
-    import_running_         = true;
-    current_import_task_id_ = import_task_id;
-    import_elapsed_timer_.restart();
-
-    qRegisterMetaType<std::vector<QString>>("std::vector<QString>");
-    qRegisterMetaType<std::vector<int64_t>>("std::vector<int64_t>");
-    qRegisterMetaType<std::map<QString, QString>>("std::map<QString, QString>");
-    qRegisterMetaType<std::vector<ImportedLabel>>("std::vector<ImportedLabel>");
-    qRegisterMetaType<dltool::data::ImportDatabaseWriter::Stats>("dltool::data::ImportDatabaseWriter::Stats");
-
-    auto *writer = new ImportDatabaseWriter(database_->path(), method_, data_format, dataset_id,
-                                            label_class_groups, importer, this);
-
-    connect(importer, &DataIO::dataBatchReady, writer, &ImportDatabaseWriter::onDataBatchReady, Qt::DirectConnection);
-    connect(importer, &DataIO::importFinished, writer, &ImportDatabaseWriter::onImporterFinished, Qt::DirectConnection);
-    connect(writer, &ImportDatabaseWriter::finished, this, &DataManager::handleImportSessionFinished,
-            Qt::QueuedConnection);
-
-    // 启动导入
-    importer->startImport(dataset_id, clean_image_dir, clean_data_dir);
+    if (import_service_)
+        import_service_->importData(dataset_id, data_format, image_dir, data_dir,
+                                    parseLabelClassGroupMap(label_class_groups));
 }
 
 void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const int data_format,
@@ -2972,89 +2756,6 @@ bool DataManager::deleteTagClass(const int64_t tag_id)
         return false;
     }
     return image_tags_ != nullptr && image_tags_->deleteTagClass(tag_id);
-}
-
-void DataManager::handleImportSessionFinished(const bool success, const QString &message,
-                                              const dltool::data::ImportDatabaseWriter::Stats &stats)
-{
-    if (shutting_down_)
-        return;
-
-    Q_UNUSED(stats);
-
-    auto *writer = qobject_cast<ImportDatabaseWriter *>(sender());
-
-    const qint64 elapsed_ms = import_elapsed_timer_.isValid() ? import_elapsed_timer_.elapsed() : 0;
-    QString completed_message = QString("%1，耗时 %2 ms").arg(message).arg(elapsed_ms);
-    if (!success)
-    {
-        completed_message += QStringLiteral("，已回滚导入数据");
-    }
-
-    if (success)
-    {
-        spdlog::info("{}", completed_message.toUtf8().constData());
-        if (label_classes_ != nullptr)
-        {
-            label_classes_->reloadFromDatabase();
-        }
-        if (image_source_ != nullptr)
-        {
-            image_source_->reloadFromDatabase();
-        }
-        if (label_source_ != nullptr)
-        {
-            label_source_->reloadFromDatabase();
-        }
-        rebuildLabelRelations();
-        if (image_info_ != nullptr)
-        {
-            image_info_->updateLabelInfo();
-        }
-        if (global_filter_ != nullptr && global_filter_->isActive())
-        {
-            global_filter_->refresh();
-        }
-    }
-    else
-    {
-        spdlog::error("{}", completed_message.toUtf8().constData());
-    }
-
-    const QString task_id = current_import_task_id_;
-    const int level = success ? spdlog::level::info : spdlog::level::err;
-    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                              Q_ARG(int, level), Q_ARG(QString, completed_message), Q_ARG(QString, task_id));
-    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "finishTask", Qt::QueuedConnection,
-                              Q_ARG(QString, task_id), Q_ARG(bool, success));
-
-    if (writer != nullptr)
-    {
-        writer->deleteLater();
-    }
-    const QList<DataIO *> io_children = findChildren<DataIO *>();
-    for (DataIO *io : io_children)
-    {
-        if (io != nullptr)
-        {
-            io->deleteLater();
-        }
-    }
-
-    import_running_ = false;
-    setDataOperationRunning(false);
-    emit dataImportFinished(success, completed_message);
-
-    QMetaObject::invokeMethod(
-        ui::SignalHelper::getInstance(),
-        [success, completed_message]()
-        {
-            if (success)
-                ui::SignalHelper::notifySuccess(QString("导入完成"), completed_message);
-            else
-                ui::SignalHelper::notifyError(QString("导入失败"), completed_message);
-        },
-        Qt::QueuedConnection);
 }
 
 void DataManager::initializeQmlEngine(QQmlApplicationEngine *engine)
