@@ -4,6 +4,8 @@
 #include "DataManagerServices.h"
 #include "DataImportService.h"
 #include "ImageTransferService.h"
+#include "DatasetSplitService.h"
+#include "ClusterWritebackService.h"
 #include "common/Utils.h"
 #include "data/CategoryStatisticsModel.h"
 #include "data/DataFormat.h"
@@ -73,18 +75,6 @@ std::map<QString, QString> parseLabelClassGroupMap(const QVariantMap &groups)
 
 } // namespace
 
-
-namespace {
-
-struct ImageCopyRequest
-{
-    int                                                           label_data_method{-1};
-    int64_t                                                       dataset_id{-1};
-    std::vector<dltool::database::ProjectDataBase::ImageSnapshot> images;
-};
-
-} // namespace
-
 namespace {
 
 struct DatasetSplitRequest
@@ -94,14 +84,6 @@ struct DatasetSplitRequest
 };
 
 } // namespace
-
-struct DataManager::DatasetSplitCopyResult
-{
-    std::vector<int64_t>             dataset_ids;
-    std::vector<QString>             dataset_names;
-    std::vector<LoadedImageInstance> images;
-    std::vector<LoadedLabelInstance> labels;
-};
 
 DataManager::DataManager(const int method, dltool::database::ProjectDataBase *database, const QString &project_dir,
                          QObject *parent)
@@ -125,8 +107,8 @@ bool DataManager::importRunning() const
 
 bool DataManager::imageOperationRunning() const
 {
-    return image_operation_running_
-           || (image_transfer_service_ != nullptr && image_transfer_service_->imageOperationRunning());
+    return (image_transfer_service_ != nullptr && image_transfer_service_->imageOperationRunning())
+           || (cluster_writeback_service_ != nullptr && cluster_writeback_service_->imageOperationRunning());
 }
 
 DataManagerServices DataManager::makeServices()
@@ -395,9 +377,11 @@ void DataManager::init(const int method)
     custom_filter_items_->populateFromCustomConditions();
 
     // 用例服务共享上下文：模型就绪后装配。
-    export_service_         = std::make_unique<DataExportService>(makeServices());
-    import_service_         = std::make_unique<DataImportService>(makeServices());
-    image_transfer_service_ = std::make_unique<ImageTransferService>(makeServices());
+    export_service_            = std::make_unique<DataExportService>(makeServices());
+    import_service_            = std::make_unique<DataImportService>(makeServices());
+    image_transfer_service_    = std::make_unique<ImageTransferService>(makeServices());
+    split_service_             = std::make_unique<DatasetSplitService>(makeServices());
+    cluster_writeback_service_ = std::make_unique<ClusterWritebackService>(makeServices());
 
     connect(global_filter_, &GlobalFilter::customFilterSearchResultsChanged, this,
             [this](bool has_image_search_results, bool has_label_search_results)
@@ -1106,58 +1090,7 @@ void DataManager::commitDatasetDeletion(const std::vector<int64_t> &dataset_ids,
     }
 }
 
-void DataManager::commitDatasetSplit(const std::shared_ptr<DatasetSplitCopyResult> &result,
-                                     const DataOperationWorkflow::Result           &operation)
-{
-    if (shutting_down_)
-        return;
 
-    if (result != nullptr && operation.success)
-    {
-        if (labels_loading_)
-        {
-            labels_changed_during_loading_ = true;
-        }
-
-        datasets_->addDatasetsFromMemory(result->dataset_ids, result->dataset_names);
-
-        image_instances_->beginBulkUpdate();
-        label_instances_->beginBulkUpdate();
-        image_source_->addImagesFromMemory(result->images, true);
-        label_source_->addLabelsFromMemory(result->labels, true);
-        image_source_->syncAllLabelRelations(label_source_, false);
-        image_tags_->addRelationsFromMemory(result->images, result->labels);
-        datasets_->addImagesFromSource(image_source_, result->images);
-        image_source_->refreshModelFromMemory();
-        label_source_->refreshModelFromMemory();
-
-        if (global_filter_ != nullptr && global_filter_->isActive())
-        {
-            global_filter_->refresh();
-        }
-        label_instances_->endBulkUpdate();
-        image_instances_->endBulkUpdate();
-
-        const QString message = QString("已完成数据集划分，创建 %1 个子数据集、复制 %2 个图像和 %3 个标注，耗时 %4 ms")
-                                    .arg(result->dataset_ids.size())
-                                    .arg(result->images.size())
-                                    .arg(result->labels.size())
-                                    .arg(operation.elapsed_ms);
-        spdlog::info("{}", message.toUtf8().constData());
-        ui::SignalHelper::notifySuccess(QString("划分数据集完成"), message);
-        emit datasetSplitFinished(true, message);
-    }
-    else
-    {
-        const QString message = QString("划分数据集失败: %1")
-                                    .arg(operation.error.isEmpty() ? QStringLiteral("后台操作失败") : operation.error);
-        spdlog::error("{}", message.toUtf8().constData());
-        ui::SignalHelper::notifyError(QString("划分数据集失败"), message);
-        emit datasetSplitFinished(false, message);
-    }
-
-    setDataOperationRunning(false);
-}
 
 void DataManager::importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                              const QString &data_dir)
@@ -1220,527 +1153,28 @@ void DataManager::deleteSelectedImages()
         image_transfer_service_->deleteSelectedImages();
 }
 
-void DataManager::splitDataset(const int64_t dataset_id, const double train_ratio, const double validation_ratio,
-                               const double test_ratio, const bool use_validation)
-{
-    if (shutting_down_)
-    {
-        const QString message = QStringLiteral("数据管理器正在关闭");
-        spdlog::warn("划分数据集失败: {}", message.toUtf8().constData());
-        emit datasetSplitFinished(false, message);
-        return;
-    }
 
-    const auto reportFailure = [this](const QString &message)
-    {
-        spdlog::error("划分数据集失败: {}", message.toUtf8().constData());
-        ui::SignalHelper::notifyError(QString("划分数据集失败"), message);
-        emit datasetSplitFinished(false, message);
-    };
-
-    if (isDataOperationRunning())
-    {
-        const QString message = QStringLiteral("当前已有数据操作正在进行中");
-        ui::SignalHelper::notifyWarn(QString("划分数据集"), message);
-        emit datasetSplitFinished(false, message);
-        return;
-    }
-    if (database_ == nullptr || datasets_ == nullptr || image_source_ == nullptr || label_source_ == nullptr)
-    {
-        reportFailure(QStringLiteral("数据管理器未初始化"));
-        return;
-    }
-    if (labels_loading_)
-    {
-        reportFailure(QStringLiteral("标注正在加载，请稍后再试"));
-        return;
-    }
-    if (!core::DeepLearningMethod::isSupportedMethod(method_))
-    {
-        reportFailure(QStringLiteral("当前项目类型不支持数据集划分"));
-        return;
-    }
-    const QString source_dataset_name = datasets_->getDatasetName(dataset_id);
-    if (dataset_id < 0 || source_dataset_name.isEmpty())
-    {
-        reportFailure(QStringLiteral("源数据集不存在"));
-        return;
-    }
-
-    const auto                                      &all_images = image_source_->getAllImageInstances();
-    std::vector<DatasetSplitItem>                                       items;
-    std::map<int64_t, dltool::database::ProjectDataBase::ImageSnapshot> source_snapshots;
-    for (const auto &[image_id, image] : all_images)
-    {
-        if (image == nullptr || image->datasetId() != dataset_id)
-        {
-            continue;
-        }
-
-        DatasetSplitItem item;
-        item.image_id             = image_id;
-        item.image_label_class_id = image->imageLabelClassId();
-
-        dltool::database::ProjectDataBase::ImageSnapshot snapshot;
-        snapshot.path       = image->path();
-        snapshot.extra_data = ImageInstancesListModel::extraDataForImageLabelClassId(image->imageLabelClassId());
-        const auto image_tags = image->tagIds();
-        snapshot.tag_ids.assign(image_tags.begin(), image_tags.end());
-        const bool copies_geometry_labels
-            = method_ == core::DeepLearningMethod::Detection
-           || method_ == core::DeepLearningMethod::Segmentation
-           || method_ == core::DeepLearningMethod::AnomalyDetection;
-        if (copies_geometry_labels)
-        {
-            snapshot.labels.reserve(image->labelIds().size());
-            for (const int64_t label_id : image->labelIds())
-            {
-                const LabelInstance *label = label_source_->getLabelInstance(label_id);
-                if (label == nullptr || label->data() == nullptr)
-                {
-                    reportFailure(QString("图像 %1 的标注 %2 不存在或数据无效").arg(image_id).arg(label_id));
-                    return;
-                }
-
-                item.label_class_ids.push_back(label->labelClassId());
-
-                dltool::database::ProjectDataBase::LabelSnapshot label_snapshot;
-                label_snapshot.label_class_id = label->labelClassId();
-                label_snapshot.label_type     = label->data()->type();
-                label_snapshot.data           = label->data()->toBlob();
-                const auto label_tags = label->tagIds();
-                label_snapshot.tag_ids.assign(label_tags.begin(), label_tags.end());
-                snapshot.labels.push_back(std::move(label_snapshot));
-            }
-        }
-        items.push_back(std::move(item));
-        source_snapshots.emplace(image_id, std::move(snapshot));
-    }
-
-    DatasetSplitRatios ratios;
-    ratios.train          = train_ratio;
-    ratios.validation     = validation_ratio;
-    ratios.test           = test_ratio;
-    ratios.use_validation = use_validation;
-    QString ratio_error;
-    if (!DatasetSplitter::validateRatios(ratios, &ratio_error))
-    {
-        reportFailure(ratio_error);
-        return;
-    }
-    if (items.empty())
-    {
-        reportFailure(QStringLiteral("不能划分空数据集"));
-        return;
-    }
-
-    const DatasetSplitResult split = DatasetSplitter::split(items, method_, ratios, 0xD17A5EEDU);
-    if (!split.success)
-    {
-        reportFailure(split.error);
-        return;
-    }
-
-    auto request               = std::make_shared<DatasetSplitRequest>();
-    request->label_data_method = method_;
-    std::set<QString> reserved_names;
-    const auto        uniqueName = [&](const QString &suffix)
-    {
-        const QString base_name = source_dataset_name + QStringLiteral("-") + suffix;
-        QString       candidate = base_name;
-        int           index     = 1;
-        while (datasets_->getDatasetId(candidate) >= 0 || reserved_names.contains(candidate))
-        {
-            candidate = QStringLiteral("%1_%2").arg(base_name).arg(index++);
-        }
-        reserved_names.insert(candidate);
-        return candidate;
-    };
-
-    auto build_target = [&](const QString &name, const std::vector<int64_t> &image_ids)
-    {
-        dltool::database::ProjectDataBase::DatasetSplitTarget target;
-        target.name = name;
-        target.images.reserve(image_ids.size());
-        for (const int64_t id : image_ids)
-        {
-            auto it = source_snapshots.find(id);
-            if (it != source_snapshots.end())
-            {
-                target.images.push_back(it->second);
-            }
-        }
-        return target;
-    };
-
-    request->targets.push_back(build_target(uniqueName(QStringLiteral("Train")), split.train_image_ids));
-    if (ratios.use_validation)
-    {
-        request->targets.push_back(build_target(uniqueName(QStringLiteral("Val")), split.validation_image_ids));
-    }
-    request->targets.push_back(build_target(uniqueName(QStringLiteral("Test")), split.test_image_ids));
-
-    setDataOperationRunning(true);
-    auto result = std::make_shared<DatasetSplitCopyResult>();
-    DataOperationWorkflow::Options options;
-    options.title         = QStringLiteral("划分数据集");
-    options.start_message = QString("正在划分数据集: %1").arg(source_dataset_name);
-    trackOperation(DataOperationWorkflow::startDatabase(
-        this, database_->path(), std::move(options),
-        [request, result](dltool::database::ProjectDataBase &database,
-                          DataOperationWorkflow::Result     &operation)
-        {
-            dltool::database::ProjectDataBase::AtomicSplitOutput output;
-            if (!database.splitDatasetAtomic(request->targets, output, operation.error,
-                                             [&operation]() { return operation.cancellationRequested(); }))
-            {
-                operation.success = false;
-                if (operation.error == QStringLiteral("操作已取消"))
-                {
-                    operation.cancelled = true;
-                }
-                return;
-            }
-
-            result->dataset_ids = output.dataset_ids;
-            result->dataset_names.reserve(request->targets.size());
-            for (const auto &t : request->targets)
-            {
-                result->dataset_names.push_back(t.name);
-            }
-
-            LabelDataHelper helper = data::createLabelDataHelper(request->label_data_method);
-            if (helper == nullptr)
-            {
-                operation.success = false;
-                operation.error   = QStringLiteral("标签数据工厂未初始化");
-                return;
-            }
-
-            size_t img_idx   = 0;
-            size_t label_idx = 0;
-            for (size_t target_idx = 0; target_idx < request->targets.size(); ++target_idx)
-            {
-                const auto   &target            = request->targets[target_idx];
-                const int64_t target_dataset_id = output.dataset_ids[target_idx];
-
-                for (const auto &source_img : target.images)
-                {
-                    const int64_t new_img_id = output.image_ids[img_idx++];
-
-                    LoadedImageInstance img;
-                    img.image_id       = new_img_id;
-                    img.dataset_id     = target_dataset_id;
-                    img.path           = source_img.path;
-                    img.label_class_id = ImageInstancesListModel::imageLabelClassIdFromExtraData(source_img.extra_data);
-                    img.tag_ids.insert(source_img.tag_ids.begin(), source_img.tag_ids.end());
-                    result->images.push_back(std::move(img));
-
-                    for (const auto &source_lbl : source_img.labels)
-                    {
-                        const int64_t new_lbl_id = output.label_ids[label_idx++];
-
-                        LabelData label_data = helper->createLabelData();
-                        if (label_data == nullptr)
-                        {
-                            operation.success = false;
-                            operation.error   = QStringLiteral("标签数据创建失败");
-                            return;
-                        }
-                        label_data->fromBlob(source_lbl.data);
-
-                        LoadedLabelInstance lbl;
-                        lbl.label_id       = new_lbl_id;
-                        lbl.image_id       = new_img_id;
-                        lbl.label_class_id = source_lbl.label_class_id;
-                        lbl.data           = std::move(label_data);
-                        lbl.tag_ids.insert(source_lbl.tag_ids.begin(), source_lbl.tag_ids.end());
-                        result->labels.push_back(std::move(lbl));
-                    }
-                }
-            }
-
-            operation.success = true;
-            operation.error.clear();
-        },
-        [this, result](const DataOperationWorkflow::Result &operation) { commitDatasetSplit(result, operation); }));
-}
 
 void DataManager::moveToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id)
 {
     moveToDatasetAsync(image_ids, dataset_id, nullptr, {}, true);
 }
 
-bool DataManager::writebackClusterAsync(const ClusterWritebackRequest &request,
-                                        QObject *callback_context,
+
+
+void DataManager::splitDataset(const int64_t dataset_id, const double train_ratio, const double validation_ratio,
+                               const double test_ratio, const bool use_validation)
+{
+    if (split_service_)
+        split_service_->splitDataset(dataset_id, train_ratio, validation_ratio, test_ratio, use_validation);
+}
+
+bool DataManager::writebackClusterAsync(const ClusterWritebackRequest &request, QObject *callback_context,
                                         ClusterWritebackCompletion completion)
 {
-    if (shutting_down_)
-        return false;
-
-    if (isDataOperationRunning())
-    {
-        ui::SignalHelper::notifyWarn(QStringLiteral("聚类写回"), QStringLiteral("当前已有数据操作正在进行中"));
-        return false;
-    }
-    if (datasets_ == nullptr || image_source_ == nullptr || label_source_ == nullptr || database_ == nullptr)
-    {
-        return false;
-    }
-    if (labels_loading_)
-    {
-        spdlog::warn("聚类写回失败, 标注正在加载中");
-        ui::SignalHelper::notifyWarn(QStringLiteral("聚类写回"), QStringLiteral("标注正在加载，请稍后再试"));
-        return false;
-    }
-    if (request.targets.empty())
-    {
-        return false;
-    }
-
-    std::vector<database::ProjectDataBase::ClusterTarget> db_targets;
-    db_targets.reserve(request.targets.size());
-
-    for (const auto &t : request.targets)
-    {
-        database::ProjectDataBase::ClusterTarget db_target;
-        db_target.target_dataset_name = t.target_dataset_name;
-
-        if (request.is_copy)
-        {
-            db_target.copy_images.reserve(t.image_ids.size());
-            for (const int64_t image_id : t.image_ids)
-            {
-                const ImageInstance *source_image = image_source_->getImageInstance(image_id);
-                if (source_image == nullptr || source_image->path().isEmpty())
-                {
-                    spdlog::warn("聚类写回复制失败, 源图像不存在或路径无效: {}", image_id);
-                    return false;
-                }
-
-                database::ProjectDataBase::ImageSnapshot image;
-                image.path       = source_image->path();
-                image.extra_data = ImageInstancesListModel::extraDataForImageLabelClassId(source_image->imageLabelClassId());
-                const auto image_tags = source_image->tagIds();
-                image.tag_ids.assign(image_tags.begin(), image_tags.end());
-                image.labels.reserve(source_image->labelIds().size());
-                for (const int64_t source_label_id : source_image->labelIds())
-                {
-                    const LabelInstance *source_label = label_source_->getLabelInstance(source_label_id);
-                    if (source_label == nullptr || source_label->data() == nullptr)
-                    {
-                        spdlog::warn("聚类写回复制失败, 源标注不存在或数据无效: {}", source_label_id);
-                        return false;
-                    }
-
-                    database::ProjectDataBase::LabelSnapshot label;
-                    label.label_class_id = source_label->labelClassId();
-                    label.label_type     = source_label->data()->type();
-                    label.data           = source_label->data()->toBlob();
-                    const auto label_tags = source_label->tagIds();
-                    label.tag_ids.assign(label_tags.begin(), label_tags.end());
-                    image.labels.push_back(std::move(label));
-                }
-                db_target.copy_images.push_back(std::move(image));
-            }
-        }
-        else
-        {
-            db_target.move_image_ids = t.image_ids;
-        }
-
-        db_targets.push_back(std::move(db_target));
-    }
-
-    setDataOperationRunning(true);
-    image_operation_running_ = true;
-    emit imageOperationRunningChanged();
-
-    auto result = std::make_shared<ClusterWritebackResult>();
-    auto safe_completion = std::make_shared<ClusterWritebackCompletion>();
-    if (completion)
-    {
-        if (callback_context != nullptr)
-        {
-            const QPointer<QObject> guarded_context(callback_context);
-            *safe_completion = [guarded_context, completion = std::move(completion)](const ClusterWritebackResult &res)
-            {
-                if (guarded_context && completion)
-                    completion(res);
-            };
-        }
-        else
-        {
-            *safe_completion = std::move(completion);
-        }
-    }
-
-    DataOperationWorkflow::Options options;
-    options.title           = QStringLiteral("聚类写回");
-    options.start_message   = QStringLiteral("正在原子写入聚类目标数据集与图像");
-    options.manage_progress = false;
-
-    auto db_targets_shared = std::make_shared<std::vector<database::ProjectDataBase::ClusterTarget>>(std::move(db_targets));
-    const bool is_copy = request.is_copy;
-    const int label_data_method = method_;
-
-    trackOperation(DataOperationWorkflow::startDatabase(
-        this, database_->path(), std::move(options),
-        [db_targets_shared, is_copy, label_data_method, result](dltool::database::ProjectDataBase &database,
-                                                                 DataOperationWorkflow::Result     &operation)
-        {
-            dltool::database::ProjectDataBase::AtomicClusterOutput output;
-            if (!database.applyClusterAtomic(*db_targets_shared, output, operation.error,
-                                             [&operation]() { return operation.cancellationRequested(); }))
-            {
-                operation.success = false;
-                result->success   = false;
-                result->error     = operation.error;
-                if (operation.error == QStringLiteral("操作已取消"))
-                {
-                    operation.cancelled = true;
-                    result->cancelled   = true;
-                }
-                return;
-            }
-
-            if (is_copy)
-            {
-                LabelDataHelper helper = data::createLabelDataHelper(label_data_method);
-                if (helper == nullptr)
-                {
-                    operation.success = false;
-                    operation.error   = QStringLiteral("标签数据工厂未初始化");
-                    result->success   = false;
-                    result->error     = operation.error;
-                    return;
-                }
-
-                size_t img_idx   = 0;
-                size_t label_idx = 0;
-                for (const auto &target : *db_targets_shared)
-                {
-                    const int64_t target_dataset_id = output.dataset_ids_by_name[target.target_dataset_name];
-                    for (const auto &source_img : target.copy_images)
-                    {
-                        const int64_t new_img_id = output.new_image_ids[img_idx++];
-                        LoadedImageInstance img;
-                        img.image_id       = new_img_id;
-                        img.dataset_id     = target_dataset_id;
-                        img.path           = source_img.path;
-                        img.label_class_id = ImageInstancesListModel::imageLabelClassIdFromExtraData(source_img.extra_data);
-                        img.tag_ids.insert(source_img.tag_ids.begin(), source_img.tag_ids.end());
-                        result->copied_images.push_back(std::move(img));
-
-                        for (const auto &source_lbl : source_img.labels)
-                        {
-                            const int64_t new_lbl_id = output.new_label_ids[label_idx++];
-                            LabelData label_data = helper->createLabelData();
-                            if (label_data != nullptr)
-                            {
-                                label_data->fromBlob(source_lbl.data);
-                                LoadedLabelInstance lbl;
-                                lbl.label_id       = new_lbl_id;
-                                lbl.image_id       = new_img_id;
-                                lbl.label_class_id = source_lbl.label_class_id;
-                                lbl.data           = std::move(label_data);
-                                lbl.tag_ids.insert(source_lbl.tag_ids.begin(), source_lbl.tag_ids.end());
-                                result->copied_labels.push_back(std::move(lbl));
-                            }
-                        }
-                    }
-                }
-            }
-
-            operation.success            = true;
-            result->success              = true;
-            result->moved_image_count    = output.moved_image_count;
-            result->copied_image_count   = output.copied_image_count;
-            result->created_dataset_ids  = output.created_dataset_ids;
-            result->dataset_ids_by_name  = output.dataset_ids_by_name;
-            result->target_dataset_count = output.dataset_ids_by_name.size();
-        },
-        [this, is_copy, db_targets_shared, result, safe_completion](const DataOperationWorkflow::Result &operation)
-        {
-            if (shutting_down_)
-                return;
-
-            if (result->success)
-            {
-                if (labels_loading_)
-                {
-                    labels_changed_during_loading_ = true;
-                }
-
-                const bool filter_active = global_filter_ != nullptr && global_filter_->isActive();
-                image_instances_->beginBulkUpdate();
-                label_instances_->beginBulkUpdate();
-
-                std::vector<int64_t> new_dataset_ids;
-                std::vector<QString> new_dataset_names;
-                for (const auto &[name, id] : result->dataset_ids_by_name)
-                {
-                    if (std::find(result->created_dataset_ids.begin(), result->created_dataset_ids.end(), id)
-                        != result->created_dataset_ids.end())
-                    {
-                        new_dataset_ids.push_back(id);
-                        new_dataset_names.push_back(name);
-                    }
-                }
-                if (!new_dataset_ids.empty())
-                {
-                    datasets_->addDatasetsFromMemory(new_dataset_ids, new_dataset_names);
-                }
-
-                if (!is_copy)
-                {
-                    for (const auto &target : *db_targets_shared)
-                    {
-                        const auto it = result->dataset_ids_by_name.find(target.target_dataset_name);
-                        if (it != result->dataset_ids_by_name.end())
-                        {
-                            const int64_t target_id = it->second;
-                            datasets_->moveImagesFromSource(image_source_, target.move_image_ids, target_id);
-                            image_source_->updateImagesDatasetFromMemory(target.move_image_ids, target_id, !filter_active);
-                        }
-                    }
-                }
-                else
-                {
-                    if (!result->copied_images.empty())
-                    {
-                        image_source_->addImagesFromMemory(result->copied_images, true);
-                        label_source_->addLabelsFromMemory(result->copied_labels, true);
-                        image_source_->syncAllLabelRelations(label_source_, false);
-                        image_tags_->addRelationsFromMemory(result->copied_images, result->copied_labels);
-                        datasets_->addImagesFromSource(image_source_, result->copied_images);
-                        image_source_->refreshModelFromMemory();
-                        label_source_->refreshModelFromMemory();
-                    }
-                }
-
-                if (filter_active)
-                {
-                    global_filter_->refresh();
-                }
-                label_instances_->endBulkUpdate();
-                image_instances_->endBulkUpdate();
-            }
-
-            if (image_operation_running_)
-            {
-                image_operation_running_ = false;
-                emit imageOperationRunningChanged();
-            }
-            setDataOperationRunning(false);
-
-            if (*safe_completion)
-            {
-                (*safe_completion)(*result);
-            }
-        }));
-
-    return true;
+    if (cluster_writeback_service_)
+        return cluster_writeback_service_->writebackClusterAsync(request, callback_context, std::move(completion));
+    return false;
 }
 
 void DataManager::addLabelClass(const QString &name, const QString &color, const QString &shortcut)

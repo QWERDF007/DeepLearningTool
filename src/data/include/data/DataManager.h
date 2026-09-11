@@ -37,6 +37,8 @@ namespace dltool::data {
 class DataExportService;
 class DataImportService;
 class ImageTransferService;
+class DatasetSplitService;
+class ClusterWritebackService;
 struct DataManagerServices;
 
 class DATA_API DataManager : public QObject
@@ -508,16 +510,17 @@ private:
     bool labels_reload_after_dataset_deletion_{false};
 
     bool dataset_deletion_running_{false};
-    bool image_operation_running_{false};
     bool data_operation_running_{false};
     std::vector<DataOperationWorkflow::HandlePtr> operation_handles_;
     bool                               shutting_down_{false};
     bool                               cleaned_up_{false};
 
     /// 用例服务（模块私有实现，见 src/data/DataManagerServices.h）。
-    std::unique_ptr<DataExportService>    export_service_;
-    std::unique_ptr<DataImportService>    import_service_;
-    std::unique_ptr<ImageTransferService> image_transfer_service_;
+    std::unique_ptr<DataExportService>      export_service_;
+    std::unique_ptr<DataImportService>      import_service_;
+    std::unique_ptr<ImageTransferService>   image_transfer_service_;
+    std::unique_ptr<DatasetSplitService>    split_service_;
+    std::unique_ptr<ClusterWritebackService> cluster_writeback_service_;
 };
 
 } // namespace dltool::data
