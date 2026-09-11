@@ -9,6 +9,7 @@
 #include <initializer_list>
 #include <map>
 #include <mutex>
+#include <set>
 #include <vector>
 
 namespace dltool::database::detail {
@@ -415,21 +416,37 @@ bool validateTable(sqlite3 *db, const TableSpec &spec, QString *err_msg)
     if (sqlite3_prepare_v2(db, query.toUtf8().constData(), -1, &statement, nullptr) != SQLITE_OK)
         return setError(err_msg, sqliteMessage(db, QStringLiteral("读取表结构失败: %1").arg(spec.name)));
 
-    std::size_t index = 0;
+    // 按列名匹配而非按位置：历史版本建库的列顺序可能不同（如 project 表
+    // 的 path/description 先后互换），而运行时 sqlpp11 全部按列名访问，
+    // 顺序无关紧要。类型、非空与主键约束仍逐列严格校验。
+    std::map<QString, const ColumnSpec *> expected_by_name;
+    for (const ColumnSpec &column : spec.columns)
+        expected_by_name[column.name] = &column;
+
+    std::set<QString> seen_columns;
     while (sqlite3_step(statement) == SQLITE_ROW)
     {
-        if (index >= spec.columns.size())
+        const char *actual_name_c = reinterpret_cast<const char *>(sqlite3_column_text(statement, 1));
+        const QString name = actual_name_c != nullptr ? QString::fromUtf8(actual_name_c) : QString();
+
+        const auto expected_it = expected_by_name.find(name);
+        if (expected_it == expected_by_name.end())
         {
             sqlite3_finalize(statement);
-            return setError(err_msg, QStringLiteral("schema 表 %1 包含未知字段").arg(spec.name));
+            return setError(err_msg, QStringLiteral("schema 表 %1 包含未知字段 %2")
+                                          .arg(spec.name, name));
+        }
+        if (!seen_columns.insert(name).second)
+        {
+            sqlite3_finalize(statement);
+            return setError(err_msg, QStringLiteral("schema 表 %1 包含重复字段 %2")
+                                          .arg(spec.name, name));
         }
 
-        const ColumnSpec &expected = spec.columns[index];
-        const char *actual_name = reinterpret_cast<const char *>(sqlite3_column_text(statement, 1));
+        const ColumnSpec &expected = *expected_it->second;
         const char *actual_type_c = reinterpret_cast<const char *>(sqlite3_column_text(statement, 2));
-        const QString name = actual_name != nullptr ? QString::fromUtf8(actual_name) : QString();
         const QString type = actual_type_c != nullptr ? QString::fromUtf8(actual_type_c).trimmed().toUpper() : QString();
-        if (name != expected.name || type != expected.type
+        if (type != expected.type
             || sqlite3_column_int(statement, 3) != expected.not_null
             || sqlite3_column_int(statement, 5) != expected.primary_key)
         {
@@ -437,14 +454,20 @@ bool validateTable(sqlite3 *db, const TableSpec &spec, QString *err_msg)
             return setError(err_msg, QStringLiteral("schema 表 %1 字段 %2 结构不匹配")
                                           .arg(spec.name, expected.name));
         }
-        ++index;
     }
     const int finalize_result = sqlite3_finalize(statement);
     if (finalize_result != SQLITE_OK)
         return setError(err_msg, sqliteMessage(db, QStringLiteral("读取表结构失败: %1").arg(spec.name)));
-    if (index != spec.columns.size())
-        return setError(err_msg, QStringLiteral("schema 表 %1 缺少字段 %2")
-                                      .arg(spec.name, spec.columns[index].name));
+    if (seen_columns.size() != spec.columns.size())
+    {
+        for (const ColumnSpec &column : spec.columns)
+        {
+            if (seen_columns.find(column.name) == seen_columns.end())
+                return setError(err_msg, QStringLiteral("schema 表 %1 缺少字段 %2")
+                                              .arg(spec.name, column.name));
+        }
+        return setError(err_msg, QStringLiteral("schema 表 %1 字段数量不匹配").arg(spec.name));
+    }
 
     if (!spec.foreign_keys.empty())
     {

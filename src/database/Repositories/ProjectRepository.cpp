@@ -28,8 +28,6 @@ bool ProjectRepository::initProject(DatabaseContext &context, const QString &nam
     try
     {
         auto &db = context.db();
-        if (!detail::ensureProjectSchema(db, &err_msg))
-            return false;
         db(sqlpp::insert_into(ProjectTable)
                .set(ProjectTable.name = name.toUtf8().constData(), ProjectTable.method = method,
                     ProjectTable.path          = path.toUtf8().constData(),
@@ -52,8 +50,6 @@ bool ProjectRepository::openProject(DatabaseContext &context, const QString &db_
     try
     {
         auto &db = context.db();
-        if (!detail::ensureProjectSchema(db, &err_msg))
-            return false;
         auto data
             = db(sqlpp::select(ProjectTable.name, ProjectTable.method, ProjectTable.path, ProjectTable.description,
                                ProjectTable.imageBasePath, ProjectTable.ctime, ProjectTable.mtime)
