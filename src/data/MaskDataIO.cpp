@@ -1,5 +1,6 @@
 #include "data/DataIO.h"
 #include "DataIOInternal.h"
+#include "ExportPipeline.h"
 #include "data/ParallelFor.h"
 
 #include "common/GeometryKernel.h"
@@ -607,195 +608,170 @@ std::map<QString, QString> MaskIO::loadQueryNameMap(const QString &dir_path) con
 
 void MaskIO::doExport(ExportDataset dataset, QString output_dir, QVariantMap options, const int thread_count)
 {
-    try
-    {
-        QString err_msg;
-        if (!DataIO::checkExportSourceCollision(dataset, output_dir, DataFormat::Mask, err_msg))
+    const auto result = detail::runExportPipeline(
+        DataFormat::Mask, dataset, output_dir, options, QStringLiteral("Mask"),
+        [this, &dataset, thread_count, &options](const QString &staging_dir, QString &error, QString &summary,
+                                       QString &done_hint) -> bool
         {
-            emit exportFinished(false, err_msg);
-            return;
-        }
 
-        SafeExportScope scope(output_dir);
-        if (!scope.isValid())
-        {
-            emit exportFinished(false, scope.error());
-            return;
-        }
-
-        const QString images_dir = QDir(scope.stagingDir()).filePath(QStringLiteral("images"));
-        const QString masks_dir  = QDir(scope.stagingDir()).filePath(QStringLiteral("masks"));
-        if (!ensureDirectory(images_dir, err_msg) || !ensureDirectory(masks_dir, err_msg))
-        {
-            emit exportFinished(false, err_msg);
-            return;
-        }
-
-        const MaskOutputMode mode = maskOutputModeFromOptions(options);
-        if (mode == MaskOutputMode::ClassIndex && dataset.label_classes.size() > 255)
-        {
-            emit exportFinished(
-                false, QString("Mask 按类别导出最多支持 255 个类别，当前 %1 个").arg(dataset.label_classes.size()));
-            return;
-        }
-
-        std::map<int64_t, int> class_values;
-        for (size_t i = 0; i < dataset.label_classes.size(); ++i)
-            class_values[dataset.label_classes[i].id]
-                = mode == MaskOutputMode::ClassIndex ? static_cast<int>(i) + 1 : 255;
-
-        std::map<QString, int>     used_image_names;
-        std::map<QString, int>     used_image_stems;
-        std::map<int64_t, QString> image_name_by_id;
-        const int                  image_count = static_cast<int>(dataset.images.size());
-
-        for (int i = 0; i < image_count; ++i)
-        {
-            const ExportImage &image = dataset.images[i];
-            const QString file_name  = detail::uniqueImageName(image.path, image.image_id, used_image_names, used_image_stems);
-            used_image_names[file_name]++;
-            used_image_stems[QFileInfo(file_name).completeBaseName()]++;
-            image_name_by_id[image.image_id] = file_name;
-        }
-
-        std::set<QString> mask_names;
-        for (const ExportImage &image : dataset.images)
-        {
-            const QString mask_name
-                = QString("%1.png").arg(QFileInfo(image_name_by_id[image.image_id]).completeBaseName());
-            if (!mask_names.insert(mask_name).second)
+            const QString images_dir = QDir(staging_dir).filePath(QStringLiteral("images"));
+            const QString masks_dir  = QDir(staging_dir).filePath(QStringLiteral("masks"));
+            if (!ensureDirectory(images_dir, error) || !ensureDirectory(masks_dir, error))
             {
-                emit exportFinished(false, QString("Mask 文件名冲突: %1").arg(mask_name));
-                return;
+                return false;
             }
-        }
 
-        std::map<int64_t, std::vector<ExportLabel>> labels_by_image_id;
-        for (const ExportLabel &label : dataset.labels) labels_by_image_id[label.image_id].push_back(label);
-        const auto &image_name_by_id_readonly   = image_name_by_id;
-        const auto &class_values_readonly       = class_values;
-        const auto &labels_by_image_id_readonly = labels_by_image_id;
-
-        struct MaskExportResult
-        {
-            bool    success{true};
-            QString error;
-            int     written_labels{0};
-            int     skipped_labels{0};
-        };
-
-        if (isCancelRequested())
-        {
-            emit exportFinished(false, QStringLiteral("导出已取消"));
-            return;
-        }
-
-        std::vector<MaskExportResult> results(image_count);
-        parallelFor(
-            static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
-            [&](const std::size_t index)
+            const MaskOutputMode mode = maskOutputModeFromOptions(options);
+            if (mode == MaskOutputMode::ClassIndex && dataset.label_classes.size() > 255)
             {
-                const ExportImage &image  = dataset.images[index];
-                auto              &result = results[index];
-                QString            task_error;
-                if (!DatasetIO::copyFile(image.path,
-                                         QDir(images_dir).filePath(image_name_by_id_readonly.at(image.image_id)),
-                                         task_error))
-                {
-                    result.success = false;
-                    result.error   = task_error;
-                    return;
-                }
+    error = QString("Mask 按类别导出最多支持 255 个类别，当前 %1 个").arg(dataset.label_classes.size());
+                return false;
+            }
 
-                int width  = image.width;
-                int height = image.height;
-                if ((width <= 0 || height <= 0) && !DatasetIO::getImageDimensions(image.path, width, height))
-                {
-                    result.success = false;
-                    result.error   = QString("无法读取图像尺寸，不能导出 Mask: %1").arg(image.path);
-                    return;
-                }
+            std::map<int64_t, int> class_values;
+            for (size_t i = 0; i < dataset.label_classes.size(); ++i)
+                class_values[dataset.label_classes[i].id]
+                    = mode == MaskOutputMode::ClassIndex ? static_cast<int>(i) + 1 : 255;
 
-                QImage mask(width, height, QImage::Format_ARGB32);
-                mask.fill(Qt::black);
-                const auto labels_it = labels_by_image_id_readonly.find(image.image_id);
-                if (labels_it != labels_by_image_id_readonly.end())
-                    for (const ExportLabel &label : labels_it->second)
+            std::map<QString, int>     used_image_names;
+            std::map<QString, int>     used_image_stems;
+            std::map<int64_t, QString> image_name_by_id;
+            const int                  image_count = static_cast<int>(dataset.images.size());
+
+            for (int i = 0; i < image_count; ++i)
+            {
+                const ExportImage &image = dataset.images[i];
+                const QString file_name  = detail::uniqueImageName(image.path, image.image_id, used_image_names, used_image_stems);
+                used_image_names[file_name]++;
+                used_image_stems[QFileInfo(file_name).completeBaseName()]++;
+                image_name_by_id[image.image_id] = file_name;
+            }
+
+            std::set<QString> mask_names;
+            for (const ExportImage &image : dataset.images)
+            {
+                const QString mask_name
+                    = QString("%1.png").arg(QFileInfo(image_name_by_id[image.image_id]).completeBaseName());
+                if (!mask_names.insert(mask_name).second)
+                {
+    error = QString("Mask 文件名冲突: %1").arg(mask_name);
+                return false;
+                }
+            }
+
+            std::map<int64_t, std::vector<ExportLabel>> labels_by_image_id;
+            for (const ExportLabel &label : dataset.labels) labels_by_image_id[label.image_id].push_back(label);
+            const auto &image_name_by_id_readonly   = image_name_by_id;
+            const auto &class_values_readonly       = class_values;
+            const auto &labels_by_image_id_readonly = labels_by_image_id;
+
+            struct MaskExportResult
+            {
+                bool    success{true};
+                QString error;
+                int     written_labels{0};
+                int     skipped_labels{0};
+            };
+
+            if (isCancelRequested())
+            {
+    error = QStringLiteral("导出已取消");
+                return false;
+            }
+
+            std::vector<MaskExportResult> results(image_count);
+            parallelFor(
+                static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
+                [&](const std::size_t index)
+                {
+                    const ExportImage &image  = dataset.images[index];
+                    auto              &result = results[index];
+                    QString            task_error;
+                    if (!DatasetIO::copyFile(image.path,
+                                             QDir(images_dir).filePath(image_name_by_id_readonly.at(image.image_id)),
+                                             task_error))
                     {
-                        const auto value_it = class_values_readonly.find(label.label_class_id);
-                        if (value_it == class_values_readonly.end())
-                        {
-                            ++result.skipped_labels;
-                            continue;
-                        }
-                        if (paintLabelToMask(mask, label.data, value_it->second))
-                            ++result.written_labels;
-                        else
-                            ++result.skipped_labels;
+                        result.success = false;
+                        result.error   = task_error;
+                        return;
                     }
 
-                const QString mask_name
-                    = QString("%1.png").arg(QFileInfo(image_name_by_id_readonly.at(image.image_id)).completeBaseName());
-                if (!mask.convertToFormat(QImage::Format_Grayscale8).save(QDir(masks_dir).filePath(mask_name), "PNG"))
+                    int width  = image.width;
+                    int height = image.height;
+                    if ((width <= 0 || height <= 0) && !DatasetIO::getImageDimensions(image.path, width, height))
+                    {
+                        result.success = false;
+                        result.error   = QString("无法读取图像尺寸，不能导出 Mask: %1").arg(image.path);
+                        return;
+                    }
+
+                    QImage mask(width, height, QImage::Format_ARGB32);
+                    mask.fill(Qt::black);
+                    const auto labels_it = labels_by_image_id_readonly.find(image.image_id);
+                    if (labels_it != labels_by_image_id_readonly.end())
+                        for (const ExportLabel &label : labels_it->second)
+                        {
+                            const auto value_it = class_values_readonly.find(label.label_class_id);
+                            if (value_it == class_values_readonly.end())
+                            {
+                                ++result.skipped_labels;
+                                continue;
+                            }
+                            if (paintLabelToMask(mask, label.data, value_it->second))
+                                ++result.written_labels;
+                            else
+                                ++result.skipped_labels;
+                        }
+
+                    const QString mask_name
+                        = QString("%1.png").arg(QFileInfo(image_name_by_id_readonly.at(image.image_id)).completeBaseName());
+                    if (!mask.convertToFormat(QImage::Format_Grayscale8).save(QDir(masks_dir).filePath(mask_name), "PNG"))
+                    {
+                        result.success = false;
+                        result.error   = QString("写入 Mask 失败: %1").arg(mask_name);
+                    }
+                },
+                [this](const std::size_t completed, const std::size_t total)
                 {
-                    result.success = false;
-                    result.error   = QString("写入 Mask 失败: %1").arg(mask_name);
-                }
-            },
-            [this](const std::size_t completed, const std::size_t total)
-            {
-                updateProgress(5 + static_cast<int>(completed * 90 / std::max<std::size_t>(1, total)),
-                               QString("已写入 Mask %1/%2").arg(completed).arg(total));
-            });
+                    updateProgress(5 + static_cast<int>(completed * 90 / std::max<std::size_t>(1, total)),
+                                   QString("已写入 Mask %1/%2").arg(completed).arg(total));
+                });
 
-        if (isCancelRequested())
-        {
-            emit exportFinished(false, QStringLiteral("导出已取消"));
-            return;
-        }
-
-        int written_label_count = 0;
-        int skipped_label_count = 0;
-        for (int i = 0; i < image_count; ++i)
-        {
-            if (!results[i].success)
+            if (isCancelRequested())
             {
-                emit exportFinished(false, results[i].error);
-                return;
+    error = QStringLiteral("导出已取消");
+                return false;
             }
-            written_label_count += results[i].written_labels;
-            skipped_label_count += results[i].skipped_labels;
-        }
 
-        if (!writeClassMetadata(dataset, scope.stagingDir(), mode, class_values, err_msg))
-        {
-            emit exportFinished(false, err_msg);
-            return;
-        }
+            int written_label_count = 0;
+            int skipped_label_count = 0;
+            for (int i = 0; i < image_count; ++i)
+            {
+                if (!results[i].success)
+                {
+    error = results[i].error;
+                return false;
+                }
+                written_label_count += results[i].written_labels;
+                skipped_label_count += results[i].skipped_labels;
+            }
 
-        if (!DataIO::validateExportOutput(DataFormat::Mask, dataset, scope.stagingDir(), options, err_msg))
-        {
-            emit exportFinished(false, err_msg);
-            return;
-        }
+            if (!writeClassMetadata(dataset, staging_dir, mode, class_values, error))
+            {
+                return false;
+            }
 
-        if (!scope.publish(err_msg))
-        {
-            emit exportFinished(false, err_msg);
-            return;
-        }
+            summary   = QString("Mask 导出完成: %1 个图像, %2 个标注, 跳过 %3 个标注")
+                            .arg(dataset.images.size())
+                            .arg(written_label_count)
+                            .arg(skipped_label_count);
+            done_hint = QStringLiteral("Mask 类别映射文件已写入");
+            return true;
+        });
 
-        updateProgress(100, QString("Mask 类别映射文件已写入"));
-        emit exportFinished(true, QString("Mask 导出完成: %1 个图像, %2 个标注, 跳过 %3 个标注")
-                                      .arg(dataset.images.size())
-                                      .arg(written_label_count)
-                                      .arg(skipped_label_count));
-    }
-    catch (const std::exception &e)
-    {
-        spdlog::error("Mask 导出失败: {}", e.what());
-        emit exportFinished(false, QString("Mask 导出失败: %1").arg(e.what()));
-    }
+    if (result.success)
+        updateProgress(100, result.done_hint);
+    emit exportFinished(result.success, result.message);
 }
 
 } // namespace dltool::data

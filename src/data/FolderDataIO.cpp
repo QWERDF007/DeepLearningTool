@@ -1,5 +1,6 @@
 #include "data/DataIO.h"
 #include "DataIOInternal.h"
+#include "ExportPipeline.h"
 #include "data/ParallelFor.h"
 
 #include "common/GeometryKernel.h"
@@ -321,137 +322,108 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir, const int 
 
 void FolderIO::doExport(ExportDataset dataset, QString output_dir, const int thread_count)
 {
-    try
-    {
-        QString err_msg;
-        if (!DataIO::checkExportSourceCollision(dataset, output_dir, DataFormat::Folder, err_msg))
+    const auto result = detail::runExportPipeline(
+        DataFormat::Folder, dataset, output_dir, {}, QStringLiteral("文件夹"),
+        [this, &dataset, thread_count](const QString &staging_dir, QString &error, QString &summary,
+                                       QString &done_hint) -> bool
         {
-            emit exportFinished(false, err_msg);
-            return;
-        }
 
-        SafeExportScope scope(output_dir);
-        if (!scope.isValid())
-        {
-            emit exportFinished(false, scope.error());
-            return;
-        }
+            std::map<int64_t, QString> class_name_by_id;
+            for (const ExportLabelClass &label_class : dataset.label_classes)
+                class_name_by_id[label_class.id] = label_class.name;
 
-        if (!ensureDirectory(scope.stagingDir(), err_msg))
-        {
-            emit exportFinished(false, err_msg);
-            return;
-        }
+            std::map<int64_t, std::vector<ExportLabel>> labels_by_image;
+            for (const ExportLabel &label : dataset.labels) labels_by_image[label.image_id].push_back(label);
 
-        std::map<int64_t, QString> class_name_by_id;
-        for (const ExportLabelClass &label_class : dataset.label_classes)
-            class_name_by_id[label_class.id] = label_class.name;
-
-        std::map<int64_t, std::vector<ExportLabel>> labels_by_image;
-        for (const ExportLabel &label : dataset.labels) labels_by_image[label.image_id].push_back(label);
-
-        const int            image_count = static_cast<int>(dataset.images.size());
-        std::vector<QString> target_paths(image_count);
-        std::set<QString>    class_dirs;
-        std::set<QString>    used_target_paths;
-        for (int i = 0; i < image_count; ++i)
-        {
-            const ExportImage &image      = dataset.images[i];
-            const auto         label_it   = labels_by_image.find(image.image_id);
-            QString            class_name = "unknown";
-
-            if (label_it != labels_by_image.end() && !label_it->second.empty())
+            const int            image_count = static_cast<int>(dataset.images.size());
+            std::vector<QString> target_paths(image_count);
+            std::set<QString>    class_dirs;
+            std::set<QString>    used_target_paths;
+            for (int i = 0; i < image_count; ++i)
             {
-                const auto name_it = class_name_by_id.find(label_it->second[0].label_class_id);
-                if (name_it != class_name_by_id.end())
-                    class_name = name_it->second;
+                const ExportImage &image      = dataset.images[i];
+                const auto         label_it   = labels_by_image.find(image.image_id);
+                QString            class_name = "unknown";
+
+                if (label_it != labels_by_image.end() && !label_it->second.empty())
+                {
+                    const auto name_it = class_name_by_id.find(label_it->second[0].label_class_id);
+                    if (name_it != class_name_by_id.end())
+                        class_name = name_it->second;
+                }
+
+                const QString class_dir = QDir(staging_dir).filePath(class_name);
+                class_dirs.insert(class_dir);
+                target_paths[i] = QDir(class_dir).filePath(QFileInfo(image.path).fileName());
+                if (!used_target_paths.insert(target_paths[i]).second)
+                {
+    error = QString("文件夹导出目标文件名冲突: %1").arg(target_paths[i]);
+                return false;
+                }
             }
 
-            const QString class_dir = QDir(scope.stagingDir()).filePath(class_name);
-            class_dirs.insert(class_dir);
-            target_paths[i] = QDir(class_dir).filePath(QFileInfo(image.path).fileName());
-            if (!used_target_paths.insert(target_paths[i]).second)
+            for (const QString &class_dir : class_dirs)
             {
-                emit exportFinished(false, QString("文件夹导出目标文件名冲突: %1").arg(target_paths[i]));
-                return;
+                if (!ensureDirectory(class_dir, error))
+                {
+                return false;
+                }
             }
-        }
 
-        for (const QString &class_dir : class_dirs)
-        {
-            if (!ensureDirectory(class_dir, err_msg))
+            struct FolderExportResult
             {
-                emit exportFinished(false, err_msg);
-                return;
+                bool    success{true};
+                QString error;
+            };
+
+            if (isCancelRequested())
+            {
+    error = QStringLiteral("导出已取消");
+                return false;
             }
-        }
 
-        struct FolderExportResult
-        {
-            bool    success{true};
-            QString error;
-        };
-
-        if (isCancelRequested())
-        {
-            emit exportFinished(false, QStringLiteral("导出已取消"));
-            return;
-        }
-
-        std::vector<FolderExportResult> results(image_count);
-        parallelFor(static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
-                    [&](const std::size_t index)
-                    {
-                        QString task_error;
-                        if (!DatasetIO::copyFile(dataset.images[index].path, target_paths[index], task_error))
+            std::vector<FolderExportResult> results(image_count);
+            parallelFor(static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
+                        [&](const std::size_t index)
                         {
-                            results[index].success = false;
-                            results[index].error   = task_error;
-                        }
-                    },
-                    [this](const std::size_t completed, const std::size_t total)
-                    {
-                        updateProgress(5 + static_cast<int>(completed * 90 / std::max<std::size_t>(1, total)),
-                                       QString("已导出图像 %1/%2").arg(completed).arg(total));
-                    });
+                            QString task_error;
+                            if (!DatasetIO::copyFile(dataset.images[index].path, target_paths[index], task_error))
+                            {
+                                results[index].success = false;
+                                results[index].error   = task_error;
+                            }
+                        },
+                        [this](const std::size_t completed, const std::size_t total)
+                        {
+                            updateProgress(5 + static_cast<int>(completed * 90 / std::max<std::size_t>(1, total)),
+                                           QString("已导出图像 %1/%2").arg(completed).arg(total));
+                        });
 
-        if (isCancelRequested())
-        {
-            emit exportFinished(false, QStringLiteral("导出已取消"));
-            return;
-        }
-
-        int exported = 0;
-        for (int i = 0; i < image_count; ++i)
-        {
-            if (!results[i].success)
+            if (isCancelRequested())
             {
-                emit exportFinished(false, results[i].error);
-                return;
+    error = QStringLiteral("导出已取消");
+                return false;
             }
-            ++exported;
-        }
 
-        if (!DataIO::validateExportOutput(DataFormat::Folder, dataset, scope.stagingDir(), {}, err_msg))
-        {
-            emit exportFinished(false, err_msg);
-            return;
-        }
+            int exported = 0;
+            for (int i = 0; i < image_count; ++i)
+            {
+                if (!results[i].success)
+                {
+    error = results[i].error;
+                return false;
+                }
+                ++exported;
+            }
 
-        if (!scope.publish(err_msg))
-        {
-            emit exportFinished(false, err_msg);
-            return;
-        }
+            summary   = QString("文件夹导出完成: %1 个图像").arg(exported);
+            done_hint = QStringLiteral("文件夹导出完成");
+            return true;
+        });
 
-        updateProgress(100, QString("文件夹导出完成"));
-        emit exportFinished(true, QString("文件夹导出完成: %1 个图像").arg(exported));
-    }
-    catch (const std::exception &e)
-    {
-        spdlog::error("文件夹导出失败: {}", e.what());
-        emit exportFinished(false, QString("文件夹导出失败: %1").arg(e.what()));
-    }
+    if (result.success)
+        updateProgress(100, result.done_hint);
+    emit exportFinished(result.success, result.message);
 }
 
 } // namespace dltool::data

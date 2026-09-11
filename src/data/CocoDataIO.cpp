@@ -1,5 +1,6 @@
 #include "data/DataIO.h"
 #include "DataIOInternal.h"
+#include "ExportPipeline.h"
 #include "data/ParallelFor.h"
 
 #include "common/GeometryKernel.h"
@@ -841,233 +842,212 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
 
 void COCOIO::doExport(ExportDataset dataset, QString output_dir, const int thread_count)
 {
-    try
-    {
-        QString err_msg;
-        if (!DataIO::checkExportSourceCollision(dataset, output_dir, DataFormat::COCO, err_msg))
+    const auto result = detail::runExportPipeline(
+        DataFormat::COCO, dataset, output_dir, {}, QStringLiteral("COCO"),
+        [this, &dataset, thread_count](const QString &staging_dir, QString &error, QString &summary,
+                                       QString &done_hint) -> bool
         {
-            emit exportFinished(false, err_msg);
-            return;
-        }
-
-        SafeExportScope scope(output_dir);
-        if (!scope.isValid())
-        {
-            emit exportFinished(false, scope.error());
-            return;
-        }
-
-        const QString images_dir      = QDir(scope.stagingDir()).filePath(QStringLiteral("images"));
-        const QString annotations_dir = QDir(scope.stagingDir()).filePath(QStringLiteral("annotations"));
-        if (!ensureDirectory(images_dir, err_msg) || !ensureDirectory(annotations_dir, err_msg))
-        {
-            emit exportFinished(false, err_msg);
-            return;
-        }
-
-        nlohmann::json json_data;
-        json_data["info"] = {
-            {       "year",                       QDateTime::currentDateTime().date().year()},
-            {    "version",                                                            "1.0"},
-            {"description",                               dataset.dataset_name.toStdString()},
-            {       "date", QDateTime::currentDateTime().toString(Qt::ISODate).toStdString()},
-        };
-        json_data["licenses"]    = nlohmann::json::array();
-        json_data["images"]      = nlohmann::json::array();
-        json_data["annotations"] = nlohmann::json::array();
-        json_data["categories"]  = nlohmann::json::array();
-
-        std::map<QString, int>     used_image_names;
-        std::map<int64_t, QString> image_name_by_id;
-        const auto                &image_name_by_id_readonly = image_name_by_id;
-        const int                  image_count               = static_cast<int>(dataset.images.size());
-
-        for (int i = 0; i < image_count; ++i)
-        {
-            const ExportImage &image     = dataset.images[i];
-            const QString      file_name = DatasetIO::uniqueFileName(image.path, image.image_id, used_image_names);
-            used_image_names[file_name]++;
-            image_name_by_id[image.image_id] = file_name;
-        }
-
-        struct CocoImageExportResult
-        {
-            bool           success{true};
-            QString        error;
-            nlohmann::json image_json;
-        };
-
-        if (isCancelRequested())
-        {
-            emit exportFinished(false, QStringLiteral("导出已取消"));
-            return;
-        }
-
-        std::vector<CocoImageExportResult> image_results(image_count);
-        parallelFor(static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
-                    [&](const std::size_t index)
-                    {
-                        const ExportImage &image     = dataset.images[index];
-                        const QString      file_name = image_name_by_id_readonly.at(image.image_id);
-                        QString            task_error;
-                        if (!DatasetIO::copyFile(image.path, QDir(images_dir).filePath(file_name), task_error))
-                        {
-                            image_results[index].success = false;
-                            image_results[index].error   = task_error;
-                            return;
-                        }
-
-                        image_results[index].image_json = {
-                            {       "id",          image.image_id},
-                            {"file_name", file_name.toStdString()},
-                            {    "width",             image.width},
-                            {   "height",            image.height},
-                            {  "license",                       0},
-                        };
-                    },
-                    [this](const std::size_t completed, const std::size_t total)
-                    {
-                        updateProgress(5 + static_cast<int>(completed * 40 / std::max<std::size_t>(1, total)),
-                                       QString("已复制 COCO 图像 %1/%2").arg(completed).arg(total));
-                    });
-
-        if (isCancelRequested())
-        {
-            emit exportFinished(false, QStringLiteral("导出已取消"));
-            return;
-        }
-
-        for (int i = 0; i < image_count; ++i)
-        {
-            if (!image_results[i].success)
+            const QString images_dir      = QDir(staging_dir).filePath(QStringLiteral("images"));
+            const QString annotations_dir = QDir(staging_dir).filePath(QStringLiteral("annotations"));
+            if (!ensureDirectory(images_dir, error) || !ensureDirectory(annotations_dir, error))
             {
-                emit exportFinished(false, image_results[i].error);
-                return;
+                return false;
             }
-            json_data["images"].push_back(std::move(image_results[i].image_json));
-        }
 
-        for (const ExportLabelClass &label_class : dataset.label_classes)
-        {
-            json_data["categories"].push_back({
-                {           "id",                 label_class.id},
-                {         "name", label_class.name.toStdString()},
-                {"supercategory",                             ""},
-            });
-        }
+            nlohmann::json json_data;
+            json_data["info"] = {
+                {       "year",                       QDateTime::currentDateTime().date().year()},
+                {    "version",                                                            "1.0"},
+                {"description",                               dataset.dataset_name.toStdString()},
+                {       "date", QDateTime::currentDateTime().toString(Qt::ISODate).toStdString()},
+            };
+            json_data["licenses"]    = nlohmann::json::array();
+            json_data["images"]      = nlohmann::json::array();
+            json_data["annotations"] = nlohmann::json::array();
+            json_data["categories"]  = nlohmann::json::array();
 
-        const int label_count = static_cast<int>(dataset.labels.size());
+            std::map<QString, int>     used_image_names;
+            std::map<int64_t, QString> image_name_by_id;
+            const auto                &image_name_by_id_readonly = image_name_by_id;
+            const int                  image_count               = static_cast<int>(dataset.images.size());
 
-        struct CocoAnnotationExportResult
-        {
-            bool           valid{false};
-            nlohmann::json annotation_json;
-        };
+            for (int i = 0; i < image_count; ++i)
+            {
+                const ExportImage &image     = dataset.images[i];
+                const QString      file_name = DatasetIO::uniqueFileName(image.path, image.image_id, used_image_names);
+                used_image_names[file_name]++;
+                image_name_by_id[image.image_id] = file_name;
+            }
 
-        std::vector<CocoAnnotationExportResult> annotation_results(label_count);
-        parallelFor(static_cast<std::size_t>(label_count), thread_count, cancel_requested_,
-                    [&](const std::size_t index)
-                    {
-                        const ExportLabel &label = dataset.labels[index];
-                        const double       x     = label.data.value(QStringLiteral("x")).toDouble();
-                        const double       y     = label.data.value(QStringLiteral("y")).toDouble();
-                        const double       w     = label.data.value(QStringLiteral("width")).toDouble();
-                        const double       h     = label.data.value(QStringLiteral("height")).toDouble();
-                        if (w <= 0 || h <= 0)
-                            return;
+            struct CocoImageExportResult
+            {
+                bool           success{true};
+                QString        error;
+                nlohmann::json image_json;
+            };
 
-                        nlohmann::json             segmentation = nlohmann::json::array();
-                        double                     area         = w * h;
-                        const std::vector<QPointF> points
-                            = DatasetIO::variantListToPoints(label.data.value(QStringLiteral("points")));
-                        if (points.size() >= 3)
+            if (isCancelRequested())
+            {
+                error = QStringLiteral("导出已取消");
+                return false;
+            }
+
+            std::vector<CocoImageExportResult> image_results(image_count);
+            parallelFor(static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
+                        [&](const std::size_t index)
                         {
-                            nlohmann::json flat_points = nlohmann::json::array();
-                            for (const QPointF &point : points)
+                            const ExportImage &image     = dataset.images[index];
+                            const QString      file_name = image_name_by_id_readonly.at(image.image_id);
+                            QString            task_error;
+                            if (!DatasetIO::copyFile(image.path, QDir(images_dir).filePath(file_name), task_error))
                             {
-                                flat_points.push_back(point.x());
-                                flat_points.push_back(point.y());
+                                image_results[index].success = false;
+                                image_results[index].error   = task_error;
+                                return;
                             }
-                            segmentation.push_back(flat_points);
-                            area = dltool::common::polygonArea(points);
-                            if (area <= 0)
-                                area = w * h;
-                        }
-                        else if ((target_method_ == DeepLearningMethod::Segmentation
-                                  || target_method_ == DeepLearningMethod::AnomalyDetection)
-                                 && w > 0.0 && h > 0.0)
+
+                            image_results[index].image_json = {
+                                {       "id",          image.image_id},
+                                {"file_name", file_name.toStdString()},
+                                {    "width",             image.width},
+                                {   "height",            image.height},
+                                {  "license",                       0},
+                            };
+                        },
+                        [this](const std::size_t completed, const std::size_t total)
                         {
-                            const std::vector<QPointF> rect_poly
-                                = dltool::common::geometry::rectangleToPolygon(QPointF(x, y), QPointF(x + w, y + h));
-                            if (rect_poly.size() >= 3)
+                            updateProgress(5 + static_cast<int>(completed * 40 / std::max<std::size_t>(1, total)),
+                                           QString("已复制 COCO 图像 %1/%2").arg(completed).arg(total));
+                        });
+
+            if (isCancelRequested())
+            {
+                error = QStringLiteral("导出已取消");
+                return false;
+            }
+
+            for (int i = 0; i < image_count; ++i)
+            {
+                if (!image_results[i].success)
+                {
+                    error = image_results[i].error;
+                    return false;
+                }
+                json_data["images"].push_back(std::move(image_results[i].image_json));
+            }
+
+            for (const ExportLabelClass &label_class : dataset.label_classes)
+            {
+                json_data["categories"].push_back({
+                    {           "id",                 label_class.id},
+                    {         "name", label_class.name.toStdString()},
+                    {"supercategory",                             ""},
+                });
+            }
+
+            const int label_count = static_cast<int>(dataset.labels.size());
+
+            struct CocoAnnotationExportResult
+            {
+                bool           valid{false};
+                nlohmann::json annotation_json;
+            };
+
+            std::vector<CocoAnnotationExportResult> annotation_results(label_count);
+            parallelFor(static_cast<std::size_t>(label_count), thread_count, cancel_requested_,
+                        [&](const std::size_t index)
+                        {
+                            const ExportLabel &label = dataset.labels[index];
+                            const double       x     = label.data.value(QStringLiteral("x")).toDouble();
+                            const double       y     = label.data.value(QStringLiteral("y")).toDouble();
+                            const double       w     = label.data.value(QStringLiteral("width")).toDouble();
+                            const double       h     = label.data.value(QStringLiteral("height")).toDouble();
+                            if (w <= 0 || h <= 0)
+                                return;
+
+                            nlohmann::json             segmentation = nlohmann::json::array();
+                            double                     area         = w * h;
+                            const std::vector<QPointF> points
+                                = DatasetIO::variantListToPoints(label.data.value(QStringLiteral("points")));
+                            if (points.size() >= 3)
                             {
                                 nlohmann::json flat_points = nlohmann::json::array();
-                                for (const QPointF &point : rect_poly)
+                                for (const QPointF &point : points)
                                 {
                                     flat_points.push_back(point.x());
                                     flat_points.push_back(point.y());
                                 }
                                 segmentation.push_back(flat_points);
+                                area = dltool::common::polygonArea(points);
+                                if (area <= 0)
+                                    area = w * h;
                             }
-                        }
+                            else if ((target_method_ == DeepLearningMethod::Segmentation
+                                      || target_method_ == DeepLearningMethod::AnomalyDetection)
+                                     && w > 0.0 && h > 0.0)
+                            {
+                                const std::vector<QPointF> rect_poly
+                                    = dltool::common::geometry::rectangleToPolygon(QPointF(x, y), QPointF(x + w, y + h));
+                                if (rect_poly.size() >= 3)
+                                {
+                                    nlohmann::json flat_points = nlohmann::json::array();
+                                    for (const QPointF &point : rect_poly)
+                                    {
+                                        flat_points.push_back(point.x());
+                                        flat_points.push_back(point.y());
+                                    }
+                                    segmentation.push_back(flat_points);
+                                }
+                            }
 
-                        annotation_results[index].annotation_json = {
-                            {          "id",       label.label_id},
-                            {    "image_id",       label.image_id},
-                            { "category_id", label.label_class_id},
-                            {        "bbox",         {x, y, w, h}},
-                            {        "area",                 area},
-                            {     "iscrowd",                    0},
-                            {"segmentation",         segmentation},
-                        };
-                        annotation_results[index].valid = true;
-                    },
-                    [this](const std::size_t completed, const std::size_t total)
-                    {
-                        updateProgress(50 + static_cast<int>(completed * 40 / std::max<std::size_t>(1, total)),
-                                       QString("已生成 COCO 标注 %1/%2").arg(completed).arg(total));
-                    });
+                            annotation_results[index].annotation_json = {
+                                {          "id",       label.label_id},
+                                {    "image_id",       label.image_id},
+                                { "category_id", label.label_class_id},
+                                {        "bbox",         {x, y, w, h}},
+                                {        "area",                 area},
+                                {     "iscrowd",                    0},
+                                {"segmentation",         segmentation},
+                            };
+                            annotation_results[index].valid = true;
+                        },
+                        [this](const std::size_t completed, const std::size_t total)
+                        {
+                            updateProgress(50 + static_cast<int>(completed * 40 / std::max<std::size_t>(1, total)),
+                                           QString("已生成 COCO 标注 %1/%2").arg(completed).arg(total));
+                        });
 
-        if (isCancelRequested())
-        {
-            emit exportFinished(false, QStringLiteral("导出已取消"));
-            return;
-        }
+            if (isCancelRequested())
+            {
+                error = QStringLiteral("导出已取消");
+                return false;
+            }
 
-        for (int i = 0; i < label_count; ++i)
-        {
-            if (annotation_results[i].valid)
-                json_data["annotations"].push_back(std::move(annotation_results[i].annotation_json));
-        }
+            for (int i = 0; i < label_count; ++i)
+            {
+                if (annotation_results[i].valid)
+                    json_data["annotations"].push_back(std::move(annotation_results[i].annotation_json));
+            }
 
-        QFile annotation_file(QDir(annotations_dir).filePath(QStringLiteral("instances.json")));
-        if (!annotation_file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
-        {
-            emit exportFinished(false, QString("无法写入标注文件: %1").arg(annotation_file.fileName()));
-            return;
-        }
+            QFile annotation_file(QDir(annotations_dir).filePath(QStringLiteral("instances.json")));
+            if (!annotation_file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+            {
+                error = QString("无法写入标注文件: %1").arg(annotation_file.fileName());
+                return false;
+            }
 
-        annotation_file.write(QByteArray::fromStdString(json_data.dump(2)));
-        annotation_file.close();
-        if (!DataIO::validateExportOutput(DataFormat::COCO, dataset, scope.stagingDir(), {}, err_msg))
-        {
-            emit exportFinished(false, err_msg);
-            return;
-        }
-        if (!scope.publish(err_msg))
-        {
-            emit exportFinished(false, err_msg);
-            return;
-        }
-        updateProgress(100, QString("COCO 标注文件已写入"));
-        emit exportFinished(
-            true, QString("COCO 导出完成: %1 个图像, %2 个标注").arg(dataset.images.size()).arg(dataset.labels.size()));
-    }
-    catch (const std::exception &e)
-    {
-        spdlog::error("COCO 导出失败: {}", e.what());
-        emit exportFinished(false, QString("COCO 导出失败: %1").arg(e.what()));
-    }
+            annotation_file.write(QByteArray::fromStdString(json_data.dump(2)));
+            annotation_file.close();
+            summary   = QString("COCO 导出完成: %1 个图像, %2 个标注")
+                            .arg(dataset.images.size())
+                            .arg(dataset.labels.size());
+            done_hint = QStringLiteral("COCO 标注文件已写入");
+            return true;
+        });
+
+    if (result.success)
+        updateProgress(100, result.done_hint);
+    emit exportFinished(result.success, result.message);
 }
 
 } // namespace dltool::data

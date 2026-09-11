@@ -1,5 +1,6 @@
 #include "data/DataIO.h"
 #include "DataIOInternal.h"
+#include "ExportPipeline.h"
 #include "data/ParallelFor.h"
 
 #include "common/GeometryKernel.h"
@@ -470,184 +471,161 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
 
 void LabelMeIO::doExport(ExportDataset dataset, QString output_dir, const int thread_count)
 {
-    try
-    {
-        QString err_msg;
-        if (!DataIO::checkExportSourceCollision(dataset, output_dir, DataFormat::LabelMe, err_msg))
+    const auto result = detail::runExportPipeline(
+        DataFormat::LabelMe, dataset, output_dir, {}, QStringLiteral("LabelMe"),
+        [this, &dataset, thread_count](const QString &staging_dir, QString &error, QString &summary,
+                                       QString &done_hint) -> bool
         {
-            emit exportFinished(false, err_msg);
-            return;
-        }
 
-        SafeExportScope scope(output_dir);
-        if (!scope.isValid())
-        {
-            emit exportFinished(false, scope.error());
-            return;
-        }
-
-        const QString images_dir      = QDir(scope.stagingDir()).filePath(QStringLiteral("images"));
-        const QString annotations_dir = QDir(scope.stagingDir()).filePath(QStringLiteral("annotations"));
-        if (!ensureDirectory(images_dir, err_msg) || !ensureDirectory(annotations_dir, err_msg))
-        {
-            emit exportFinished(false, err_msg);
-            return;
-        }
-
-        updateProgress(5, QString("正在导出 LabelMe 数据..."));
-
-        std::map<QString, int>     used_image_names;
-        std::map<QString, int>     used_image_stems;
-        std::map<int64_t, QString> image_name_by_id;
-        const auto                &image_name_by_id_readonly = image_name_by_id;
-        const int                  image_count               = static_cast<int>(dataset.images.size());
-
-        for (int i = 0; i < image_count; ++i)
-        {
-            const ExportImage &image = dataset.images[i];
-            const QString file_name  = detail::uniqueImageName(image.path, image.image_id, used_image_names, used_image_stems);
-            used_image_names[file_name]++;
-            used_image_stems[QFileInfo(file_name).completeBaseName()]++;
-            image_name_by_id[image.image_id] = file_name;
-        }
-
-        std::map<int64_t, QString> class_name_by_id;
-        for (const ExportLabelClass &label_class : dataset.label_classes)
-            class_name_by_id[label_class.id] = label_class.name;
-
-        std::map<int64_t, std::vector<ExportLabel>> labels_by_image_id;
-        for (const ExportLabel &label : dataset.labels) labels_by_image_id[label.image_id].push_back(label);
-        const auto &class_name_by_id_readonly   = class_name_by_id;
-        const auto &labels_by_image_id_readonly = labels_by_image_id;
-
-        struct LabelMeExportResult
-        {
-            bool    success{true};
-            QString error;
-        };
-
-        if (isCancelRequested())
-        {
-            emit exportFinished(false, QStringLiteral("导出已取消"));
-            return;
-        }
-
-        std::vector<LabelMeExportResult> results(image_count);
-        parallelFor(
-            static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
-            [&](const std::size_t index)
+            const QString images_dir      = QDir(staging_dir).filePath(QStringLiteral("images"));
+            const QString annotations_dir = QDir(staging_dir).filePath(QStringLiteral("annotations"));
+            if (!ensureDirectory(images_dir, error) || !ensureDirectory(annotations_dir, error))
             {
-                const ExportImage &image      = dataset.images[index];
-                const QString      image_name = image_name_by_id_readonly.at(image.image_id);
-                QString            task_error;
-                if (!DatasetIO::copyFile(image.path, QDir(images_dir).filePath(image_name), task_error))
+                return false;
+            }
+
+            updateProgress(5, QString("正在导出 LabelMe 数据..."));
+
+            std::map<QString, int>     used_image_names;
+            std::map<QString, int>     used_image_stems;
+            std::map<int64_t, QString> image_name_by_id;
+            const auto                &image_name_by_id_readonly = image_name_by_id;
+            const int                  image_count               = static_cast<int>(dataset.images.size());
+
+            for (int i = 0; i < image_count; ++i)
+            {
+                const ExportImage &image = dataset.images[i];
+                const QString file_name  = detail::uniqueImageName(image.path, image.image_id, used_image_names, used_image_stems);
+                used_image_names[file_name]++;
+                used_image_stems[QFileInfo(file_name).completeBaseName()]++;
+                image_name_by_id[image.image_id] = file_name;
+            }
+
+            std::map<int64_t, QString> class_name_by_id;
+            for (const ExportLabelClass &label_class : dataset.label_classes)
+                class_name_by_id[label_class.id] = label_class.name;
+
+            std::map<int64_t, std::vector<ExportLabel>> labels_by_image_id;
+            for (const ExportLabel &label : dataset.labels) labels_by_image_id[label.image_id].push_back(label);
+            const auto &class_name_by_id_readonly   = class_name_by_id;
+            const auto &labels_by_image_id_readonly = labels_by_image_id;
+
+            struct LabelMeExportResult
+            {
+                bool    success{true};
+                QString error;
+            };
+
+            if (isCancelRequested())
+            {
+                error = QStringLiteral("导出已取消");
+                return false;
+            }
+
+            std::vector<LabelMeExportResult> results(image_count);
+            parallelFor(
+                static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
+                [&](const std::size_t index)
                 {
-                    results[index].success = false;
-                    results[index].error   = task_error;
-                    return;
-                }
-
-                nlohmann::json json_data;
-                json_data["version"]     = "5.0.1";
-                json_data["flags"]       = nlohmann::json::object();
-                json_data["shapes"]      = nlohmann::json::array();
-                json_data["imagePath"]   = image_name.toStdString();
-                json_data["imageData"]   = nullptr;
-                json_data["imageHeight"] = image.height;
-                json_data["imageWidth"]  = image.width;
-
-                const auto labels_it = labels_by_image_id_readonly.find(image.image_id);
-                if (labels_it != labels_by_image_id_readonly.end())
-                    for (const ExportLabel &label : labels_it->second)
+                    const ExportImage &image      = dataset.images[index];
+                    const QString      image_name = image_name_by_id_readonly.at(image.image_id);
+                    QString            task_error;
+                    if (!DatasetIO::copyFile(image.path, QDir(images_dir).filePath(image_name), task_error))
                     {
-                        const double x = label.data.value(QStringLiteral("x")).toDouble();
-                        const double y = label.data.value(QStringLiteral("y")).toDouble();
-                        const double w = label.data.value(QStringLiteral("width")).toDouble();
-                        const double h = label.data.value(QStringLiteral("height")).toDouble();
-                        if (w <= 0 || h <= 0)
-                            continue;
-
-                        nlohmann::json shape;
-                        const auto     class_it = class_name_by_id_readonly.find(label.label_class_id);
-                        shape["label"] = (class_it != class_name_by_id_readonly.end() ? class_it->second : QString())
-                                             .toStdString();
-                        shape["group_id"]    = nullptr;
-                        shape["description"] = "";
-                        shape["flags"]       = nlohmann::json::object();
-
-                        const std::vector<QPointF> points
-                            = DatasetIO::variantListToPoints(label.data.value(QStringLiteral("points")));
-                        if (points.size() >= 3)
-                        {
-                            nlohmann::json point_array = nlohmann::json::array();
-                            for (const QPointF &point : points) point_array.push_back({point.x(), point.y()});
-                            shape["points"]     = point_array;
-                            shape["shape_type"] = "polygon";
-                        }
-                        else
-                        {
-                            shape["points"] = {
-                                {    x,     y},
-                                {x + w, y + h}
-                            };
-                            shape["shape_type"] = "rectangle";
-                        }
-                        json_data["shapes"].push_back(shape);
+                        results[index].success = false;
+                        results[index].error   = task_error;
+                        return;
                     }
 
-                const QString annotation_name = QString("%1.json").arg(QFileInfo(image_name).completeBaseName());
-                QFile         annotation_file(QDir(annotations_dir).filePath(annotation_name));
-                if (!annotation_file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+                    nlohmann::json json_data;
+                    json_data["version"]     = "5.0.1";
+                    json_data["flags"]       = nlohmann::json::object();
+                    json_data["shapes"]      = nlohmann::json::array();
+                    json_data["imagePath"]   = image_name.toStdString();
+                    json_data["imageData"]   = nullptr;
+                    json_data["imageHeight"] = image.height;
+                    json_data["imageWidth"]  = image.width;
+
+                    const auto labels_it = labels_by_image_id_readonly.find(image.image_id);
+                    if (labels_it != labels_by_image_id_readonly.end())
+                        for (const ExportLabel &label : labels_it->second)
+                        {
+                            const double x = label.data.value(QStringLiteral("x")).toDouble();
+                            const double y = label.data.value(QStringLiteral("y")).toDouble();
+                            const double w = label.data.value(QStringLiteral("width")).toDouble();
+                            const double h = label.data.value(QStringLiteral("height")).toDouble();
+                            if (w <= 0 || h <= 0)
+                                continue;
+
+                            nlohmann::json shape;
+                            const auto     class_it = class_name_by_id_readonly.find(label.label_class_id);
+                            shape["label"] = (class_it != class_name_by_id_readonly.end() ? class_it->second : QString())
+                                                 .toStdString();
+                            shape["group_id"]    = nullptr;
+                            shape["description"] = "";
+                            shape["flags"]       = nlohmann::json::object();
+
+                            const std::vector<QPointF> points
+                                = DatasetIO::variantListToPoints(label.data.value(QStringLiteral("points")));
+                            if (points.size() >= 3)
+                            {
+                                nlohmann::json point_array = nlohmann::json::array();
+                                for (const QPointF &point : points) point_array.push_back({point.x(), point.y()});
+                                shape["points"]     = point_array;
+                                shape["shape_type"] = "polygon";
+                            }
+                            else
+                            {
+                                shape["points"] = {
+                                    {    x,     y},
+                                    {x + w, y + h}
+                                };
+                                shape["shape_type"] = "rectangle";
+                            }
+                            json_data["shapes"].push_back(shape);
+                        }
+
+                    const QString annotation_name = QString("%1.json").arg(QFileInfo(image_name).completeBaseName());
+                    QFile         annotation_file(QDir(annotations_dir).filePath(annotation_name));
+                    if (!annotation_file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+                    {
+                        results[index].success = false;
+                        results[index].error   = QString("无法写入标注文件: %1").arg(annotation_file.fileName());
+                        return;
+                    }
+                    annotation_file.write(QByteArray::fromStdString(json_data.dump(2)));
+                },
+                [this](const std::size_t completed, const std::size_t total)
                 {
-                    results[index].success = false;
-                    results[index].error   = QString("无法写入标注文件: %1").arg(annotation_file.fileName());
-                    return;
-                }
-                annotation_file.write(QByteArray::fromStdString(json_data.dump(2)));
-            },
-            [this](const std::size_t completed, const std::size_t total)
-            {
-                updateProgress(5 + static_cast<int>(completed * 90 / std::max<std::size_t>(1, total)),
-                               QString("已处理 LabelMe 导出 %1/%2").arg(completed).arg(total));
-            });
+                    updateProgress(5 + static_cast<int>(completed * 90 / std::max<std::size_t>(1, total)),
+                                   QString("已处理 LabelMe 导出 %1/%2").arg(completed).arg(total));
+                });
 
-        if (isCancelRequested())
-        {
-            emit exportFinished(false, QStringLiteral("导出已取消"));
-            return;
-        }
-
-        for (int i = 0; i < image_count; ++i)
-        {
-            if (!results[i].success)
+            if (isCancelRequested())
             {
-                emit exportFinished(false, results[i].error);
-                return;
+                error = QStringLiteral("导出已取消");
+                return false;
             }
-        }
 
-        if (!DataIO::validateExportOutput(DataFormat::LabelMe, dataset, scope.stagingDir(), {}, err_msg))
-        {
-            emit exportFinished(false, err_msg);
-            return;
-        }
+            for (int i = 0; i < image_count; ++i)
+            {
+                if (!results[i].success)
+                {
+                    error = results[i].error;
+                    return false;
+                }
+            }
 
-        if (!scope.publish(err_msg))
-        {
-            emit exportFinished(false, err_msg);
-            return;
-        }
+            summary   = QString("LabelMe 导出完成: %1 个图像, %2 个标注")
+                            .arg(dataset.images.size())
+                            .arg(dataset.labels.size());
+            done_hint = QStringLiteral("LabelMe 导出完成");
+            return true;
+        });
 
-        updateProgress(100, QString("LabelMe 导出完成"));
-        emit exportFinished(
-            true,
-            QString("LabelMe 导出完成: %1 个图像, %2 个标注").arg(dataset.images.size()).arg(dataset.labels.size()));
-    }
-    catch (const std::exception &e)
-    {
-        spdlog::error("LabelMe 导出失败: {}", e.what());
-        emit exportFinished(false, QString("LabelMe 导出失败: %1").arg(e.what()));
-    }
+    if (result.success)
+        updateProgress(100, result.done_hint);
+    emit exportFinished(result.success, result.message);
 }
 
 } // namespace dltool::data
