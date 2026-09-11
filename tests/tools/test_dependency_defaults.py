@@ -566,7 +566,7 @@ def test_isolated_installed_package_desktop_smoke_test() -> None:
                 return True
         return False
 
-    # 若安装目录不存在、缺少 marker、或可执行文件及任一工程库哈希与当前构建不一致，触发 packaging 脚本生成/同步最新构建
+    # 若安装目录不存在、缺少 marker、或可执行文件及任一工程库哈希与当前构建不一致，触发 packaging 脚本生成完整发布包
     if not (package_dir / ".dltool_package").is_file() or project_binary_mismatch():
         package_script = ROOT / "tools" / "package_app.py"
         pack_cmd = [
@@ -578,7 +578,6 @@ def test_isolated_installed_package_desktop_smoke_test() -> None:
             str(package_dir),
             "--config",
             "release",
-            "--allow-missing-dependencies",
         ]
         if (package_dir / ".dltool_package").is_file():
             pack_cmd.append("--no-clean")
@@ -631,6 +630,7 @@ def test_isolated_installed_package_desktop_smoke_test() -> None:
         sys32 = os.path.join(sys_root, "System32")
         clean_env["SystemRoot"] = sys_root
         clean_env["PATH"] = f"{package_dir};{sys32};{sys_root}"
+        clean_env["QT_QPA_PLATFORM"] = "offscreen"
         clean_env["QT_QUICK_BACKEND"] = "software"
         clean_env["QSG_RHI_BACKEND"] = "software"
         clean_env["QML_DISABLE_DISK_CACHE"] = "1"

@@ -494,7 +494,17 @@ def invoke_windeployqt(build_dir: Path, install_dir: Path, exe: Path, explicit: 
     if tool is None:
         raise RuntimeError("cannot find windeployqt; pass --windeployqt <path>")
     qml_dir = build_dir / PROJECT_NAME
-    command = [str(tool), "--dir", str(install_dir), "--qmldir", str(qml_dir), "--release", str(exe)]
+    command = [
+        str(tool),
+        "--dir",
+        str(install_dir),
+        "--qmldir",
+        str(qml_dir),
+        "--release",
+        "--include-plugins",
+        "qoffscreen",
+        str(exe),
+    ]
     print("run " + " ".join(command))
     subprocess.run(command, check=True)
 
