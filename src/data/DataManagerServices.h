@@ -31,9 +31,14 @@ namespace dltool::data {
 
 class ImageInfoListModel;
 class GlobalFilter;
+class ImageInstancesViewModel;
+class LabelInstancesViewModel;
 
 /// 导出准备工作回调签名（与 DataManager::DatasetExportWork 等价，避免依赖公开头）。
 using DatasetExportWorkFn = std::function<void(const DatasetExportSource &, DataOperationWorkflow::Result &)>;
+
+/// 图像操作完成回调签名（与 DataManager::ImageOperationCompletion 等价）。
+using ImageOperationCompletionFn = std::function<void(bool, const QString &)>;
 
 struct DataManagerServices
 {
@@ -46,6 +51,8 @@ struct DataManagerServices
     LabelInstancesListModel           *label_source{nullptr};
     ImageInfoListModel                *image_info{nullptr};
     GlobalFilter                      *global_filter{nullptr};
+    ImageInstancesViewModel           *image_instances{nullptr};
+    LabelInstancesViewModel           *label_instances{nullptr};
     int                                method{0};
     QString                            project_dir;
 
@@ -53,6 +60,10 @@ struct DataManagerServices
     QObject *host{nullptr};
 
     std::function<bool()> shutting_down;
+
+    /// 标注加载状态与「加载期间数据变更」标记（生命周期归 facade）。
+    std::function<bool()> is_labels_loading;
+    std::function<void()> mark_labels_changed_during_loading;
 
     /// 登记进行中的工作流句柄，供关闭路径统一等待与取消。
     std::function<DataOperationWorkflow::HandlePtr(DataOperationWorkflow::HandlePtr)> track_operation;

@@ -36,6 +36,7 @@ namespace dltool::data {
 
 class DataExportService;
 class DataImportService;
+class ImageTransferService;
 struct DataManagerServices;
 
 class DATA_API DataManager : public QObject
@@ -210,10 +211,7 @@ public:
         return dataset_deletion_running_;
     }
 
-    bool imageOperationRunning() const
-    {
-        return image_operation_running_;
-    }
+    bool imageOperationRunning() const;
 
     bool dataOperationRunning() const
     {
@@ -443,15 +441,6 @@ private:
                             const QString &err_msg, qint64 elapsed_ms);
     void commitDatasetDeletion(const std::vector<int64_t> &dataset_ids, bool success, const QString &err_msg,
                                qint64 elapsed_ms);
-    void commitImageDeletion(const std::vector<int64_t> &image_ids, bool success, const QString &err_msg,
-                             qint64 elapsed_ms);
-    void commitImageMove(const std::vector<int64_t> &image_ids, int64_t target_dataset_id, bool success,
-                         const QString &err_msg, qint64 elapsed_ms, ImageOperationCompletion completion = {},
-                         bool notify_user = true);
-
-    struct ImageCopyResult;
-    void commitImageCopy(const std::shared_ptr<ImageCopyResult> &result,
-                         const DataOperationWorkflow::Result    &operation);
 
     struct DatasetSplitCopyResult;
     void commitDatasetSplit(const std::shared_ptr<DatasetSplitCopyResult> &result,
@@ -526,8 +515,9 @@ private:
     bool                               cleaned_up_{false};
 
     /// 用例服务（模块私有实现，见 src/data/DataManagerServices.h）。
-    std::unique_ptr<DataExportService> export_service_;
-    std::unique_ptr<DataImportService> import_service_;
+    std::unique_ptr<DataExportService>    export_service_;
+    std::unique_ptr<DataImportService>    import_service_;
+    std::unique_ptr<ImageTransferService> image_transfer_service_;
 };
 
 } // namespace dltool::data

@@ -3,6 +3,7 @@
 #include "DataExportService.h"
 #include "DataManagerServices.h"
 #include "DataImportService.h"
+#include "ImageTransferService.h"
 #include "common/Utils.h"
 #include "data/CategoryStatisticsModel.h"
 #include "data/DataFormat.h"
@@ -84,14 +85,6 @@ struct ImageCopyRequest
 
 } // namespace
 
-struct DataManager::ImageCopyResult
-{
-    std::vector<LoadedImageInstance> images;
-    std::vector<LoadedLabelInstance> labels;
-    ImageOperationCompletion         completion;
-    bool                             notify_user{true};
-};
-
 namespace {
 
 struct DatasetSplitRequest
@@ -130,6 +123,12 @@ bool DataManager::importRunning() const
     return import_service_ != nullptr && import_service_->importRunning();
 }
 
+bool DataManager::imageOperationRunning() const
+{
+    return image_operation_running_
+           || (image_transfer_service_ != nullptr && image_transfer_service_->imageOperationRunning());
+}
+
 DataManagerServices DataManager::makeServices()
 {
     DataManagerServices services;
@@ -139,12 +138,16 @@ DataManagerServices DataManager::makeServices()
     services.label_classes = label_classes_;
     services.image_tags    = image_tags_;
     services.label_source  = label_source_;
-    services.image_info    = image_info_;
-    services.global_filter = global_filter_;
+    services.image_info      = image_info_;
+    services.global_filter   = global_filter_;
+    services.image_instances = image_instances_;
+    services.label_instances = label_instances_;
     services.method        = method_;
     services.project_dir   = project_dir_;
     services.host          = this;
     services.shutting_down = [this]() { return shutting_down_; };
+    services.is_labels_loading = [this]() { return labels_loading_; };
+    services.mark_labels_changed_during_loading = [this]() { labels_changed_during_loading_ = true; };
     services.track_operation = [this](DataOperationWorkflow::HandlePtr handle)
     { return trackOperation(std::move(handle)); };
     services.set_data_operation_running = [this](const bool running) { setDataOperationRunning(running); };
@@ -154,6 +157,10 @@ DataManagerServices DataManager::makeServices()
     services.emit_import_label_classes_scanned = [this](const bool success, QVariantList label_classes,
                                                         const QString &message)
     { emit importLabelClassesScanned(success, std::move(label_classes), message); };
+    services.emit_image_operation_running_changed = [this]() { emit imageOperationRunningChanged(); };
+    services.emit_dataset_split_finished          = [this](const bool success, const QString &message)
+    { emit datasetSplitFinished(success, message); };
+    services.emit_dataset_deletion_running_changed = [this]() { emit datasetDeletionRunningChanged(); };
     services.rebuild_label_relations = [this]() { rebuildLabelRelations(); };
     services.run_dataset_export_async = [this](QObject *context, DatasetExportRequest request,
                                                DataOperationWorkflow::Options options, DatasetExportWorkFn work,
@@ -388,8 +395,9 @@ void DataManager::init(const int method)
     custom_filter_items_->populateFromCustomConditions();
 
     // 用例服务共享上下文：模型就绪后装配。
-    export_service_ = std::make_unique<DataExportService>(makeServices());
-    import_service_ = std::make_unique<DataImportService>(makeServices());
+    export_service_         = std::make_unique<DataExportService>(makeServices());
+    import_service_         = std::make_unique<DataImportService>(makeServices());
+    image_transfer_service_ = std::make_unique<ImageTransferService>(makeServices());
 
     connect(global_filter_, &GlobalFilter::customFilterSearchResultsChanged, this,
             [this](bool has_image_search_results, bool has_label_search_results)
@@ -1098,199 +1106,6 @@ void DataManager::commitDatasetDeletion(const std::vector<int64_t> &dataset_ids,
     }
 }
 
-void DataManager::commitImageDeletion(const std::vector<int64_t> &image_ids, const bool success, const QString &err_msg,
-                                      const qint64 elapsed_ms)
-{
-    if (shutting_down_)
-        return;
-
-    if (success)
-    {
-        if (labels_loading_)
-        {
-            labels_changed_during_loading_ = true;
-        }
-
-        image_instances_->beginBulkUpdate();
-        label_instances_->beginBulkUpdate();
-
-        // 数据库事务已经删除图像、标注和标签关系；GUI 线程只提交内存状态。
-        // 数据集统计必须在图像实体被移除前读取其归属和标注状态。
-        if (datasets_ != nullptr)
-        {
-            datasets_->removeImagesFromSource(image_source_, image_ids);
-        }
-        if (label_source_ != nullptr)
-        {
-            label_source_->removeLabelsForImagesFromMemory(image_ids);
-        }
-        if (image_tags_ != nullptr)
-        {
-            image_tags_->removeImagesTagsFromMemory(image_ids);
-        }
-        if (image_source_ != nullptr)
-        {
-            image_source_->removeImagesFromMemory(image_ids);
-        }
-        if (global_filter_ != nullptr && global_filter_->isActive())
-        {
-            // Most filters are already updated by the model removal.  A refresh is
-            // still required for duplicate/unique-file-name conditions whose cache
-            // depends on the complete image set.
-            global_filter_->refresh();
-        }
-        label_instances_->endBulkUpdate();
-        image_instances_->endBulkUpdate();
-
-        const QString message = QString("已删除 %1 个图像，耗时 %2 ms").arg(image_ids.size()).arg(elapsed_ms);
-        spdlog::info("{}", message.toUtf8().constData());
-        ui::SignalHelper::notifySuccess(QString("删除图像完成"), message);
-    }
-    else
-    {
-        const QString message = QString("删除图像失败: %1").arg(err_msg);
-        spdlog::error("{}", message.toUtf8().constData());
-        ui::SignalHelper::notifyError(QString("删除图像失败"), message);
-    }
-
-    if (image_operation_running_)
-    {
-        image_operation_running_ = false;
-        emit imageOperationRunningChanged();
-    }
-    setDataOperationRunning(false);
-}
-
-void DataManager::commitImageMove(const std::vector<int64_t> &image_ids, const int64_t target_dataset_id,
-                                  const bool success, const QString &err_msg, const qint64 elapsed_ms,
-                                  ImageOperationCompletion completion, const bool notify_user)
-{
-    if (shutting_down_)
-        return;
-
-    QString message;
-    if (success)
-    {
-        const bool filter_active = global_filter_ != nullptr && global_filter_->isActive();
-        image_instances_->beginBulkUpdate();
-        datasets_->moveImagesFromSource(image_source_, image_ids, target_dataset_id);
-        image_source_->updateImagesDatasetFromMemory(image_ids, target_dataset_id, !filter_active);
-        if (filter_active)
-        {
-            global_filter_->refresh();
-        }
-        image_instances_->endBulkUpdate();
-
-        message = QString("已移动 %1 个图像，耗时 %2 ms").arg(image_ids.size()).arg(elapsed_ms);
-        if (notify_user)
-        {
-            spdlog::info("{}", message.toUtf8().constData());
-            ui::SignalHelper::notifySuccess(QString("移动图像完成"), message);
-        }
-    }
-    else
-    {
-        message = QString("移动图像失败: %1").arg(err_msg);
-        spdlog::error("{}", message.toUtf8().constData());
-        if (notify_user)
-        {
-            ui::SignalHelper::notifyError(QString("移动图像失败"), message);
-        }
-    }
-
-    if (image_operation_running_)
-    {
-        image_operation_running_ = false;
-        emit imageOperationRunningChanged();
-    }
-    setDataOperationRunning(false);
-
-    if (completion)
-        completion(success, success ? QString() : message);
-}
-
-void DataManager::commitImageCopy(const std::shared_ptr<ImageCopyResult> &result,
-                                  const DataOperationWorkflow::Result    &operation)
-{
-    if (shutting_down_)
-        return;
-
-    if (result != nullptr && operation.success)
-    {
-        QElapsedTimer model_update_timer;
-        model_update_timer.start();
-
-        if (labels_loading_)
-        {
-            labels_changed_during_loading_ = true;
-        }
-
-        // 大批量新增只在关系完整后发布一次源模型变化，避免 QML 为每行插入反复重排。
-        const size_t image_count        = result->images.size();
-        const size_t label_count        = result->labels.size();
-        const bool   defer_model_update = image_count >= 256 || label_count >= 256;
-
-        image_instances_->beginBulkUpdate();
-        label_instances_->beginBulkUpdate();
-        image_source_->addImagesFromMemory(result->images, defer_model_update);
-        label_source_->addLabelsFromMemory(result->labels, defer_model_update);
-        image_source_->syncAllLabelRelations(label_source_, !defer_model_update);
-        image_tags_->addRelationsFromMemory(result->images, result->labels);
-        datasets_->addImagesFromSource(image_source_, result->images);
-
-        if (defer_model_update)
-        {
-            image_source_->refreshModelFromMemory();
-            label_source_->refreshModelFromMemory();
-        }
-
-        if (global_filter_ != nullptr && global_filter_->isActive())
-        {
-            global_filter_->refresh();
-        }
-        label_instances_->endBulkUpdate();
-        image_instances_->endBulkUpdate();
-
-        const qint64  model_update_elapsed_ms = model_update_timer.elapsed();
-        const QString message = QString("已复制 %1 个图像、%2 个标注，数据库耗时 %3 ms，界面模型更新耗时 %4 ms")
-                                    .arg(image_count)
-                                    .arg(label_count)
-                                    .arg(operation.elapsed_ms)
-                                    .arg(model_update_elapsed_ms);
-        spdlog::info("{}", message.toUtf8().constData());
-        if (result->notify_user)
-        {
-            ui::SignalHelper::notifySuccess(QString("复制图像完成"), message);
-        }
-    }
-    else
-    {
-        const QString message
-            = result != nullptr ? QString("复制图像失败: %1").arg(operation.error) : QString("复制图像失败");
-        spdlog::error("{}", message.toUtf8().constData());
-        if (result == nullptr || result->notify_user)
-        {
-            ui::SignalHelper::notifyError(QString("复制图像失败"), message);
-        }
-    }
-
-    if (image_operation_running_)
-    {
-        image_operation_running_ = false;
-        emit imageOperationRunningChanged();
-    }
-    setDataOperationRunning(false);
-
-    if (result != nullptr && result->completion)
-    {
-        const bool operation_success = operation.success;
-        result->completion(operation_success,
-                           operation_success
-                               ? QString()
-                               : (operation.error.isEmpty() ? QStringLiteral("复制图像失败") : operation.error));
-    }
-}
-
 void DataManager::commitDatasetSplit(const std::shared_ptr<DatasetSplitCopyResult> &result,
                                      const DataOperationWorkflow::Result           &operation)
 {
@@ -1374,46 +1189,6 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
 }
 
 
-void DataManager::deleteSelectedImages()
-{
-    if (shutting_down_)
-        return;
-
-    if (isDataOperationRunning())
-    {
-        ui::SignalHelper::notifyWarn(QString("删除图像"), QString("当前已有数据操作正在进行中"));
-        return;
-    }
-    if (database_ == nullptr || image_source_ == nullptr || image_instances_ == nullptr)
-    {
-        return;
-    }
-
-    const std::vector<int64_t> image_ids = image_instances_->getSelectedImagesId();
-    if (image_ids.empty())
-    {
-        return;
-    }
-
-    if (labels_loading_)
-    {
-        labels_changed_during_loading_ = true;
-    }
-    setDataOperationRunning(true);
-    image_operation_running_ = true;
-    emit                           imageOperationRunningChanged();
-    DataOperationWorkflow::Options options;
-    options.title           = QString("删除图像");
-    options.start_message   = QString("正在删除 %1 个图像及其标注").arg(image_ids.size());
-    options.manage_progress = false;
-    trackOperation(DataOperationWorkflow::startDatabase(
-        this, database_->path(), std::move(options),
-        [image_ids](dltool::database::ProjectDataBase &database, DataOperationWorkflow::Result &result)
-        { result.success = database.deleteImages(image_ids, result.error); },
-        [this, image_ids](const DataOperationWorkflow::Result &result)
-        { commitImageDeletion(image_ids, result.success, result.error, result.elapsed_ms); }));
-}
-
 void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id)
 {
     copyToDatasetAsync(image_ids, dataset_id, nullptr, {}, true);
@@ -1423,175 +1198,26 @@ bool DataManager::copyToDatasetAsync(const std::vector<int64_t> &image_ids, cons
                                      QObject *callback_context, ImageOperationCompletion completion,
                                      const bool notify_user)
 {
-    if (shutting_down_)
-        return false;
+    if (image_transfer_service_)
+        return image_transfer_service_->copyToDatasetAsync(image_ids, dataset_id, callback_context,
+                                                           std::move(completion), notify_user);
+    return false;
+}
 
-    if (isDataOperationRunning())
-    {
-        ui::SignalHelper::notifyWarn(QString("复制图像"), QString("当前已有数据操作正在进行中"));
-        return false;
-    }
-    if (datasets_ == nullptr || image_source_ == nullptr || label_source_ == nullptr || database_ == nullptr)
-    {
-        return false;
-    }
-    if (labels_loading_)
-    {
-        spdlog::warn("复制图像失败, 标注正在加载中");
-        ui::SignalHelper::notifyWarn(QString("复制图像"), QString("标注正在加载，请稍后再试"));
-        return false;
-    }
-    if (dataset_id < 0 || datasets_->getDatasetName(dataset_id).isEmpty())
-    {
-        spdlog::warn("复制图像失败, 目标数据集无效: {}", dataset_id);
-        return false;
-    }
+bool DataManager::moveToDatasetAsync(const std::vector<int64_t> &image_ids, const int64_t dataset_id,
+                                     QObject *callback_context, ImageOperationCompletion completion,
+                                     const bool notify_user)
+{
+    if (image_transfer_service_)
+        return image_transfer_service_->moveToDatasetAsync(image_ids, dataset_id, callback_context,
+                                                           std::move(completion), notify_user);
+    return false;
+}
 
-    std::vector<int64_t> source_image_ids = image_ids;
-    source_image_ids.erase(std::remove_if(source_image_ids.begin(), source_image_ids.end(),
-                                          [](const int64_t image_id) { return image_id < 0; }),
-                           source_image_ids.end());
-    std::sort(source_image_ids.begin(), source_image_ids.end());
-    source_image_ids.erase(std::unique(source_image_ids.begin(), source_image_ids.end()), source_image_ids.end());
-    if (source_image_ids.empty())
-    {
-        return false;
-    }
-
-    auto request               = std::make_shared<ImageCopyRequest>();
-    request->label_data_method = method_;
-    request->dataset_id        = dataset_id;
-    request->images.reserve(source_image_ids.size());
-    for (const int64_t source_image_id : source_image_ids)
-    {
-        const ImageInstance *source_image = image_source_->getImageInstance(source_image_id);
-        if (source_image == nullptr || source_image->path().isEmpty())
-        {
-            spdlog::warn("复制图像失败, 源图像不存在或路径无效: {}", source_image_id);
-            return false;
-        }
-
-        dltool::database::ProjectDataBase::ImageSnapshot image;
-        image.path       = source_image->path();
-        image.extra_data = ImageInstancesListModel::extraDataForImageLabelClassId(source_image->imageLabelClassId());
-        const auto image_tags = source_image->tagIds();
-        image.tag_ids.assign(image_tags.begin(), image_tags.end());
-        image.labels.reserve(source_image->labelIds().size());
-        for (const int64_t source_label_id : source_image->labelIds())
-        {
-            const LabelInstance *source_label = label_source_->getLabelInstance(source_label_id);
-            if (source_label == nullptr || source_label->data() == nullptr)
-            {
-                spdlog::warn("复制图像失败, 源标注不存在或数据无效: {}", source_label_id);
-                return false;
-            }
-
-            dltool::database::ProjectDataBase::LabelSnapshot label;
-            label.label_class_id = source_label->labelClassId();
-            label.label_type     = source_label->data()->type();
-            label.data           = source_label->data()->toBlob();
-            const auto label_tags = source_label->tagIds();
-            label.tag_ids.assign(label_tags.begin(), label_tags.end());
-            image.labels.push_back(std::move(label));
-        }
-        request->images.push_back(std::move(image));
-    }
-
-    setDataOperationRunning(true);
-    image_operation_running_ = true;
-    emit imageOperationRunningChanged();
-    auto result         = std::make_shared<ImageCopyResult>();
-    result->notify_user = notify_user;
-    if (completion)
-    {
-        if (callback_context != nullptr)
-        {
-            const QPointer<QObject> guarded_context(callback_context);
-            result->completion = [guarded_context, completion = std::move(completion)](const bool     success,
-                                                                                       const QString &message) mutable
-            {
-                if (guarded_context && completion)
-                    completion(success, message);
-            };
-        }
-        else
-        {
-            result->completion = std::move(completion);
-        }
-    }
-    DataOperationWorkflow::Options options;
-    options.title           = QString("复制图像");
-    options.start_message   = QString("正在复制 %1 个图像及其标注").arg(request->images.size());
-    options.manage_progress = false;
-    trackOperation(DataOperationWorkflow::startDatabase(
-        this, database_->path(), std::move(options),
-        [request, result](dltool::database::ProjectDataBase &database,
-                          DataOperationWorkflow::Result     &operation)
-        {
-            dltool::database::ProjectDataBase::AtomicCopyOutput output;
-            if (!database.copyImagesAtomic(request->dataset_id, request->images, output, operation.error,
-                                           [&operation]() { return operation.cancellationRequested(); }))
-            {
-                operation.success = false;
-                if (operation.error == QStringLiteral("操作已取消"))
-                {
-                    operation.cancelled = true;
-                }
-                return;
-            }
-
-            LabelDataHelper helper = data::createLabelDataHelper(request->label_data_method);
-            if (helper == nullptr)
-            {
-                operation.success = false;
-                operation.error   = QStringLiteral("标签数据工厂未初始化");
-                return;
-            }
-
-            result->images.reserve(request->images.size());
-            size_t label_idx = 0;
-            for (size_t img_idx = 0; img_idx < request->images.size(); ++img_idx)
-            {
-                const auto   &source_img = request->images[img_idx];
-                const int64_t new_img_id = output.image_ids[img_idx];
-
-                LoadedImageInstance img;
-                img.image_id       = new_img_id;
-                img.dataset_id     = request->dataset_id;
-                img.path           = source_img.path;
-                img.label_class_id = ImageInstancesListModel::imageLabelClassIdFromExtraData(source_img.extra_data);
-                img.tag_ids.insert(source_img.tag_ids.begin(), source_img.tag_ids.end());
-                result->images.push_back(std::move(img));
-
-                for (const auto &source_lbl : source_img.labels)
-                {
-                    const int64_t new_lbl_id = output.label_ids[label_idx++];
-
-                    LabelData label_data = helper->createLabelData();
-                    if (label_data == nullptr)
-                    {
-                        operation.success = false;
-                        operation.error   = QStringLiteral("标签数据创建失败");
-                        return;
-                    }
-                    label_data->fromBlob(source_lbl.data);
-
-                    LoadedLabelInstance lbl;
-                    lbl.label_id       = new_lbl_id;
-                    lbl.image_id       = new_img_id;
-                    lbl.label_class_id = source_lbl.label_class_id;
-                    lbl.data           = std::move(label_data);
-                    lbl.tag_ids.insert(source_lbl.tag_ids.begin(), source_lbl.tag_ids.end());
-                    result->labels.push_back(std::move(lbl));
-                }
-            }
-
-            operation.success = true;
-            operation.error.clear();
-        },
-        [this, result](const DataOperationWorkflow::Result &operation) { commitImageCopy(result, operation); }));
-
-    return true;
+void DataManager::deleteSelectedImages()
+{
+    if (image_transfer_service_)
+        image_transfer_service_->deleteSelectedImages();
 }
 
 void DataManager::splitDataset(const int64_t dataset_id, const double train_ratio, const double validation_ratio,
@@ -1843,96 +1469,6 @@ void DataManager::splitDataset(const int64_t dataset_id, const double train_rati
 void DataManager::moveToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id)
 {
     moveToDatasetAsync(image_ids, dataset_id, nullptr, {}, true);
-}
-
-bool DataManager::moveToDatasetAsync(const std::vector<int64_t> &image_ids, const int64_t dataset_id,
-                                     QObject *callback_context, ImageOperationCompletion completion,
-                                     const bool notify_user)
-{
-    if (shutting_down_)
-        return false;
-
-    if (isDataOperationRunning())
-    {
-        ui::SignalHelper::notifyWarn(QString("移动图像"), QString("当前已有数据操作正在进行中"));
-        return false;
-    }
-    if (datasets_ == nullptr || image_instances_ == nullptr || database_ == nullptr)
-    {
-        return false;
-    }
-    if (dataset_id < 0 || datasets_->getDatasetName(dataset_id).isEmpty())
-    {
-        spdlog::warn("移动图像失败, 目标数据集无效: {}", dataset_id);
-        return false;
-    }
-
-    std::vector<int64_t> selected_image_ids = image_ids;
-    selected_image_ids.erase(std::remove_if(selected_image_ids.begin(), selected_image_ids.end(),
-                                            [](const int64_t image_id) { return image_id < 0; }),
-                             selected_image_ids.end());
-    std::sort(selected_image_ids.begin(), selected_image_ids.end());
-    selected_image_ids.erase(std::unique(selected_image_ids.begin(), selected_image_ids.end()),
-                             selected_image_ids.end());
-    if (selected_image_ids.empty())
-    {
-        return false;
-    }
-
-    std::vector<int64_t> moved_image_ids;
-    moved_image_ids.reserve(selected_image_ids.size());
-    for (const int64_t image_id : selected_image_ids)
-    {
-        const int64_t source_dataset_id = image_source_->getImageDatasetId(image_id);
-        if (source_dataset_id < 0 || source_dataset_id == dataset_id)
-        {
-            continue;
-        }
-        moved_image_ids.push_back(image_id);
-    }
-    if (moved_image_ids.empty())
-    {
-        return false;
-    }
-
-    if (completion && callback_context != nullptr)
-    {
-        const QPointer<QObject> guarded_context(callback_context);
-        completion
-            = [guarded_context, completion = std::move(completion)](const bool success, const QString &message) mutable
-        {
-            if (guarded_context && completion)
-                completion(success, message);
-        };
-    }
-
-    setDataOperationRunning(true);
-    image_operation_running_ = true;
-    emit                           imageOperationRunningChanged();
-    DataOperationWorkflow::Options options;
-    options.title           = QString("移动图像");
-    options.start_message   = QString("正在移动 %1 个图像").arg(moved_image_ids.size());
-    options.manage_progress = false;
-    trackOperation(DataOperationWorkflow::startDatabase(
-        this, database_->path(), std::move(options),
-        [moved_image_ids, dataset_id](dltool::database::ProjectDataBase &database,
-                                      DataOperationWorkflow::Result     &result)
-        {
-            result.success = database.moveImagesAtomic(moved_image_ids, dataset_id, result.error,
-                                                       [&result]() { return result.cancellationRequested(); });
-            if (!result.success && result.error == QStringLiteral("操作已取消"))
-            {
-                result.cancelled = true;
-            }
-        },
-        [this, moved_image_ids, dataset_id, completion = std::move(completion),
-         notify_user](const DataOperationWorkflow::Result &result) mutable
-        {
-            commitImageMove(moved_image_ids, dataset_id, result.success, result.error, result.elapsed_ms,
-                            std::move(completion), notify_user);
-        }));
-
-    return true;
 }
 
 bool DataManager::writebackClusterAsync(const ClusterWritebackRequest &request,
