@@ -54,11 +54,15 @@ function(dlt_register_test TEST_NAME)
     if(ARG_LABELS)
         set_tests_properties("${TEST_NAME}" PROPERTIES LABELS "${ARG_LABELS}")
     endif()
-    if(ARG_ENVIRONMENT_MODIFICATION)
-        set_tests_properties("${TEST_NAME}" PROPERTIES
-            ENVIRONMENT_MODIFICATION "${ARG_ENVIRONMENT_MODIFICATION}"
-        )
-    endif()
+    # 构建根 bin 只做第三方运行库兜底：把各测试自行 prepend 的 bin 条目移到列表最前。
+    # path_list_prepend 按书写顺序逆序生效，因此列表最前对应最终 PATH 的末尾；
+    # 否则 bin 中的同模块实体副本（旧构建遗留或手工复制）会覆盖模块输出目录的新 DLL，
+    # 让测试在不知情的情况下加载旧代码。
+    list(REMOVE_ITEM ARG_ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${CMAKE_BINARY_DIR}/bin")
+    list(INSERT ARG_ENVIRONMENT_MODIFICATION 0 "PATH=path_list_prepend:${CMAKE_BINARY_DIR}/bin")
+    set_tests_properties("${TEST_NAME}" PROPERTIES
+        ENVIRONMENT_MODIFICATION "${ARG_ENVIRONMENT_MODIFICATION}"
+    )
     if(ARG_FIXTURES_REQUIRED)
         set_tests_properties("${TEST_NAME}" PROPERTIES FIXTURES_REQUIRED "${ARG_FIXTURES_REQUIRED}")
     endif()
