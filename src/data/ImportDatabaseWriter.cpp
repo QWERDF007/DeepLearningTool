@@ -50,7 +50,8 @@ struct ImportDatabaseWriter::Impl
         ClassCacheEntry(int64_t i, QString g) : id(i), group(std::move(g)) {}
     };
     std::map<QString, ClassCacheEntry> label_class_map;
-    int64_t max_ordinal_index{-1};
+    std::set<QString>                  used_colors;
+    int64_t                            max_ordinal_index{-1};
 
     std::map<QString, int64_t> normalized_image_path_to_id;
     std::map<QString, int64_t> image_path_to_id;
@@ -94,16 +95,23 @@ bool ImportDatabaseWriter::Impl::ensureConnected(QString &err_msg)
 
         const auto LabelClassesTable = dltool::database::LabelClasses{};
         auto classes_rows = (*db)(sqlpp::select(LabelClassesTable.id, LabelClassesTable.name,
+                                                LabelClassesTable.color,
                                                 LabelClassesTable.ordinalIndex, LabelClassesTable.extraData)
                                       .from(LabelClassesTable)
                                       .unconditionally());
         for (const auto &row : classes_rows)
         {
             const QString name  = QString::fromStdString(row.name);
+            const QString color = QString::fromStdString(row.color);
             const QString group = groupFromExtraData(row.extraData.is_null() ? std::vector<uint8_t>{}
                                                                              : row.extraData.value());
             label_class_map[name] = ClassCacheEntry(row.id, group);
             max_ordinal_index     = std::max(max_ordinal_index, static_cast<int64_t>(row.ordinalIndex));
+            const QString norm_c  = QColor(color.trimmed()).name(QColor::HexRgb).toLower();
+            if (!norm_c.isEmpty())
+            {
+                used_colors.insert(norm_c);
+            }
         }
 
         const auto ImagesTable = dltool::database::Images{};
@@ -178,11 +186,17 @@ int64_t ImportDatabaseWriter::Impl::ensureLabelClass(const QString &label_name, 
     }
 
     int64_t ordinal_index = ++max_ordinal_index;
-    QString chosen_color  = color;
-    if (chosen_color.isEmpty())
+    QString chosen_color;
+    const QString normalized_input = QColor(color.trimmed()).name(QColor::HexRgb).toLower();
+    if (!normalized_input.isEmpty() && used_colors.find(normalized_input) == used_colors.end())
     {
-        chosen_color = DatasetIO::generateDefaultColor(static_cast<int>(label_class_map.size()));
+        chosen_color = normalized_input;
     }
+    else
+    {
+        chosen_color = DatasetIO::allocateUniqueColor(used_colors);
+    }
+    used_colors.insert(chosen_color);
 
     QString group;
     if (anomaly_project)

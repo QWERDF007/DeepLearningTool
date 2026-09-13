@@ -195,6 +195,19 @@ QString DatasetIO::generateDefaultColor(int index)
     return color.name();
 }
 
+QString DatasetIO::allocateUniqueColor(const std::set<QString> &used_colors)
+{
+    int index = 0;
+    while (true)
+    {
+        const QString candidate = generateDefaultColor(index++).toLower();
+        if (used_colors.find(candidate) == used_colors.end())
+        {
+            return candidate;
+        }
+    }
+}
+
 QString DatasetIO::uniqueFileName(const QString &source_path, int64_t stable_id,
                                   const std::map<QString, int> &used_names)
 {

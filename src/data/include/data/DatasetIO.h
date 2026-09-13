@@ -9,6 +9,7 @@
 #include <QVariantMap>
 #include <cstdint>
 #include <map>
+#include <set>
 #include <vector>
 
 namespace dltool::data {
@@ -65,6 +66,7 @@ public:
     static std::vector<QPointF> variantListToPoints(const QVariant &value);
     static QVariantMap pointsToLabelData(const std::vector<QPointF> &points, int image_width, int image_height);
     static QString     generateDefaultColor(int index);
+    static QString     allocateUniqueColor(const std::set<QString> &used_colors);
     static QString     uniqueFileName(const QString &source_path, int64_t stable_id,
                                       const std::map<QString, int> &used_names);
     static bool copyFile(const QString &source_path, const QString &target_path, QString &err_msg);
