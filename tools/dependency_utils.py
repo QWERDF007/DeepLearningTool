@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import glob
+import locale
 import os
 import re
 import shutil
@@ -291,7 +292,12 @@ def remove_existing_file(path: Path) -> None:
 
 
 def remove_existing_dir_link(path: Path) -> None:
-    """删除已有目录链接，拒绝删除真实目录。"""
+    """删除已有目录链接；真实空目录也允许删除以便重建链接。
+
+    程序运行时会在构建目录 bin 下自建 config、python、dltool 等空目录，
+    若不清理这些空壳，链接脚本会在其上持续失败。非空真实目录仍拒绝覆盖，
+    避免误删构建产物或用户数据。
+    """
 
     if not path.exists() and not path.is_symlink():
         return
@@ -307,6 +313,10 @@ def remove_existing_dir_link(path: Path) -> None:
         return
     if path.is_symlink():
         path.unlink()
+        return
+    if path.is_dir() and not any(path.iterdir()):
+        # 空目录（多为程序启动时自建的占位目录）：删除后由调用方重建为链接。
+        path.rmdir()
         return
     raise RuntimeError(f"existing path is not a link, refusing to overwrite: {path}")
 
@@ -348,6 +358,8 @@ def link_dir(source: Path, link: Path) -> None:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding=locale.getpreferredencoding(False),
+            errors="replace",
         )
         if result.returncode != 0:
             raise RuntimeError(result.stdout.strip() or f"failed to create junction {link} -> {source}")
