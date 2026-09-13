@@ -50,7 +50,7 @@ struct ImportDatabaseWriter::Impl
         ClassCacheEntry(int64_t i, QString g) : id(i), group(std::move(g)) {}
     };
     std::map<QString, ClassCacheEntry> label_class_map;
-    int64_t max_ordinal_index{0};
+    int64_t max_ordinal_index{-1};
 
     std::map<QString, int64_t> normalized_image_path_to_id;
     std::map<QString, int64_t> image_path_to_id;

@@ -81,7 +81,7 @@ private:
     QString group_;
 };
 
-class LabelClassesListModel : public QAbstractListModel
+class DATA_API LabelClassesListModel : public QAbstractListModel
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(LabelClassesModel)
