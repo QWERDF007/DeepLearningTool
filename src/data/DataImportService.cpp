@@ -12,10 +12,12 @@
 
 #include <spdlog/spdlog.h>
 
+#include <QColor>
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QMetaObject>
 #include <QUuid>
+#include <set>
 
 namespace dltool::data {
 
@@ -140,15 +142,43 @@ void DataImportService::scanImportLabelClasses(const int data_format, const QStr
             QVariantList label_classes;
             if (success)
             {
+                std::set<QString> used_colors;
+                if (s_.label_classes)
+                {
+                    for (const int64_t id : s_.label_classes->getAllLabelClassIds())
+                    {
+                        const QString c    = s_.label_classes->getLabelClassColor(static_cast<int>(id));
+                        const QString norm = QColor(c.trimmed()).name(QColor::HexRgb).toLower();
+                        if (!norm.isEmpty())
+                            used_colors.insert(norm);
+                    }
+                }
+
                 for (const auto &[name, color] : label_class_info)
                 {
-                    const int     label_class_id  = s_.label_classes ? s_.label_classes->getLabelClassId(name) : -1;
-                    const QString effective_color = label_class_id >= 0 && s_.label_classes
-                                                      ? s_.label_classes->getLabelClassColor(label_class_id)
-                                                      : color;
-                    const QString group           = label_class_id >= 0 && s_.label_classes
-                                                      ? s_.label_classes->getLabelClassGroup(label_class_id)
-                                                      : defaultLabelClassGroup();
+                    const int label_class_id = s_.label_classes ? s_.label_classes->getLabelClassId(name) : -1;
+                    QString   effective_color;
+                    if (label_class_id >= 0 && s_.label_classes)
+                    {
+                        effective_color = s_.label_classes->getLabelClassColor(label_class_id);
+                    }
+                    else
+                    {
+                        const QString norm_cand = QColor(color.trimmed()).name(QColor::HexRgb).toLower();
+                        if (!norm_cand.isEmpty() && used_colors.find(norm_cand) == used_colors.end())
+                        {
+                            effective_color = norm_cand;
+                        }
+                        else
+                        {
+                            effective_color = DatasetIO::allocateUniqueColor(used_colors);
+                        }
+                        used_colors.insert(effective_color);
+                    }
+
+                    const QString group = label_class_id >= 0 && s_.label_classes
+                                              ? s_.label_classes->getLabelClassGroup(label_class_id)
+                                              : defaultLabelClassGroup();
 
                     QVariantMap item;
                     item.insert(QStringLiteral("label_class_id"), label_class_id);

@@ -1,0 +1,260 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DeepLearningTool 系统架构",
+    "output": "docs/系统架构图.html",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/QWERDF007/DeepLearningTool",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "f6c4eb9a555e23423ab36436cb0510d6235e5e5d"
+    },
+    "views": [
+      {
+        "id": "application-path",
+        "label": "应用主路径",
+        "focus": ["qml", "tool", "project", "data", "model", "feature"],
+        "note": "从 QML 页面进入 Project 聚合，再访问数据、模型和高级功能。"
+      },
+      {
+        "id": "persistence-flow",
+        "label": "持久化与产物",
+        "focus": ["data", "model", "settings", "database", "storage"],
+        "note": "区分数据库访问边界与项目文件、模型任务产物。"
+      },
+      {
+        "id": "external-runtime",
+        "label": "外部运行时",
+        "focus": ["model", "python", "feature", "infer"],
+        "note": "查看 Python 任务和 InferRT/FAISS/CUDA 的外部调用边界。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "qml",
+      "type": "frontend",
+      "label": "Qt 6 / QML",
+      "tag": "用户界面",
+      "pos": [40, 250],
+      "size": [190, 78],
+      "sources": [
+        { "path": "src/tool/qml/Main.qml", "line": 10, "end_line": 105, "label": "顶层窗口" },
+        { "path": "src/tool/qml/Content.qml", "line": 11, "end_line": 103, "label": "页面装配" }
+      ]
+    },
+    {
+      "id": "tool",
+      "type": "backend",
+      "label": "dltool 应用装配",
+      "sublabel": "main.cpp · QQmlApplicationEngine",
+      "tag": "进程入口",
+      "pos": [270, 250],
+      "size": [190, 78],
+      "sources": [
+        { "path": "src/tool/main.cpp", "line": 91, "end_line": 145, "label": "启动入口" },
+        { "path": "src/tool/CMakeLists.txt", "line": 40, "end_line": 83, "label": "应用目标" }
+      ]
+    },
+    {
+      "id": "project",
+      "type": "backend",
+      "label": "Project 聚合",
+      "sublabel": "ProjectManager · Project",
+      "tag": "项目生命周期",
+      "pos": [500, 250],
+      "size": [200, 78],
+      "sources": [
+        { "path": "src/project/include/project/Projects.h", "line": 43, "end_line": 72, "label": "Project" },
+        { "path": "src/project/Projects.cpp", "line": 97, "end_line": 150, "label": "关闭与装配" }
+      ]
+    },
+    {
+      "id": "settings",
+      "type": "backend",
+      "label": "Settings",
+      "sublabel": "GlobalSettings · YAML schema",
+      "tag": "应用级配置",
+      "pos": [400, 40],
+      "size": [200, 78],
+      "sources": [
+        { "path": "src/settings/GlobalSettings.cpp", "line": 1, "end_line": 220, "label": "设置入口" },
+        { "path": "src/settings/SettingsSchema.cpp", "line": 1, "end_line": 220, "label": "schema 同步" }
+      ]
+    },
+    {
+      "id": "database",
+      "type": "database",
+      "label": "SQLite / database",
+      "sublabel": "Project DB · model.db · task.db",
+      "tag": "持久化访问边界",
+      "pos": [820, 40],
+      "size": [225, 82],
+      "sources": [
+        { "path": "src/database/DataBase.cpp", "line": 1, "end_line": 360, "label": "连接与门面" },
+        { "path": "src/database/DatabaseSchema.cpp", "line": 1, "end_line": 340, "label": "schema 生命周期" },
+        { "path": "src/database/CMakeLists.txt", "line": 7, "end_line": 14, "label": "DDL resources" }
+      ]
+    },
+    {
+      "id": "data",
+      "type": "backend",
+      "label": "Data 模块",
+      "sublabel": "DataManager · Qt Models",
+      "tag": "数据工作区",
+      "pos": [820, 170],
+      "size": [215, 82],
+      "sources": [
+        { "path": "src/data/include/data/DataManager.h", "line": 1, "end_line": 240, "label": "数据门面" },
+        { "path": "src/data/DataOperationWorkflow.cpp", "line": 1, "end_line": 79, "label": "后台工作流" }
+      ]
+    },
+    {
+      "id": "model",
+      "type": "backend",
+      "label": "Model 模块",
+      "sublabel": "TaskManager · Controller · Evaluation",
+      "tag": "模型任务",
+      "pos": [820, 320],
+      "size": [215, 82],
+      "sources": [
+        { "path": "src/model/TaskManager.cpp", "line": 1, "end_line": 430, "label": "任务状态" },
+        { "path": "src/model/ModelTaskController.cpp", "line": 1, "end_line": 390, "label": "任务编排" },
+        { "path": "src/model/EvaluationEngineRegistry.cpp", "line": 1, "end_line": 43, "label": "评估注册" }
+      ]
+    },
+    {
+      "id": "feature",
+      "type": "backend",
+      "label": "Feature 模块",
+      "sublabel": "Search · Cluster · SAM · FS-SAM2",
+      "tag": "高级能力",
+      "pos": [1080, 250],
+      "size": [225, 82],
+      "sources": [
+        { "path": "src/feature/FeatureManager.cpp", "line": 1, "end_line": 180, "label": "能力聚合" },
+        { "path": "src/feature/SmartAnnotationController.cpp", "line": 679, "end_line": 1053, "label": "智能标注" },
+        { "path": "src/feature/FewShotLearningController.cpp", "line": 190, "end_line": 703, "label": "小样本编排" }
+      ]
+    },
+    {
+      "id": "foundation",
+      "type": "backend",
+      "label": "基础模块",
+      "sublabel": "common · core · ui · parameter",
+      "tag": "共享能力",
+      "pos": [270, 400],
+      "size": [220, 82],
+      "sources": [
+        { "path": "src/common/CMakeLists.txt", "line": 1, "end_line": 13, "label": "common" },
+        { "path": "src/core/CMakeLists.txt", "line": 1, "end_line": 5, "label": "core" },
+        { "path": "src/ui/CMakeLists.txt", "line": 1, "end_line": 3, "label": "ui" }
+      ]
+    },
+    {
+      "id": "python",
+      "type": "external",
+      "label": "EasyTrain / Python",
+      "sublabel": "外部训练 · 推理进程",
+      "tag": "外部进程",
+      "pos": [1120, 340],
+      "size": [205, 82],
+      "sources": [
+        { "path": "src/model/TaskCommunication.cpp", "line": 1, "end_line": 160, "label": "TCP 协议处理" },
+        { "path": "src/model/README.md", "line": 129, "end_line": 177, "label": "外部 Python 任务" }
+      ]
+    },
+    {
+      "id": "infer",
+      "type": "external",
+      "label": "InferRT / FAISS / CUDA",
+      "sublabel": "推理 · 特征索引 · GPU",
+      "tag": "外部运行时",
+      "pos": [1120, 100],
+      "size": [205, 82],
+      "sources": [
+        { "path": "src/feature/CMakeLists.txt", "line": 1, "end_line": 9, "label": "InferRT 接入" },
+        { "path": "src/feature/SearchControllerBase.cpp", "line": 1, "end_line": 420, "label": "搜索执行" }
+      ]
+    },
+    {
+      "id": "storage",
+      "type": "database",
+      "label": "项目与任务文件",
+      "sublabel": "test.txt · pred/ · logs/ · weights/",
+      "tag": "文件产物",
+      "pos": [1090, 450],
+      "size": [225, 82],
+      "sources": [
+        { "path": "docs/DATA_MODEL.md", "line": 21, "end_line": 78, "label": "存储布局" },
+        { "path": "src/model/ModelStorageService.cpp", "line": 1, "end_line": 260, "label": "模型目录" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Qt 桌面进程",
+      "wraps": ["qml", "tool", "project", "settings", "database", "data", "model", "feature", "foundation"],
+      "pad": 28
+    },
+    {
+      "kind": "region",
+      "label": "外部运行时与进程",
+      "wraps": ["python", "infer"],
+      "pad": 24
+    },
+    {
+      "kind": "region",
+      "label": "持久化任务产物",
+      "wraps": ["storage"],
+      "pad": 22
+    }
+  ],
+  "connections": [
+    { "id": "qml-tool", "from": "qml", "to": "tool", "label": "QML imports", "variant": "emphasis", "fromSide": "right", "toSide": "left", "labelDy": 63 },
+    { "id": "tool-project", "from": "tool", "to": "project", "label": "ProjectManager", "fromSide": "right", "toSide": "left", "labelDy": 63 },
+    { "id": "project-data", "from": "project", "to": "data", "label": "data", "fromSide": "right", "toSide": "left", "via": [[740, 289], [740, 211]] },
+    { "id": "project-model", "from": "project", "to": "model", "label": "model", "fromSide": "right", "toSide": "left", "via": [[790, 289], [790, 361]] },
+    { "id": "model-feature", "from": "model", "to": "feature", "label": "FeatureManager", "variant": "dashed", "fromSide": "right", "toSide": "left", "via": [[1060, 361], [1060, 291]], "labelDy": 100, "labelDx": -60 },
+    { "id": "foundation-tool", "from": "foundation", "to": "tool", "label": "shared C++ services", "variant": "dashed", "fromSide": "top", "toSide": "bottom" },
+    { "id": "settings-database", "from": "settings", "to": "database", "label": "settings.db", "fromSide": "right", "toSide": "left", "labelDy": 64 },
+    { "id": "data-database", "from": "data", "to": "database", "label": "dataset data", "fromSide": "top", "toSide": "bottom" },
+    { "id": "model-data", "from": "model", "to": "data", "label": "DatasetExportSnapshot", "variant": "emphasis", "fromSide": "top", "toSide": "bottom" },
+    { "id": "model-python", "from": "model", "to": "python", "label": "ExternalProcessSpec + TCP", "variant": "emphasis", "fromSide": "bottom", "toSide": "left", "via": [[927.5, 430], [1060, 430], [1060, 381]], "labelSegment": 1 },
+    { "id": "python-storage", "from": "python", "to": "storage", "label": "pred / logs / weights", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelAt": [990, 460] },
+    { "id": "feature-infer", "from": "feature", "to": "infer", "label": "InferRT / FAISS / CUDA", "variant": "emphasis", "fromSide": "top", "toSide": "bottom" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "主路径",
+      "items": [
+        "QML 只访问 Project、manager、Qt Model 和 UI 服务",
+        "Project 统一持有项目级对象并负责关闭顺序",
+        "tool 负责 Qt 应用和 QML module 装配"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "数据与持久化",
+      "items": [
+        "DataManager 负责数据工作区和格式转换",
+        "database 集中 SQLite、DDL、schema 和事务",
+        "项目数据库与模型任务文件分层保存"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "外部任务",
+      "items": [
+        "ModelTaskController 通过 ExternalModelTaskRunner 启动 Python",
+        "TaskManager 通过 project_id、task_id、run_id 校验事件",
+        "Feature 通过 InferRT、FAISS 和 CUDA 执行搜索与推理"
+      ]
+    }
+  ]
+}
