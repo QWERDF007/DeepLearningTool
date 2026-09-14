@@ -203,7 +203,7 @@ std::tuple<bool, QString> Project::isValid(const int method, const QString &path
         auto      info           = ProjectManager::getInstance()->getProjectInfo(cleaned);
         const int project_method = info.value("method", -1).toInt();
         if (!dltool::core::DeepLearningMethod::isSupportedMethod(project_method))
-            return {false, QString("项目类型非法: %1").arg(method)};
+            return {false, QString("项目类型非法: %1").arg(project_method)};
     }
     return {true, ""};
 }
