@@ -4,6 +4,8 @@
 #include "data/DataManager.h"
 #include "data/GlobalFilter.h"
 #include "database/DataBase.h"
+#include "settings/GlobalSettings.h"
+#include "dltool/settings/SettingsKeys.hpp"
 
 #include <inferrt/features/DinoRegionSearch.hpp>
 
@@ -167,7 +169,7 @@ private slots:
                   << "  schema_version: \"1.0\"\n"
                   << "  feature_version: \"v4_hadamard_sparse_fine\"\n"
                   << "  model_name: dinov2_vits14_reg4\n"
-                  << "  weights_id: default\n"
+                  << "  weights_id: dinov2_vits14_reg4.wts\n"
                   << "  encoder_edge: 518\n"
                   << "  gallery_tile_edges:\n"
                   << "    - 512\n"
@@ -187,7 +189,7 @@ private slots:
                   << "  quantize_int8: true\n"
                   << "  patch_size: 14\n"
                   << "  token_dimension: 384\n"
-                  << "  preprocess_description: \"bgr8->rgb32f;scale=0.00392157;mean=0.485,0.456,0.406;std=0.229,0.224,0.225;resize=linear;letterbox=topleft;pad=mean\"\n"
+                  << "  preprocess_description: \"bgr8->rgb32f;scale=0.003922;mean0=0.485000;mean1=0.456000;mean2=0.406000;std0=0.229000;std1=0.224000;std2=0.225000;resize=linear;letterbox=topleft;pad=mean\"\n"
                   << "total_images: 2\n";
         }
         for (const auto &bin_name : {"views.npy", "offsets.npy", "region_meta.npy", "local_meta.npy",
@@ -503,6 +505,81 @@ private slots:
         sp_msg.stage = irt::features::DinoSearchStage::QueryExtract;
         sp_msg.message = "提取完成";
         QCOMPARE(formatSearchProgressMessage(sp_msg), QString("区域检索 [提取查询特征]: 提取完成"));
+    }
+
+    void testApplyProfileToSettings()
+    {
+        TestFixture fixture;
+        QVERIFY(fixture.init());
+
+        dltool::feature::RegionSearchController controller(fixture.data_manager.get());
+        auto *gs = dltool::settings::GlobalSettings::getInstance();
+        QVERIFY(gs != nullptr);
+
+        namespace gen_field = dltool::settings::generated::field;
+        const int acc_key = static_cast<int>(dltool::settings::generated::AccessorKey::RegionSearch);
+
+        QTemporaryDir temp_dir;
+        QVERIFY(temp_dir.isValid());
+        const QString profile_path = QDir(temp_dir.path()).filePath(QStringLiteral("custom_profile.yaml"));
+        {
+            std::ofstream f(profile_path.toStdString());
+            f << "preset_id: test_preset\n"
+              << "model:\n"
+              << "  model_name: dinov3_vits16\n"
+              << "  weights_file: custom_models/dinov3.wts\n"
+              << "  encoder_edge: 512\n"
+              << "gallery_views:\n"
+              << "  gallery_tile_edges:\n"
+              << "    - 512\n"
+              << "    - 1024\n"
+              << "  view_overlap: 0.30\n"
+              << "descriptors:\n"
+              << "  quantize_int8: false\n"
+              << "coarse_scan:\n"
+              << "  coarse_k: 128\n"
+              << "  coarse_dedup_iou: 0.70\n"
+              << "  final_k: 30\n"
+              << "fine_match:\n"
+              << "  fine_verify_k: 96\n"
+              << "  fine_match_cosine_threshold: 0.65\n"
+              << "  fine_nms_iou: 0.45\n"
+              << "  consistency_mode: instance\n"
+              << "  score_weight_template: 0.50\n"
+              << "  score_weight_coverage: 0.30\n"
+              << "  score_weight_consistency: 0.20\n"
+              << "decision:\n"
+              << "  enable_decision_threshold: true\n"
+              << "  decision_threshold: 0.75\n"
+              << "runtime:\n"
+              << "  model_precision: fp16\n"
+              << "  model_batch_size: 16\n"
+              << "  query_deadline_ms: 45000\n"
+              << "  scan_backend: cpu\n";
+        }
+
+        QVERIFY(controller.applyProfileToSettings(profile_path));
+
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ModelName)).toString(), QStringLiteral("dinov3_vits16"));
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::EncoderEdge)).toInt(), 512);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ViewOverlap)).toDouble(), 0.30);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::QuantizeInt8)).toBool(), false);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ModelPrecision)).toInt(), 1);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ModelBatchSize)).toInt(), 16);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ScanBackend)).toInt(), 0);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::QueryDeadlineMs)).toInt(), 45000);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::CoarseK)).toInt(), 128);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::CoarseDedupIou)).toDouble(), 0.70);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::TopK)).toInt(), 30);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::FineVerifyK)).toInt(), 96);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::FineMatchCosineThreshold)).toDouble(), 0.65);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::FineNmsIou)).toDouble(), 0.45);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ConsistencyMode)).toInt(), 1);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ScoreWeightTemplate)).toDouble(), 0.50);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ScoreWeightCoverage)).toDouble(), 0.30);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ScoreWeightConsistency)).toDouble(), 0.20);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::EnableDecisionThreshold)).toBool(), true);
+        QCOMPARE(gs->valueForField(acc_key, static_cast<int>(gen_field::RegionSearch::Key::DecisionThreshold)).toDouble(), 0.75);
     }
 };
 

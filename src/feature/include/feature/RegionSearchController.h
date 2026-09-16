@@ -125,6 +125,7 @@ public:
     Q_INVOKABLE void generateReturnedPartial();
     Q_INVOKABLE void showLatestResults();
     Q_INVOKABLE void rebuildIndex(const QList<qint64> &dataset_ids);
+    Q_INVOKABLE bool applyProfileToSettings(const QString &profile_path);
 
     void commitResults(const std::shared_ptr<irt::features::DinoSearchResponse> &response);
     void prepareTestJob(int64_t target_class_id);

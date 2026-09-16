@@ -483,6 +483,7 @@ struct RegionSearchController::Impl
     bool    computing{false};
     bool    closing{false};
     bool    commit_started{false};
+    bool    applying_profile{false};
     QString status_text{};
     double  progress_value{0.0};
     QString progress_text{};
@@ -631,6 +632,79 @@ struct RegionSearchController::Impl
             }
         }
 
+        if (gs != nullptr)
+        {
+            const int acc_key = static_cast<int>(dltool::settings::generated::AccessorKey::RegionSearch);
+
+            const QString model_name = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::ModelName), QString{}).toString();
+            if (!model_name.isEmpty())
+            {
+                config.model.model_name = model_name.toStdString();
+            }
+
+            const int encoder_edge = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::EncoderEdge), 0).toInt();
+            if (encoder_edge > 0)
+            {
+                config.model.encoder_edge = encoder_edge;
+            }
+
+            // 图库与特征
+            config.gallery_views.view_overlap = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::ViewOverlap), config.gallery_views.view_overlap).toDouble();
+            config.descriptors.quantize_int8  = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::QuantizeInt8), config.descriptors.quantize_int8).toBool();
+
+            // 运行时
+            const int precision_val = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::ModelPrecision), 1).toInt();
+            config.runtime.model_precision = (precision_val == 1) ? irt::model::ModelPrecision::FP16 : irt::model::ModelPrecision::FP32;
+
+            const int batch_size = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::ModelBatchSize), static_cast<int>(config.runtime.model_batch_size)).toInt();
+            if (batch_size > 0)
+            {
+                config.runtime.model_batch_size = static_cast<size_t>(batch_size);
+            }
+
+            const int backend_val = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::ScanBackend), 1).toInt();
+            config.runtime.scan_backend = (backend_val == 0) ? irt::features::DinoScanBackend::Cpu : irt::features::DinoScanBackend::Cuda;
+
+            const int deadline = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::QueryDeadlineMs), static_cast<int>(config.runtime.query_deadline_ms)).toInt();
+            if (deadline > 0)
+            {
+                config.runtime.query_deadline_ms = deadline;
+            }
+
+            // 粗排与检索
+            const int coarse_k = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::CoarseK), static_cast<int>(config.coarse_scan.coarse_k)).toInt();
+            if (coarse_k > 0)
+            {
+                config.coarse_scan.coarse_k = static_cast<size_t>(coarse_k);
+            }
+            config.coarse_scan.coarse_dedup_iou = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::CoarseDedupIou), config.coarse_scan.coarse_dedup_iou).toDouble();
+
+            const int top_k = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::TopK), static_cast<int>(config.coarse_scan.final_k)).toInt();
+            if (top_k > 0)
+            {
+                config.coarse_scan.final_k = static_cast<size_t>(top_k);
+            }
+
+            // 精排与匹配
+            const int fine_k = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::FineVerifyK), static_cast<int>(config.fine_match.fine_verify_k)).toInt();
+            config.fine_match.fine_verify_k = static_cast<size_t>(std::max(0, fine_k));
+
+            config.fine_match.fine_match_cosine_threshold = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::FineMatchCosineThreshold), config.fine_match.fine_match_cosine_threshold).toDouble();
+            config.fine_match.fine_nms_iou                 = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::FineNmsIou), config.fine_match.fine_nms_iou).toDouble();
+
+            const int consistency_val = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::ConsistencyMode), 0).toInt();
+            config.fine_match.consistency_mode = (consistency_val == 1) ? irt::features::DinoConsistencyMode::Instance : irt::features::DinoConsistencyMode::Appearance;
+
+            // 打分权重
+            config.fine_match.score_weight_template    = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::ScoreWeightTemplate), config.fine_match.score_weight_template).toDouble();
+            config.fine_match.score_weight_coverage    = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::ScoreWeightCoverage), config.fine_match.score_weight_coverage).toDouble();
+            config.fine_match.score_weight_consistency = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::ScoreWeightConsistency), config.fine_match.score_weight_consistency).toDouble();
+
+            // 判定阈值
+            config.decision.enable_decision_threshold = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::EnableDecisionThreshold), config.decision.enable_decision_threshold).toBool();
+            config.decision.decision_threshold        = gs->valueForField(acc_key, static_cast<int>(generated_field::RegionSearch::Key::DecisionThreshold), config.decision.decision_threshold).toDouble();
+        }
+
         return config;
     }
 };
@@ -653,19 +727,27 @@ RegionSearchController::RegionSearchController(dltool::data::DataManager *data_m
         connect(gs, &dltool::settings::GlobalSettings::fieldValueChanged, this,
                 [this](dltool::settings::generated::AccessorKey accessor_key,
                        const QString &field_name,
-                       const QVariant & /*value*/) {
+                       const QVariant &value) {
                     if (accessor_key == dltool::settings::generated::AccessorKey::RegionSearch)
                     {
                         if (field_name == QStringLiteral("enabled"))
                         {
                             emit enabledChanged();
                         }
-                        else if (field_name == QStringLiteral("profile_path")
+                        else if (field_name == QStringLiteral("profile_path"))
+                        {
+                            applyProfileToSettings(value.toString());
+                            const auto cfg = impl_->loadConfig();
+                            impl_->profile_final_k = cfg.coarse_scan.final_k > 0 ? static_cast<int>(cfg.coarse_scan.final_k) : 50;
+                            emit profileChanged();
+                        }
+                        else if (field_name == QStringLiteral("top_k")
                                  || field_name == QStringLiteral("weights_path")
-                                 || field_name == QStringLiteral("model_runtime"))
+                                 || field_name == QStringLiteral("model_runtime")
+                                 || field_name == QStringLiteral("model_name"))
                         {
                             const auto cfg = impl_->loadConfig();
-                            impl_->profile_final_k = cfg.coarse_scan.final_k > 0 ? cfg.coarse_scan.final_k : 50;
+                            impl_->profile_final_k = cfg.coarse_scan.final_k > 0 ? static_cast<int>(cfg.coarse_scan.final_k) : 50;
                             emit profileChanged();
                         }
                     }
@@ -1088,9 +1170,9 @@ bool RegionSearchController::start(const QVariantMap &options)
         return false;
     }
 
-    const int  top_k_req = options.value(QStringLiteral("topK"), 50).toInt();
-    const int  max_k = config.coarse_scan.final_k > 0 ? static_cast<int>(config.coarse_scan.final_k) : 50;
-    const int  top_k = std::clamp(top_k_req, 1, max_k);
+    const int  top_k_req = options.value(QStringLiteral("topK"), static_cast<int>(config.coarse_scan.final_k)).toInt();
+    const int  top_k = std::max(1, top_k_req);
+    config.coarse_scan.final_k = static_cast<size_t>(top_k);
     const bool include_self = options.value(QStringLiteral("includeSelf"), true).toBool();
 
     const bool need_build = checkNeedsBuild(QList<int64_t>(target_ds.begin(), target_ds.end()));
@@ -1319,6 +1401,98 @@ void RegionSearchController::rebuildIndex(const QList<int64_t> &dataset_ids)
     }
     opts[QStringLiteral("datasetIds")] = ds;
     start(opts);
+}
+
+bool RegionSearchController::applyProfileToSettings(const QString &profile_path)
+{
+    if (impl_->applying_profile || profile_path.isEmpty())
+    {
+        return false;
+    }
+
+    QString effective_path = profile_path;
+    if (!QFileInfo::exists(effective_path))
+    {
+        const QString app_dir = QCoreApplication::applicationDirPath();
+        const QString cand = QDir(app_dir).filePath(profile_path);
+        if (QFileInfo::exists(cand))
+        {
+            effective_path = cand;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    QFile f(effective_path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        return false;
+    }
+
+    const std::string yaml_text = QString::fromUtf8(f.readAll()).toStdString();
+    irt::features::DinoRegionSearchConfig cfg;
+    try
+    {
+        cfg = irt::features::dinoConfigFromYaml(yaml_text);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::warn("解析 profile 失败: {}", e.what());
+        return false;
+    }
+
+    auto *gs = dltool::settings::GlobalSettings::getInstance();
+    if (gs == nullptr)
+        return false;
+
+    impl_->applying_profile = true;
+
+    namespace gen_field = dltool::settings::generated::field;
+    const int acc_key = static_cast<int>(dltool::settings::generated::AccessorKey::RegionSearch);
+
+    // 模型
+    if (!cfg.model.model_name.empty())
+        gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ModelName), QString::fromStdString(cfg.model.model_name));
+    if (!cfg.model.weights_file.empty())
+        gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::WeightsPath), fromFsPath(cfg.model.weights_file));
+    if (cfg.model.encoder_edge > 0)
+        gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::EncoderEdge), cfg.model.encoder_edge);
+
+    // 图库与特征
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ViewOverlap), cfg.gallery_views.view_overlap);
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::QuantizeInt8), cfg.descriptors.quantize_int8);
+
+    // 运行时
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ModelPrecision), cfg.runtime.model_precision == irt::model::ModelPrecision::FP16 ? 1 : 0);
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ModelBatchSize), static_cast<int>(cfg.runtime.model_batch_size));
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ScanBackend), cfg.runtime.scan_backend == irt::features::DinoScanBackend::Cuda ? 1 : 0);
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::QueryDeadlineMs), static_cast<int>(cfg.runtime.query_deadline_ms));
+
+    // 粗排与检索
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::CoarseK), static_cast<int>(cfg.coarse_scan.coarse_k));
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::CoarseDedupIou), cfg.coarse_scan.coarse_dedup_iou);
+    if (cfg.coarse_scan.final_k > 0)
+        gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::TopK), static_cast<int>(cfg.coarse_scan.final_k));
+
+    // 精排与匹配
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::FineVerifyK), static_cast<int>(cfg.fine_match.fine_verify_k));
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::FineMatchCosineThreshold), cfg.fine_match.fine_match_cosine_threshold);
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::FineNmsIou), cfg.fine_match.fine_nms_iou);
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ConsistencyMode), cfg.fine_match.consistency_mode == irt::features::DinoConsistencyMode::Instance ? 1 : 0);
+
+    // 打分权重
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ScoreWeightTemplate), cfg.fine_match.score_weight_template);
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ScoreWeightCoverage), cfg.fine_match.score_weight_coverage);
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::ScoreWeightConsistency), cfg.fine_match.score_weight_consistency);
+
+    // 判定阈值
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::EnableDecisionThreshold), cfg.decision.enable_decision_threshold);
+    gs->setFieldValue(acc_key, static_cast<int>(gen_field::RegionSearch::Key::DecisionThreshold), cfg.decision.decision_threshold);
+
+    impl_->applying_profile = false;
+    return true;
 }
 
 void RegionSearchController::cancel()

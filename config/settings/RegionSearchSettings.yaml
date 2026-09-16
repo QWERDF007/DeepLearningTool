@@ -15,14 +15,26 @@ RegionSearchSettings:
         value_type: bool
         display_type: checkbox
 
-    配置:
+    预设:
       - name_en: profile_path
-        name_cn: 配置文件
-        description: 用于配置区域检索的 profile yaml 路径。
+        name_cn: 预设文件
+        description: 用于配置区域检索的 profile/preset YAML 路径。选择后会自动刷新对应参数。
         property_name: profilePath
         value: ""
         value_type: string
         display_type: path
+
+    模型:
+      - name_en: model_name
+        name_cn: 模型架构
+        description: 用于配置区域检索所采用的骨干模型架构，更改此项需重建特征索引。
+        property_name: modelName
+        value: dinov2_vits14_reg4
+        value_type: string
+        display_type: combo
+        options:
+          - dinov2_vits14_reg4
+          - dinov3_vits16
 
       - name_en: weights_path
         name_cn: 模型权重
@@ -31,6 +43,86 @@ RegionSearchSettings:
         value: ""
         value_type: string
         display_type: path
+
+      - name_en: encoder_edge
+        name_cn: 编码输入边长
+        description: 用于配置骨干网络输入光栅边长（如 dinov2 为 518，dinov3 为 512），更改此项需重建特征索引。
+        property_name: encoderEdge
+        value: 518
+        value_type: int
+        value_range: [224, 1024, 14]
+        display_type: spin
+
+    图库:
+      - name_en: view_overlap
+        name_cn: 瓦片重叠率
+        description: 用于配置图库切片多尺度视图之间的重叠率，更改此项需重建特征索引。
+        property_name: viewOverlap
+        value: 0.25
+        value_type: double
+        value_range: [0.0, 0.5, 0.05]
+        display_type: spin
+
+    特征:
+      - name_en: quantize_int8
+        name_cn: INT8 量化
+        description: 用于配置图库特征是否使用 INT8 紧凑量化存储，更改此项需重建特征索引。
+        property_name: quantizeInt8
+        value: true
+        value_type: bool
+        display_type: checkbox
+
+    运行时:
+      - name_en: model_runtime
+        name_cn: 运行时设备
+        description: 用于配置区域检索模型推理的后端和设备。
+        property_name: modelRuntime
+        value_type: string
+        param_type: dynamic
+        display_type: combo
+        backend_key: inferrt.compute_devices
+
+      - name_en: model_precision
+        name_cn: 推理精度
+        description: 用于配置区域检索模型推理的浮点精度。
+        property_name: modelPrecision
+        value: 1
+        value_type: int
+        display_type: combo
+        options: [FP32, FP16]
+        options_values:
+          FP32: 0
+          FP16: 1
+
+      - name_en: model_batch_size
+        name_cn: 推理批量
+        description: 用于配置骨干网络推理的批处理大小。
+        property_name: modelBatchSize
+        value: 8
+        value_type: int
+        value_range: [1, 64, 1]
+        display_type: spin
+
+      - name_en: scan_backend
+        name_cn: 扫描计算后端
+        description: 用于配置紧凑特征向量扫描的计算后端。
+        property_name: scanBackend
+        value: 1
+        value_type: int
+        display_type: combo
+        options: [CPU, CUDA]
+        options_values:
+          CPU: 0
+          CUDA: 1
+
+      - name_en: query_deadline_ms
+        name_cn: 查询超时 (ms)
+        description: 用于配置单次检索的最大允许执行时间（毫秒）。
+        property_name: queryDeadlineMs
+        value: 30000
+        value_type: int
+        value_range: [5000, 300000, 1000]
+        display_type: spin
 
     检索:
       - name_en: top_k
@@ -50,12 +142,107 @@ RegionSearchSettings:
         value_type: bool
         display_type: checkbox
 
-    运行时:
-      - name_en: model_runtime
-        name_cn: 运行时设备
-        description: 用于配置区域检索模型推理的后端和设备。
-        property_name: modelRuntime
-        value_type: string
-        param_type: dynamic
+    粗排:
+      - name_en: coarse_k
+        name_cn: 粗排候选数
+        description: 用于配置粗排检索阶段选出的候选区域数量。
+        property_name: coarseK
+        value: 64
+        value_type: int
+        value_range: [8, 512, 8]
+        display_type: spin
+
+      - name_en: coarse_dedup_iou
+        name_cn: 粗选去重 IoU
+        description: 用于配置粗排候选区域重叠去重的 IoU 阈值。
+        property_name: coarseDedupIou
+        value: 0.85
+        value_type: double
+        value_range: [0.1, 1.0, 0.05]
+        display_type: spin
+
+    精排:
+      - name_en: fine_verify_k
+        name_cn: 精排复核数
+        description: 用于配置进入精排紧裁匹配的候选区域数量（设为 0 则关闭精排复核）。
+        property_name: fineVerifyK
+        value: 128
+        value_type: int
+        value_range: [0, 256, 8]
+        display_type: spin
+
+      - name_en: fine_match_cosine_threshold
+        name_cn: 模板匹配阈值
+        description: 用于配置精排模板余弦相似度匹配的最低阈值。
+        property_name: fineMatchCosineThreshold
+        value: 0.55
+        value_type: double
+        value_range: [0.0, 1.0, 0.05]
+        display_type: spin
+
+      - name_en: fine_nms_iou
+        name_cn: 精排 NMS IoU
+        description: 用于配置精排最终候选非极大值抑制（NMS）的 IoU 阈值。
+        property_name: fineNmsIou
+        value: 0.50
+        value_type: double
+        value_range: [0.1, 0.9, 0.05]
+        display_type: spin
+
+      - name_en: consistency_mode
+        name_cn: 一致性模式
+        description: 用于配置精匹配阶段的空间一致性严格程度。
+        property_name: consistencyMode
+        value: 0
+        value_type: int
         display_type: combo
-        backend_key: inferrt.compute_devices
+        options: [外观模式, 实例模式]
+        options_values:
+          外观模式: 0
+          实例模式: 1
+
+    权重:
+      - name_en: score_weight_template
+        name_cn: 模板相似度权重
+        description: 用于配置最终综合评分中模板余弦相似度得分的权重占比。
+        property_name: scoreWeightTemplate
+        value: 0.60
+        value_type: double
+        value_range: [0.0, 1.0, 0.05]
+        display_type: spin
+
+      - name_en: score_weight_coverage
+        name_cn: 查询覆盖率权重
+        description: 用于配置最终综合评分中查询区域特征覆盖率的权重占比。
+        property_name: scoreWeightCoverage
+        value: 0.25
+        value_type: double
+        value_range: [0.0, 1.0, 0.05]
+        display_type: spin
+
+      - name_en: score_weight_consistency
+        name_cn: 空间一致性权重
+        description: 用于配置最终综合评分中局部特征空间相对位置一致性的权重占比。
+        property_name: scoreWeightConsistency
+        value: 0.15
+        value_type: double
+        value_range: [0.0, 1.0, 0.05]
+        display_type: spin
+
+    判定:
+      - name_en: enable_decision_threshold
+        name_cn: 启用判定阈值
+        description: 用于配置是否启用最终相似度及格判定门限。
+        property_name: enableDecisionThreshold
+        value: false
+        value_type: bool
+        display_type: checkbox
+
+      - name_en: decision_threshold
+        name_cn: 判定阈值
+        description: 用于配置被判定为匹配成功的综合评分最低门限。
+        property_name: decisionThreshold
+        value: 0.0
+        value_type: double
+        value_range: [0.0, 1.0, 0.05]
+        display_type: spin
