@@ -373,7 +373,7 @@ protected:
             req.roi               = job_.query.query_roi;
             req.top_k             = job_.top_k;
             req.include_self      = job_.include_self;
-            req.deadline_ms       = job_.config.query_deadline_ms;
+            req.deadline_ms       = job_.config.runtime.query_deadline_ms;
             req.allowed_image_ids = allowed_image_ids;
             req.image_resolver    = [&paths = job_.image_paths](int64_t image_id) -> fs::path {
                 const auto it = paths.find(image_id);
@@ -600,21 +600,14 @@ struct RegionSearchController::Impl
         irt::features::DinoRegionSearchConfig config;
         if (!yaml_text.empty())
         {
-            try
-            {
-                config = irt::features::dinoConfigFromYaml(yaml_text);
-            }
-            catch (const std::exception &e)
-            {
-                spdlog::warn("解析 profile YAML 失败: {}, 使用默认配置", e.what());
-            }
+            config = irt::features::dinoConfigFromYaml(yaml_text);
         }
 
         // 解析权重文件路径
         QString effective_weights = weights_path;
         if (effective_weights.isEmpty() || !QFileInfo::exists(effective_weights))
         {
-            const QString profile_weights = fromFsPath(config.weights_file);
+            const QString profile_weights = fromFsPath(config.model.weights_file);
             const QString profile_dir = QFileInfo(profile_path).dir().path();
             const QString app_dir = QCoreApplication::applicationDirPath();
 
@@ -642,14 +635,14 @@ struct RegionSearchController::Impl
 
         if (!effective_weights.isEmpty() && QFileInfo::exists(effective_weights))
         {
-            config.weights_file = toFsPath(effective_weights);
+            config.model.weights_file = toFsPath(effective_weights);
         }
 
         if (!model_runtime.isEmpty())
         {
             try
             {
-                config.model_runtime = irt::model::ModelRuntime::parse(model_runtime.toStdString());
+                config.runtime.model_runtime = irt::model::ModelRuntime::parse(model_runtime.toStdString());
             }
             catch (...)
             {
@@ -671,7 +664,7 @@ RegionSearchController::RegionSearchController(dltool::data::DataManager *data_m
     impl_->data_manager = data_manager;
 
     const auto config = impl_->loadConfig();
-    impl_->profile_final_k = config.final_k > 0 ? config.final_k : 50;
+    impl_->profile_final_k = config.coarse_scan.final_k > 0 ? config.coarse_scan.final_k : 50;
 
     if (auto *gs = dltool::settings::GlobalSettings::getInstance())
     {
@@ -690,7 +683,7 @@ RegionSearchController::RegionSearchController(dltool::data::DataManager *data_m
                                  || field_name == QStringLiteral("model_runtime"))
                         {
                             const auto cfg = impl_->loadConfig();
-                            impl_->profile_final_k = cfg.final_k > 0 ? cfg.final_k : 50;
+                            impl_->profile_final_k = cfg.coarse_scan.final_k > 0 ? cfg.coarse_scan.final_k : 50;
                             emit profileChanged();
                         }
                     }
@@ -994,6 +987,26 @@ bool RegionSearchController::checkNeedsBuild(const QList<int64_t> &dataset_ids)
         return true;
     }
 
+    try
+    {
+        const auto config = impl_->loadConfig();
+        if (irt::features::DinoRegionSearch::needsRebuild(idx_root, config))
+        {
+            impl_->needs_build         = true;
+            impl_->indexed_image_count = 0;
+            emit scopeChanged();
+            return true;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::warn("检查索引一致性异常: {}", e.what());
+        impl_->needs_build         = true;
+        impl_->indexed_image_count = 0;
+        emit scopeChanged();
+        return true;
+    }
+
     std::set<int64_t>        indexed_datasets;
     std::vector<std::string> failed_paths;
     if (!readIndexScope(scope_path, indexed_datasets, failed_paths))
@@ -1073,18 +1086,28 @@ bool RegionSearchController::start(const QVariantMap &options)
         return false;
     }
 
-    const auto config = impl_->loadConfig();
-    if (config.weights_file.empty() || !fs::exists(config.weights_file))
+    irt::features::DinoRegionSearchConfig config;
+    try
     {
-        const QString err = config.weights_file.empty()
+        config = impl_->loadConfig();
+    }
+    catch (const std::exception &e)
+    {
+        setLastError(QString("加载区域检索配置失败: %1").arg(e.what()));
+        return false;
+    }
+
+    if (config.model.weights_file.empty() || !fs::exists(config.model.weights_file))
+    {
+        const QString err = config.model.weights_file.empty()
                                 ? QString("未配置区域检索骨干模型权重")
-                                : QString("区域检索骨干权重文件不存在: %1").arg(fromFsPath(config.weights_file));
+                                : QString("区域检索骨干权重文件不存在: %1").arg(fromFsPath(config.model.weights_file));
         setLastError(err);
         return false;
     }
 
     const int  top_k_req = options.value(QStringLiteral("topK"), 50).toInt();
-    const int  max_k = config.final_k > 0 ? static_cast<int>(config.final_k) : 50;
+    const int  max_k = config.coarse_scan.final_k > 0 ? static_cast<int>(config.coarse_scan.final_k) : 50;
     const int  top_k = std::clamp(top_k_req, 1, max_k);
     const bool include_self = options.value(QStringLiteral("includeSelf"), true).toBool();
 

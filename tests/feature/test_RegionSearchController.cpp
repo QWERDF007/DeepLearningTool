@@ -163,7 +163,38 @@ private slots:
 
         {
             std::ofstream f_idx(QDir(index_dir).filePath(QStringLiteral("index.yaml")).toStdString());
-            f_idx << "total_images: 2\n";
+            f_idx << "manifest:\n"
+                  << "  schema_version: \"1.0\"\n"
+                  << "  feature_version: \"v4_hadamard_sparse_fine\"\n"
+                  << "  model_name: dinov2_vits14_reg4\n"
+                  << "  weights_id: default\n"
+                  << "  encoder_edge: 518\n"
+                  << "  gallery_tile_edges:\n"
+                  << "    - 512\n"
+                  << "    - 1024\n"
+                  << "    - 2048\n"
+                  << "  view_overlap: 0.25\n"
+                  << "  region_window_ratios:\n"
+                  << "    - 1.0\n"
+                  << "    - 0.5\n"
+                  << "  region_window_stride_ratio: 0.5\n"
+                  << "  region_min_valid_fraction: 0.5\n"
+                  << "  coarse_dimension: 96\n"
+                  << "  local_representatives: 64\n"
+                  << "  merge_enabled: true\n"
+                  << "  merge_epsilon: 0.1\n"
+                  << "  max_leaf_side_patches: 4\n"
+                  << "  quantize_int8: true\n"
+                  << "  patch_size: 14\n"
+                  << "  token_dimension: 384\n"
+                  << "  preprocess_description: \"bgr8->rgb32f;scale=0.00392157;mean=0.485,0.456,0.406;std=0.229,0.224,0.225;resize=linear;letterbox=topleft;pad=mean\"\n"
+                  << "total_images: 2\n";
+        }
+        for (const auto &bin_name : {"views.npy", "offsets.npy", "region_meta.npy", "local_meta.npy",
+                                     "region_scales.f32", "local_scales.f32", "region_vectors.i8", "local_vectors.i8"})
+        {
+            std::ofstream f_bin(QDir(index_dir).filePath(QString::fromLatin1(bin_name)).toStdString(), std::ios::binary);
+            f_bin.put(0);
         }
         {
             std::ofstream f_scope(QDir(index_dir).filePath(QStringLiteral("index_scope.yaml")).toStdString());
