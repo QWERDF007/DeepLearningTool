@@ -57,6 +57,7 @@ class FEATURE_API RegionSearchController : public QObject
     Q_PROPERTY(int profileFinalK READ profileFinalK NOTIFY profileChanged)
     Q_PROPERTY(bool needsBuild READ needsBuild NOTIFY scopeChanged)
     Q_PROPERTY(int indexedImageCount READ indexedImageCount NOTIFY scopeChanged)
+    Q_PROPERTY(QString buildReason READ buildReason NOTIFY scopeChanged)
 
     // 结果摘要
     Q_PROPERTY(int returnedCount READ returnedCount NOTIFY summaryChanged)
@@ -109,6 +110,7 @@ public:
     int profileFinalK() const;
     bool needsBuild() const;
     int indexedImageCount() const;
+    QString buildReason() const;
 
     int returnedCount() const;
     int createdCount() const;

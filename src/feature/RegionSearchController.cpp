@@ -246,8 +246,10 @@ TaskOutcome runRegionJob(RegionJob job, const std::function<void(double, const Q
             return outcome;
         }
 
-        auto last_progress_time = std::chrono::steady_clock::time_point{};
+        auto   last_progress_time  = std::chrono::steady_clock::time_point{};
+        double max_progress_so_far = 0.0;
         auto throttle_progress = [&](double pct, const QString &msg) {
+            max_progress_so_far = std::max(max_progress_so_far, pct);
             auto now = std::chrono::steady_clock::now();
             if (last_progress_time == std::chrono::steady_clock::time_point{}
                 || std::chrono::duration_cast<std::chrono::milliseconds>(now - last_progress_time).count() >= 100)
@@ -255,7 +257,7 @@ TaskOutcome runRegionJob(RegionJob job, const std::function<void(double, const Q
                 last_progress_time = now;
                 if (progress_fn)
                 {
-                    progress_fn(pct, msg);
+                    progress_fn(max_progress_so_far, msg);
                 }
             }
         };
@@ -396,11 +398,11 @@ TaskOutcome runRegionJob(RegionJob job, const std::function<void(double, const Q
                 stage_base = 0.70;
                 stage_span = 0.05;
                 break;
-            case irt::features::DinoSearchStage::FineExtract:
+            case irt::features::DinoSearchStage::FineMatch:
                 stage_base = 0.75;
                 stage_span = 0.10;
                 break;
-            case irt::features::DinoSearchStage::FineMatch:
+            case irt::features::DinoSearchStage::FineExtract:
                 stage_base = 0.85;
                 stage_span = 0.10;
                 break;
@@ -496,6 +498,7 @@ struct RegionSearchController::Impl
     int profile_final_k{50};
     bool needs_build{true};
     int  indexed_image_count{0};
+    QString build_reason{};
 
     int returned_count{0};
     int created_count{0};
@@ -917,6 +920,11 @@ int RegionSearchController::indexedImageCount() const
     return impl_->indexed_image_count;
 }
 
+QString RegionSearchController::buildReason() const
+{
+    return impl_->build_reason;
+}
+
 int RegionSearchController::returnedCount() const
 {
     return impl_->returned_count;
@@ -1043,10 +1051,22 @@ bool RegionSearchController::checkNeedsBuild(const QList<int64_t> &dataset_ids)
     const auto scope_path = impl_->scopeFile();
     const auto idx_yaml   = idx_root / "index.yaml";
 
-    if (!fs::exists(idx_yaml) || !fs::exists(scope_path))
+    if (!fs::exists(idx_yaml))
     {
+        impl_->build_reason         = QStringLiteral("索引元数据 index.yaml 不存在 (尚未建库或上次构建被中断)");
         impl_->needs_build          = true;
         impl_->indexed_image_count  = 0;
+        spdlog::info("区域检索检查索引: {}", impl_->build_reason.toUtf8().constData());
+        emit scopeChanged();
+        return true;
+    }
+
+    if (!fs::exists(scope_path))
+    {
+        impl_->build_reason         = QStringLiteral("索引范围文件 index_scope.yaml 不存在");
+        impl_->needs_build          = true;
+        impl_->indexed_image_count  = 0;
+        spdlog::info("区域检索检查索引: {}", impl_->build_reason.toUtf8().constData());
         emit scopeChanged();
         return true;
     }
@@ -1056,15 +1076,62 @@ bool RegionSearchController::checkNeedsBuild(const QList<int64_t> &dataset_ids)
         const auto config = impl_->loadConfig();
         if (irt::features::DinoRegionSearch::needsRebuild(idx_root, config))
         {
+            QStringList diffs;
+            try
+            {
+                std::ifstream fin(idx_yaml, std::ios::binary);
+                if (fin.is_open())
+                {
+                    YAML::Node node = YAML::Load(fin);
+                    if (node["manifest"])
+                    {
+                        const auto m = node["manifest"];
+                        auto check_field = [&](const char *name, const std::string &actual, const std::string &expected) {
+                            if (actual != expected)
+                            {
+                                diffs.append(QString("%1 (索引: '%2', 当前设置: '%3')")
+                                                 .arg(QString::fromUtf8(name))
+                                                 .arg(QString::fromUtf8(actual.c_str()))
+                                                 .arg(QString::fromUtf8(expected.c_str())));
+                            }
+                        };
+                        if (m["model_name"])
+                            check_field("model_name", m["model_name"].as<std::string>(), config.model.model_name);
+                        if (m["weights_id"])
+                            check_field("weights_id", m["weights_id"].as<std::string>(), config.model.weights_id);
+                        if (m["encoder_edge"])
+                            check_field("encoder_edge", m["encoder_edge"].as<std::string>(), std::to_string(config.model.encoder_edge));
+                        if (m["view_overlap"])
+                            check_field("view_overlap", m["view_overlap"].as<std::string>(), QString::number(config.gallery_views.view_overlap, 'f', 2).toStdString());
+                        if (m["quantize_int8"])
+                            check_field("quantize_int8", m["quantize_int8"].as<std::string>(), config.descriptors.quantize_int8 ? "true" : "false");
+                    }
+                }
+            }
+            catch (...)
+            {
+            }
+
+            if (!diffs.isEmpty())
+            {
+                impl_->build_reason = QString("索引契约参数不一致 [%1]").arg(diffs.join(QStringLiteral("; ")));
+            }
+            else
+            {
+                impl_->build_reason = QStringLiteral("索引契约校验不通过或特征文件不匹配");
+            }
+
             impl_->needs_build         = true;
             impl_->indexed_image_count = 0;
+            spdlog::info("区域检索检查索引: {}，需要重新建立特征索引", impl_->build_reason.toUtf8().constData());
             emit scopeChanged();
             return true;
         }
     }
     catch (const std::exception &e)
     {
-        spdlog::warn("检查索引一致性异常: {}", e.what());
+        impl_->build_reason        = QString("检查索引一致性异常: %1").arg(e.what());
+        spdlog::warn("{}", impl_->build_reason.toUtf8().constData());
         impl_->needs_build         = true;
         impl_->indexed_image_count = 0;
         emit scopeChanged();
@@ -1075,6 +1142,8 @@ bool RegionSearchController::checkNeedsBuild(const QList<int64_t> &dataset_ids)
     std::vector<std::string> failed_paths;
     if (!readIndexScope(scope_path, indexed_datasets, failed_paths))
     {
+        impl_->build_reason        = QStringLiteral("读取 index_scope.yaml 失败");
+        spdlog::info("区域检索检查索引: {}，需要重新建立特征索引", impl_->build_reason.toUtf8().constData());
         impl_->needs_build         = true;
         impl_->indexed_image_count = 0;
         emit scopeChanged();
@@ -1091,25 +1160,46 @@ bool RegionSearchController::checkNeedsBuild(const QList<int64_t> &dataset_ids)
             {
                 impl_->indexed_image_count = node["total_images"].as<int>();
             }
+            else if (node["images"] && node["images"].IsSequence())
+            {
+                impl_->indexed_image_count = static_cast<int>(node["images"].size());
+            }
         }
     }
     catch (...)
     {
     }
 
-    bool missing = false;
+    QStringList missing_ds;
     for (const int64_t ds_id : dataset_ids)
     {
         if (indexed_datasets.count(ds_id) == 0)
         {
-            missing = true;
-            break;
+            missing_ds.append(QString::number(ds_id));
         }
     }
 
-    impl_->needs_build = missing;
+    if (!missing_ds.isEmpty())
+    {
+        QStringList existing_ds;
+        for (const int64_t id : indexed_datasets)
+        {
+            existing_ds.append(QString::number(id));
+        }
+        impl_->build_reason = QString("目标数据集 [%1] 尚未建立索引 (已有范围: [%2])")
+                                  .arg(missing_ds.join(QStringLiteral(", ")))
+                                  .arg(existing_ds.join(QStringLiteral(", ")));
+        spdlog::info("区域检索检查索引: {}，需要建立特征索引", impl_->build_reason.toUtf8().constData());
+        impl_->needs_build = true;
+        emit scopeChanged();
+        return true;
+    }
+
+    impl_->build_reason.clear();
+    impl_->needs_build = false;
+    spdlog::info("区域检索检查索引: 已有索引完全有效，直接复用 (共 {} 张图像)", impl_->indexed_image_count);
     emit scopeChanged();
-    return missing;
+    return false;
 }
 
 bool RegionSearchController::start(const QVariantMap &options)
@@ -1281,13 +1371,19 @@ bool RegionSearchController::start(const QVariantMap &options)
     impl_->current_task_id = task_id;
     ui::ProgressManager::getInstance()->startTask(QString("区域检索"), task_id);
 
+    const QString build_status = need_build
+                                     ? (impl_->build_reason.isEmpty()
+                                            ? QStringLiteral("需要建立特征索引")
+                                            : QString("需要建立特征索引 (%1)").arg(impl_->build_reason))
+                                     : QStringLiteral("使用已有特征索引");
+
     const QString start_msg = QString("开始区域检索: 查询标注 ID=%1, 类别=%2, 搜索数据集=%3 个, 图库图像=%4 张, TopK=%5, %6")
                                   .arg(impl_->query.query_label_id)
                                   .arg(queryClassName())
                                   .arg(job.target_dataset_ids.size())
                                   .arg(job.gallery.size())
                                   .arg(top_k)
-                                  .arg(need_build ? QString("需要建立特征索引") : QString("使用已有特征索引"));
+                                  .arg(build_status);
 
     spdlog::info("{}", start_msg.toUtf8().constData());
     addProgressMessage(spdlog::level::info, start_msg);

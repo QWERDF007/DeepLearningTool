@@ -154,10 +154,12 @@ private slots:
 
         dltool::feature::RegionSearchController controller(fixture.data_manager.get());
 
-        // Without index files, needsBuild is true
+        // Without index files, needsBuild is true and buildReason is populated
         QVERIFY(controller.checkNeedsBuild({fixture.dataset_id}));
         QVERIFY(controller.needsBuild());
         QCOMPARE(controller.indexedImageCount(), 0);
+        QVERIFY(!controller.buildReason().isEmpty());
+        QVERIFY(controller.buildReason().contains(QStringLiteral("index.yaml")));
 
         // Create index files
         const QString index_dir = QDir(fixture.dir.path()).filePath(QStringLiteral("region_search"));
@@ -190,6 +192,9 @@ private slots:
                   << "  patch_size: 14\n"
                   << "  token_dimension: 384\n"
                   << "  preprocess_description: \"bgr8->rgb32f;scale=0.003922;mean0=0.485000;mean1=0.456000;mean2=0.406000;std0=0.229000;std1=0.224000;std2=0.225000;resize=linear;letterbox=topleft;pad=mean\"\n"
+                  << "images:\n"
+                  << "  - image_id: 1\n"
+                  << "  - image_id: 2\n"
                   << "total_images: 2\n";
         }
         for (const auto &bin_name : {"views.npy", "offsets.npy", "region_meta.npy", "local_meta.npy",
@@ -207,10 +212,12 @@ private slots:
         QVERIFY(!controller.checkNeedsBuild({fixture.dataset_id}));
         QVERIFY(!controller.needsBuild());
         QCOMPARE(controller.indexedImageCount(), 2);
+        QVERIFY(controller.buildReason().isEmpty());
 
-        // Asking for an un-indexed dataset triggers needsBuild
+        // Asking for an un-indexed dataset triggers needsBuild with reason identifying missing dataset
         QVERIFY(controller.checkNeedsBuild({fixture.dataset_id, 9999}));
         QVERIFY(controller.needsBuild());
+        QVERIFY(controller.buildReason().contains(QStringLiteral("9999")));
     }
 
     void commitResultsDeduplicationAndReuse()
