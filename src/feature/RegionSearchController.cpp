@@ -228,265 +228,245 @@ void writeIndexScope(const fs::path &scope_file, const std::set<int64_t> &datase
 } // namespace
 
 // ============================================================================
-// RegionTask 后台检索线程
+// runRegionJob 后台检索执行函数
 // ============================================================================
 
-class RegionTask : public QThread
+TaskOutcome runRegionJob(RegionJob job, const std::function<void(double, const QString &)> &progress_fn)
 {
-    Q_OBJECT
-
-public:
-    explicit RegionTask(RegionJob job, QObject *parent = nullptr)
-        : QThread(parent)
-        , job_(std::move(job))
+    TaskOutcome outcome;
+    try
     {
-    }
+        auto is_stopped = [&job]() {
+            return job.stop != nullptr && job.stop->load(std::memory_order_relaxed);
+        };
 
-    const TaskOutcome &outcome() const
-    {
-        return outcome_;
-    }
-
-signals:
-    void progress(double value, const QString &text);
-
-protected:
-    void run() override
-    {
-        try
+        if (is_stopped())
         {
-            auto is_stopped = [this]() {
-                return job_.stop->load(std::memory_order_relaxed);
-            };
+            outcome.kind = TaskOutcome::Kind::Cancelled;
+            return outcome;
+        }
 
-            if (is_stopped())
+        auto last_progress_time = std::chrono::steady_clock::time_point{};
+        auto throttle_progress = [&](double pct, const QString &msg) {
+            auto now = std::chrono::steady_clock::now();
+            if (last_progress_time == std::chrono::steady_clock::time_point{}
+                || std::chrono::duration_cast<std::chrono::milliseconds>(now - last_progress_time).count() >= 100)
             {
-                outcome_.kind = TaskOutcome::Kind::Cancelled;
-                return;
-            }
-
-            auto last_progress_time = std::chrono::steady_clock::time_point{};
-            auto throttle_progress = [&](double pct, const QString &msg) {
-                auto now = std::chrono::steady_clock::now();
-                if (last_progress_time == std::chrono::steady_clock::time_point{}
-                    || std::chrono::duration_cast<std::chrono::milliseconds>(now - last_progress_time).count() >= 100)
+                last_progress_time = now;
+                if (progress_fn)
                 {
-                    last_progress_time = now;
-                    emit progress(pct, msg);
-                }
-            };
-
-            if (job_.build_required)
-            {
-                emit progress(0.01, QString("正在准备建立图库特征..."));
-                irt::features::DinoRegionSearch::releaseRuntime(false);
-
-                irt::features::DinoBuildProgressCallback build_cb = [&](const irt::features::DinoBuildProgress &p) {
-                    size_t processed = 0;
-                    size_t total     = 0;
-                    const double pct = resolveProgressCount(p, job_.build_items.size(), processed, total) && total > 0
-                                           ? static_cast<double>(processed) / static_cast<double>(total)
-                                           : 0.0;
-                    double stage_base = 0.0;
-                    double stage_span = 0.0;
-                    switch (p.stage)
-                    {
-                    case irt::features::DinoBuildStage::ScanningImages:
-                        stage_base = 0.01;
-                        stage_span = 0.02;
-                        break;
-                    case irt::features::DinoBuildStage::LoadingModel:
-                        stage_base = 0.03;
-                        stage_span = 0.04;
-                        break;
-                    case irt::features::DinoBuildStage::ExtractingViews:
-                        stage_base = 0.07;
-                        stage_span = 0.48;
-                        break;
-                    case irt::features::DinoBuildStage::WritingIndex:
-                        stage_base = 0.55;
-                        stage_span = 0.02;
-                        break;
-                    case irt::features::DinoBuildStage::Quantizing:
-                        stage_base = 0.57;
-                        stage_span = 0.02;
-                        break;
-                    case irt::features::DinoBuildStage::Finalizing:
-                        stage_base = 0.59;
-                        stage_span = 0.01;
-                        break;
-                    default:
-                        stage_base = 0.0;
-                        stage_span = 0.60;
-                        break;
-                    }
-                    const QString msg = formatBuildProgressMessage(p, job_.build_items.size());
-                    const double overall_pct = stage_base + pct * stage_span;
-                    throttle_progress(overall_pct, msg);
-                };
-
-                irt::features::DinoOperationControl control{is_stopped};
-                auto report = irt::features::DinoRegionSearch::build(
-                    job_.build_items, job_.config, job_.index_root, build_cb, control);
-
-                writeIndexScope(job_.scope_file, job_.build_dataset_ids, report.failed_files);
-
-                if (is_stopped())
-                {
-                    outcome_.kind = TaskOutcome::Kind::Cancelled;
-                    return;
-                }
-                if (report.image_count == 0 || report.image_count == report.failed_image_count)
-                {
-                    outcome_.kind = TaskOutcome::Kind::Failed;
-                    QString detail;
-                    if (!report.messages.empty())
-                    {
-                        detail = QString::fromUtf8(report.messages.front().c_str());
-                    }
-                    outcome_.error = detail.isEmpty()
-                                         ? QString("没有可用图库图像")
-                                         : QString("建库失败: %1").arg(detail);
-                    return;
+                    progress_fn(pct, msg);
                 }
             }
+        };
 
-            emit progress(job_.build_required ? 0.60 : 0.0, QString("正在检索相似区域..."));
+        if (job.build_required)
+        {
+            throttle_progress(0.01, QString("正在准备建立图库特征..."));
+            irt::features::DinoRegionSearch::releaseRuntime(false);
 
-            std::vector<int64_t> allowed_image_ids;
-            allowed_image_ids.reserve(job_.gallery.size());
-            for (const auto &item : job_.gallery)
-            {
-                allowed_image_ids.push_back(item.image_id);
-            }
-
-            if (allowed_image_ids.empty())
-            {
-                outcome_.kind  = TaskOutcome::Kind::Failed;
-                outcome_.error = QString("所选范围没有可用的已建库图像");
-                return;
-            }
-
-            irt::features::DinoSearchRequest req;
-            req.query_path        = toFsPath(job_.query.query_image_path);
-            req.query_image_id    = job_.query.query_image_id;
-            req.roi               = job_.query.query_roi;
-            req.top_k             = job_.top_k;
-            req.include_self      = job_.include_self;
-            req.deadline_ms       = job_.config.runtime.query_deadline_ms;
-            req.allowed_image_ids = allowed_image_ids;
-            req.image_resolver    = [&paths = job_.image_paths](int64_t image_id) -> fs::path {
-                const auto it = paths.find(image_id);
-                return it != paths.end() ? it->second : fs::path{};
-            };
-
-            irt::features::DinoSearchProgressCallback search_cb = [&](const irt::features::DinoSearchProgress &p) {
-                const double pct = p.total_count > 0
-                                       ? static_cast<double>(p.processed_count) / static_cast<double>(p.total_count)
+            irt::features::DinoBuildProgressCallback build_cb = [&](const irt::features::DinoBuildProgress &p) {
+                size_t processed = 0;
+                size_t total     = 0;
+                const double pct = resolveProgressCount(p, job.build_items.size(), processed, total) && total > 0
+                                       ? static_cast<double>(processed) / static_cast<double>(total)
                                        : 0.0;
                 double stage_base = 0.0;
                 double stage_span = 0.0;
                 switch (p.stage)
                 {
-                case irt::features::DinoSearchStage::Decode:
-                    stage_base = 0.0;
-                    stage_span = 0.05;
+                case irt::features::DinoBuildStage::ScanningImages:
+                    stage_base = 0.01;
+                    stage_span = 0.02;
                     break;
-                case irt::features::DinoSearchStage::QueryExtract:
-                    stage_base = 0.05;
-                    stage_span = 0.10;
+                case irt::features::DinoBuildStage::LoadingModel:
+                    stage_base = 0.03;
+                    stage_span = 0.04;
                     break;
-                case irt::features::DinoSearchStage::RegionScan:
-                    stage_base = 0.15;
-                    stage_span = 0.35;
+                case irt::features::DinoBuildStage::ExtractingViews:
+                    stage_base = 0.07;
+                    stage_span = 0.48;
                     break;
-                case irt::features::DinoSearchStage::LocalScan:
-                    stage_base = 0.50;
-                    stage_span = 0.15;
+                case irt::features::DinoBuildStage::WritingIndex:
+                    stage_base = 0.55;
+                    stage_span = 0.02;
                     break;
-                case irt::features::DinoSearchStage::LocalWindowRescore:
-                    stage_base = 0.65;
-                    stage_span = 0.05;
+                case irt::features::DinoBuildStage::Quantizing:
+                    stage_base = 0.57;
+                    stage_span = 0.02;
                     break;
-                case irt::features::DinoSearchStage::Fusion:
-                    stage_base = 0.70;
-                    stage_span = 0.05;
-                    break;
-                case irt::features::DinoSearchStage::FineExtract:
-                    stage_base = 0.75;
-                    stage_span = 0.10;
-                    break;
-                case irt::features::DinoSearchStage::FineMatch:
-                    stage_base = 0.85;
-                    stage_span = 0.10;
-                    break;
-                case irt::features::DinoSearchStage::Output:
-                    stage_base = 0.95;
-                    stage_span = 0.05;
+                case irt::features::DinoBuildStage::Finalizing:
+                    stage_base = 0.59;
+                    stage_span = 0.01;
                     break;
                 default:
                     stage_base = 0.0;
-                    stage_span = 1.0;
+                    stage_span = 0.60;
                     break;
                 }
-                const QString msg = formatSearchProgressMessage(p);
-                const double search_progress = stage_base + pct * stage_span;
-                const double overall_pct = job_.build_required
-                                               ? (0.60 + search_progress * 0.35)
-                                               : (search_progress * 0.95);
+                const QString msg = formatBuildProgressMessage(p, job.build_items.size());
+                const double overall_pct = stage_base + pct * stage_span;
                 throttle_progress(overall_pct, msg);
             };
 
             irt::features::DinoOperationControl control{is_stopped};
-            auto response = irt::features::DinoRegionSearch::search(
-                job_.index_root, req, job_.config, search_cb, control);
+            auto report = irt::features::DinoRegionSearch::build(
+                job.build_items, job.config, job.index_root, build_cb, control);
+
+            writeIndexScope(job.scope_file, job.build_dataset_ids, report.failed_files);
 
             if (is_stopped())
             {
-                outcome_.kind = TaskOutcome::Kind::Cancelled;
-                return;
+                outcome.kind = TaskOutcome::Kind::Cancelled;
+                return outcome;
             }
+            if (report.image_count == 0 || report.image_count == report.failed_image_count)
+            {
+                outcome.kind = TaskOutcome::Kind::Failed;
+                QString detail;
+                if (!report.messages.empty())
+                {
+                    detail = QString::fromUtf8(report.messages.front().c_str());
+                }
+                outcome.error = detail.isEmpty()
+                                     ? QString("没有可用图库图像")
+                                     : QString("建库失败: %1").arg(detail);
+                return outcome;
+            }
+        }
 
-            outcome_.response = std::make_shared<irt::features::DinoSearchResponse>(std::move(response));
-            if (outcome_.response->status == irt::features::DinoSearchStatus::Completed)
-            {
-                outcome_.kind = TaskOutcome::Kind::Completed;
-            }
-            else if (outcome_.response->status == irt::features::DinoSearchStatus::Incomplete)
-            {
-                outcome_.kind = TaskOutcome::Kind::Partial;
-            }
-            else
-            {
-                outcome_.kind  = TaskOutcome::Kind::Failed;
-                outcome_.error = outcome_.response->message.empty()
-                                     ? QString("检索失败")
-                                     : QString::fromStdString(outcome_.response->message);
-            }
-        }
-        catch (const irt::Exception &e)
+        throttle_progress(job.build_required ? 0.60 : 0.0, QString("正在检索相似区域..."));
+
+        std::vector<int64_t> allowed_image_ids;
+        allowed_image_ids.reserve(job.gallery.size());
+        for (const auto &item : job.gallery)
         {
-            if (e.code() == irt::Status::INVALID_OPERATION && std::string(e.what()).find("Cancelled") != std::string::npos)
-            {
-                outcome_.kind = TaskOutcome::Kind::Cancelled;
-            }
-            else
-            {
-                outcome_.kind  = TaskOutcome::Kind::Failed;
-                outcome_.error = QString::fromStdString(e.what());
-            }
+            allowed_image_ids.push_back(item.image_id);
         }
-        catch (const std::exception &e)
+
+        if (allowed_image_ids.empty())
         {
-            outcome_.kind  = TaskOutcome::Kind::Failed;
-            outcome_.error = QString::fromStdString(e.what());
+            outcome.kind  = TaskOutcome::Kind::Failed;
+            outcome.error = QString("所选范围没有可用的已建库图像");
+            return outcome;
+        }
+
+        irt::features::DinoSearchRequest req;
+        req.query_path        = toFsPath(job.query.query_image_path);
+        req.query_image_id    = job.query.query_image_id;
+        req.roi               = job.query.query_roi;
+        req.top_k             = job.top_k;
+        req.include_self      = job.include_self;
+        req.deadline_ms       = job.config.runtime.query_deadline_ms;
+        req.allowed_image_ids = allowed_image_ids;
+        req.image_resolver    = [&paths = job.image_paths](int64_t image_id) -> fs::path {
+            const auto it = paths.find(image_id);
+            return it != paths.end() ? it->second : fs::path{};
+        };
+
+        irt::features::DinoSearchProgressCallback search_cb = [&](const irt::features::DinoSearchProgress &p) {
+            const double pct = p.total_count > 0
+                                   ? static_cast<double>(p.processed_count) / static_cast<double>(p.total_count)
+                                   : 0.0;
+            double stage_base = 0.0;
+            double stage_span = 0.0;
+            switch (p.stage)
+            {
+            case irt::features::DinoSearchStage::Decode:
+                stage_base = 0.0;
+                stage_span = 0.05;
+                break;
+            case irt::features::DinoSearchStage::QueryExtract:
+                stage_base = 0.05;
+                stage_span = 0.10;
+                break;
+            case irt::features::DinoSearchStage::RegionScan:
+                stage_base = 0.15;
+                stage_span = 0.35;
+                break;
+            case irt::features::DinoSearchStage::LocalScan:
+                stage_base = 0.50;
+                stage_span = 0.15;
+                break;
+            case irt::features::DinoSearchStage::LocalWindowRescore:
+                stage_base = 0.65;
+                stage_span = 0.05;
+                break;
+            case irt::features::DinoSearchStage::Fusion:
+                stage_base = 0.70;
+                stage_span = 0.05;
+                break;
+            case irt::features::DinoSearchStage::FineExtract:
+                stage_base = 0.75;
+                stage_span = 0.10;
+                break;
+            case irt::features::DinoSearchStage::FineMatch:
+                stage_base = 0.85;
+                stage_span = 0.10;
+                break;
+            case irt::features::DinoSearchStage::Output:
+                stage_base = 0.95;
+                stage_span = 0.05;
+                break;
+            default:
+                stage_base = 0.0;
+                stage_span = 1.0;
+                break;
+            }
+            const QString msg = formatSearchProgressMessage(p);
+            const double search_progress = stage_base + pct * stage_span;
+            const double overall_pct = job.build_required
+                                           ? (0.60 + search_progress * 0.35)
+                                           : (search_progress * 0.95);
+            throttle_progress(overall_pct, msg);
+        };
+
+        irt::features::DinoOperationControl control{is_stopped};
+        auto response = irt::features::DinoRegionSearch::search(
+            job.index_root, req, job.config, search_cb, control);
+
+        if (is_stopped())
+        {
+            outcome.kind = TaskOutcome::Kind::Cancelled;
+            return outcome;
+        }
+
+        outcome.response = std::make_shared<irt::features::DinoSearchResponse>(std::move(response));
+        if (outcome.response->status == irt::features::DinoSearchStatus::Completed)
+        {
+            outcome.kind = TaskOutcome::Kind::Completed;
+        }
+        else if (outcome.response->status == irt::features::DinoSearchStatus::Incomplete)
+        {
+            outcome.kind = TaskOutcome::Kind::Partial;
+        }
+        else
+        {
+            outcome.kind  = TaskOutcome::Kind::Failed;
+            outcome.error = outcome.response->message.empty()
+                                 ? QString("检索失败")
+                                 : QString::fromStdString(outcome.response->message);
         }
     }
-
-private:
-    RegionJob   job_;
-    TaskOutcome outcome_;
-};
+    catch (const irt::Exception &e)
+    {
+        if (e.code() == irt::Status::INVALID_OPERATION && std::string(e.what()).find("Cancelled") != std::string::npos)
+        {
+            outcome.kind = TaskOutcome::Kind::Cancelled;
+        }
+        else
+        {
+            outcome.kind  = TaskOutcome::Kind::Failed;
+            outcome.error = QString::fromStdString(e.what());
+        }
+    }
+    catch (const std::exception &e)
+    {
+        outcome.kind  = TaskOutcome::Kind::Failed;
+        outcome.error = QString::fromStdString(e.what());
+    }
+    return outcome;
+}
 
 // ============================================================================
 // RegionSearchController::Impl 内部结构体
@@ -495,7 +475,7 @@ private:
 struct RegionSearchController::Impl
 {
     dltool::data::DataManager *data_manager{nullptr};
-    QPointer<RegionTask>       task{nullptr};
+    QPointer<QThread>          worker_thread{nullptr};
     std::shared_ptr<std::atomic_bool> stop_flag{std::make_shared<std::atomic_bool>(false)};
 
     State   state{State::Idle};
@@ -523,6 +503,8 @@ struct RegionSearchController::Impl
 
     std::shared_ptr<irt::features::DinoSearchResponse> partial_response{nullptr};
     int partial_count{0};
+
+    void handleTaskOutcome(RegionSearchController *q, const TaskOutcome &outcome);
 
     fs::path indexDir() const
     {
@@ -1228,10 +1210,46 @@ bool RegionSearchController::start(const QVariantMap &options)
     spdlog::info("{}", start_msg.toUtf8().constData());
     addProgressMessage(spdlog::level::info, start_msg);
 
-    impl_->task = new RegionTask(std::move(job), this);
-    connect(impl_->task, &RegionTask::progress, this, &RegionSearchController::onTaskProgress);
-    connect(impl_->task, &QThread::finished, this, &RegionSearchController::onTaskFinished);
-    impl_->task->start();
+    const auto controller = QPointer<RegionSearchController>(this);
+    const auto stop_flag  = job.stop;
+
+    auto progress_fn = [controller, stop_flag](double pct, const QString &text) {
+        if (!controller || (stop_flag && stop_flag->load(std::memory_order_relaxed)))
+            return;
+        QMetaObject::invokeMethod(
+            controller.data(),
+            [controller, pct, text]() {
+                if (controller && !controller->impl_->closing)
+                {
+                    controller->onTaskProgress(pct, text);
+                }
+            },
+            Qt::QueuedConnection);
+    };
+
+    auto complete_fn = [controller](TaskOutcome outcome) {
+        if (!controller)
+            return;
+        QMetaObject::invokeMethod(
+            controller.data(),
+            [controller, outcome = std::move(outcome)]() mutable {
+                if (controller && !controller->impl_->closing)
+                {
+                    controller->impl_->handleTaskOutcome(controller.data(), outcome);
+                }
+            },
+            Qt::QueuedConnection);
+    };
+
+    QThread *work_thread = QThread::create(
+        [job = std::move(job), progress_fn, complete_fn]() mutable {
+            TaskOutcome outcome = runRegionJob(std::move(job), progress_fn);
+            complete_fn(std::move(outcome));
+        });
+
+    connect(work_thread, &QThread::finished, work_thread, &QObject::deleteLater);
+    impl_->worker_thread = work_thread;
+    work_thread->start();
 
     return true;
 }
@@ -1311,7 +1329,7 @@ void RegionSearchController::cancel()
     }
     if (impl_->stop_flag)
     {
-        impl_->stop_flag->store(true);
+        impl_->stop_flag->store(true, std::memory_order_release);
     }
     if (impl_->computing)
     {
@@ -1368,35 +1386,28 @@ void RegionSearchController::onTaskProgress(const double value, const QString &t
     addProgressMessage(spdlog::level::info, text, impl_->current_task_id);
 }
 
-void RegionSearchController::onTaskFinished()
+void RegionSearchController::Impl::handleTaskOutcome(RegionSearchController *q, const TaskOutcome &outcome)
 {
-    if (impl_->task == nullptr)
-        return;
+    computing = false;
+    emit q->computingChanged();
 
-    impl_->computing = false;
-    emit computingChanged();
-
-    const auto outcome = impl_->task->outcome();
-    impl_->task->deleteLater();
-    impl_->task = nullptr;
-
-    if (impl_->closing || impl_->stop_flag->load() || outcome.kind == TaskOutcome::Kind::Cancelled)
+    if (closing || (stop_flag && stop_flag->load(std::memory_order_acquire)) || outcome.kind == TaskOutcome::Kind::Cancelled)
     {
-        impl_->state       = State::Idle;
-        impl_->busy        = false;
-        impl_->status_text = QString("已取消");
-        emit statusTextChanged();
-        emit busyChanged();
+        state       = State::Idle;
+        busy        = false;
+        status_text = QString("已取消");
+        emit q->statusTextChanged();
+        emit q->busyChanged();
 
-        if (!impl_->current_task_id.isEmpty())
+        if (!current_task_id.isEmpty())
         {
-            ui::ProgressManager::getInstance()->finishTask(impl_->current_task_id, false);
-            impl_->current_task_id.clear();
+            ui::ProgressManager::getInstance()->finishTask(current_task_id, false);
+            current_task_id.clear();
         }
         spdlog::info("区域检索任务已取消");
         addProgressMessage(spdlog::level::info, QString("区域检索任务已取消"));
 
-        if (impl_->closing)
+        if (closing)
         {
             irt::features::DinoRegionSearch::releaseRuntime(true);
         }
@@ -1405,17 +1416,17 @@ void RegionSearchController::onTaskFinished()
 
     if (outcome.kind == TaskOutcome::Kind::Failed)
     {
-        impl_->state       = State::Failed;
-        impl_->busy        = false;
-        setLastError(outcome.error);
-        impl_->status_text = QString("检索失败: %1").arg(outcome.error);
-        emit statusTextChanged();
-        emit busyChanged();
+        state       = State::Failed;
+        busy        = false;
+        q->setLastError(outcome.error);
+        status_text = QString("检索失败: %1").arg(outcome.error);
+        emit q->statusTextChanged();
+        emit q->busyChanged();
 
-        if (!impl_->current_task_id.isEmpty())
+        if (!current_task_id.isEmpty())
         {
-            ui::ProgressManager::getInstance()->finishTask(impl_->current_task_id, false);
-            impl_->current_task_id.clear();
+            ui::ProgressManager::getInstance()->finishTask(current_task_id, false);
+            current_task_id.clear();
         }
         addProgressMessage(spdlog::level::err, QString("区域检索失败: %1").arg(outcome.error));
         ui::SignalHelper::notifyError(QString("区域检索失败"), outcome.error);
@@ -1424,21 +1435,21 @@ void RegionSearchController::onTaskFinished()
 
     if (outcome.kind == TaskOutcome::Kind::Partial)
     {
-        impl_->state            = State::AwaitingPartial;
-        impl_->busy             = false;
-        impl_->partial_response = outcome.response;
-        impl_->partial_count    = outcome.response ? static_cast<int>(outcome.response->results.size()) : 0;
-        impl_->status_text      = QString("查询未完成，已返回 %1 个候选").arg(impl_->partial_count);
-        emit partialChanged();
-        emit statusTextChanged();
-        emit busyChanged();
+        state            = State::AwaitingPartial;
+        busy             = false;
+        partial_response = outcome.response;
+        partial_count    = outcome.response ? static_cast<int>(outcome.response->results.size()) : 0;
+        status_text      = QString("查询未完成，已返回 %1 个候选").arg(partial_count);
+        emit q->partialChanged();
+        emit q->statusTextChanged();
+        emit q->busyChanged();
 
-        if (!impl_->current_task_id.isEmpty())
+        if (!current_task_id.isEmpty())
         {
-            ui::ProgressManager::getInstance()->finishTask(impl_->current_task_id, true);
-            impl_->current_task_id.clear();
+            ui::ProgressManager::getInstance()->finishTask(current_task_id, true);
+            current_task_id.clear();
         }
-        const QString msg = QString("区域检索查询超时截断，获得 %1 个部分候选").arg(impl_->partial_count);
+        const QString msg = QString("区域检索查询超时截断，获得 %1 个部分候选").arg(partial_count);
         spdlog::warn("{}", msg.toUtf8().constData());
         addProgressMessage(spdlog::level::warn, msg);
         ui::SignalHelper::notifyWarn(QString("区域检索未完全完成"), msg);
@@ -1446,7 +1457,7 @@ void RegionSearchController::onTaskFinished()
     }
 
     // TaskOutcome::Kind::Completed
-    commitResults(outcome.response);
+    q->commitResults(outcome.response);
 }
 
 void RegionSearchController::prepareTestJob(const int64_t target_class_id)
@@ -1778,11 +1789,9 @@ void RegionSearchController::shutdown()
     impl_->closing = true;
     cancel();
 
-    if (impl_->task != nullptr)
+    if (impl_->worker_thread != nullptr && impl_->worker_thread->isRunning())
     {
-        impl_->task->wait();
-        delete impl_->task;
-        impl_->task = nullptr;
+        impl_->worker_thread->wait();
     }
 
     if (!impl_->current_task_id.isEmpty())
@@ -1801,5 +1810,3 @@ void RegionSearchController::requestShutdown()
 }
 
 } // namespace dltool::feature
-
-#include "RegionSearchController.moc"

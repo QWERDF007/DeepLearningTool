@@ -21,8 +21,6 @@ struct DinoSearchResponse;
 
 namespace dltool::feature {
 
-class RegionTask;
-
 /**
  * @brief 基于 DINO 骨干的区域检索与标注生成控制器。
  *
@@ -150,7 +148,6 @@ signals:
 
 private slots:
     void onTaskProgress(double value, const QString &text);
-    void onTaskFinished();
 
 private:
     friend class RegionSearchTest;

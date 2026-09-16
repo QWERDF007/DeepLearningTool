@@ -486,7 +486,28 @@ void GlobalFilter::setRegionSearchResults(const std::vector<int64_t> &label_ids,
     region_last_ids_ = std::move(unique_ids);
     region_results_ready_ = true;
 
-    refreshCurrentRegionIds();
+    region_search_result_ids_.clear();
+    region_search_image_ids_.clear();
+
+    LabelInstancesListModel *labels = labelSource();
+    for (const int64_t label_id : region_last_ids_)
+    {
+        if (labels != nullptr)
+        {
+            const LabelInstance *label = labels->getLabelInstance(label_id);
+            if (label != nullptr)
+            {
+                region_search_result_ids_.insert(label_id);
+                region_search_image_ids_.insert(label->imageId());
+            }
+        }
+        else
+        {
+            region_search_result_ids_.insert(label_id);
+        }
+    }
+
+    emit regionSearchResultsChanged();
 
     IdFilter &custom = filter(FilterType::Custom);
     const int64_t condition_id = static_cast<int64_t>(CustomCondition::RegionSearchResult);
