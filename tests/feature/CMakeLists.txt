@@ -79,4 +79,38 @@ dlt_add_test_executable(dltool_feature_lifecycle_tests
     ENVIRONMENT_MODIFICATION "${_feature_test_environment}"
 )
 
+dlt_add_test_executable(dltool_region_search_tests
+    QT_EXECUTABLE
+    SOURCES test_RegionSearchController.cpp
+    LINK_LIBRARIES
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Test
+        dltool_feature
+        dltool_model
+        dltool_data
+        dltool_database
+        dltool_settings
+        dltool_parameter
+        dltool_core
+        dltool_common
+        dltool_ui
+    INCLUDE_DIRECTORIES
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/feature
+        ${CMAKE_SOURCE_DIR}/src/feature/include
+        ${CMAKE_SOURCE_DIR}/src/model/include
+        ${CMAKE_SOURCE_DIR}/src/data/include
+        ${CMAKE_SOURCE_DIR}/src/database/include
+        ${CMAKE_SOURCE_DIR}/src/settings/include
+        ${CMAKE_SOURCE_DIR}/src/parameter/include
+        ${CMAKE_SOURCE_DIR}/src/core/include
+        ${CMAKE_SOURCE_DIR}/src/common/include
+        ${CMAKE_SOURCE_DIR}/src/ui/include
+    COMPILE_DEFINITIONS
+        DLT_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    LABELS "ordinary;feature"
+    ENVIRONMENT_MODIFICATION "${_feature_test_environment}"
+)
+
 unset(_feature_test_environment)

@@ -710,7 +710,8 @@ irt::features::ImageClusterProgressCallback ImageClusterController::createProgre
     QPointer<ImageClusterController> controller, const size_t total_count,
     std::shared_ptr<std::atomic_bool> cancellation_token)
 {
-    return [controller, total_count, cancellation_token](const irt::features::ImageClusterProgress &progress)
+    const QString task_id = controller ? controller->current_cluster_task_id_ : QString();
+    return [controller, total_count, cancellation_token, task_id](const irt::features::ImageClusterProgress &progress)
     {
         if (!controller || !cancellation_token
             || cancellation_token->load(std::memory_order_acquire)
@@ -740,12 +741,12 @@ irt::features::ImageClusterProgressCallback ImageClusterController::createProgre
         {
             QMetaObject::invokeMethod(
                 controller.data(),
-                [controller, cancellation_token, pct]()
+                [controller, cancellation_token, pct, task_id]()
                 {
                     if (controller && cancellation_token
                         && !cancellation_token->load(std::memory_order_acquire)
                         && !controller->shutting_down_.load(std::memory_order_acquire))
-                        ui::ProgressManager::getInstance()->updateProgress(pct);
+                        ui::ProgressManager::getInstance()->updateProgress(pct, task_id);
                 },
                 Qt::QueuedConnection);
         }
@@ -753,7 +754,9 @@ irt::features::ImageClusterProgressCallback ImageClusterController::createProgre
         const QString message = imageClusterProgressMessage(progress, total_count);
         if (!message.isEmpty() && !cancellation_token->load(std::memory_order_acquire)
             && !controller->shutting_down_.load(std::memory_order_acquire))
-            addProgressMessage(spdlog::level::info, message);
+        {
+            addProgressMessage(spdlog::level::info, message, task_id);
+        }
     };
 }
 

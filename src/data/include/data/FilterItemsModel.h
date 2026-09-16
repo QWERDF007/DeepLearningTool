@@ -4,6 +4,8 @@
 #include <QtQml>
 #include <vector>
 
+#include "dltool/data/Export.h"
+
 namespace dltool::data {
 
 /**
@@ -11,7 +13,7 @@ namespace dltool::data {
  * 
  * 存储过滤下拉菜单中每个项目的信息
  */
-struct FilterItem
+struct DATA_API FilterItem
 {
     int64_t id;      // 项目ID（数据集ID或标签ID）
     QString text;    // 显示文本
@@ -33,7 +35,7 @@ struct FilterItem
  * 为过滤下拉菜单提供数据模型
  * 支持显示项目列表和跟踪选中状态
  */
-class FilterItemsModel : public QAbstractListModel
+class DATA_API FilterItemsModel : public QAbstractListModel
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(FilterItemsModel)
@@ -99,7 +101,7 @@ protected:
  * 
  * 从DatasetsListModel填充数据集列表
  */
-class DatasetFilterItemsModel : public FilterItemsModel
+class DATA_API DatasetFilterItemsModel : public FilterItemsModel
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(DatasetFilterItemsModel)
@@ -121,7 +123,7 @@ public:
  * 
  * 从ImageTagsListModel填充标签列表
  */
-class TagFilterItemsModel : public FilterItemsModel
+class DATA_API TagFilterItemsModel : public FilterItemsModel
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(TagFilterItemsModel)
@@ -143,7 +145,7 @@ public:
  * 
  * 从LabelClassesListModel填充标签类别列表
  */
-class LabelClassFilterItemsModel : public FilterItemsModel
+class DATA_API LabelClassFilterItemsModel : public FilterItemsModel
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(LabelClassFilterItemsModel)
@@ -160,7 +162,7 @@ public:
     void populateFromLabelClasses(QAbstractItemModel *label_classes_model);
 };
 
-class CustomFilterItemsModel : public FilterItemsModel
+class DATA_API CustomFilterItemsModel : public FilterItemsModel
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(CustomFilterItemsModel)
@@ -172,6 +174,7 @@ public:
 
     void populateFromCustomConditions();
     void setSearchResultsAvailable(bool image_search_available, bool label_search_available);
+    void setRegionSearchResultAvailable(bool available);
 };
 
 } // namespace dltool::data

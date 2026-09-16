@@ -552,7 +552,8 @@ irt::features::RoiClusterProgressCallback RoiClusterController::createProgressRe
     QPointer<RoiClusterController> controller, const size_t total_count,
     std::shared_ptr<std::atomic_bool> cancellation_token)
 {
-    return [controller, total_count, cancellation_token](const irt::features::RoiClusterProgress &progress)
+    const QString task_id = controller ? controller->current_cluster_task_id_ : QString();
+    return [controller, total_count, cancellation_token, task_id](const irt::features::RoiClusterProgress &progress)
     {
         if (!controller || !cancellation_token
             || cancellation_token->load(std::memory_order_acquire)
@@ -582,12 +583,12 @@ irt::features::RoiClusterProgressCallback RoiClusterController::createProgressRe
         {
             QMetaObject::invokeMethod(
                 controller.data(),
-                [controller, cancellation_token, percent]()
+                [controller, cancellation_token, percent, task_id]()
                 {
                     if (controller && cancellation_token
                         && !cancellation_token->load(std::memory_order_acquire)
                         && !controller->shutting_down_.load(std::memory_order_acquire))
-                        ui::ProgressManager::getInstance()->updateProgress(percent);
+                        ui::ProgressManager::getInstance()->updateProgress(percent, task_id);
                 },
                 Qt::QueuedConnection);
         }
@@ -595,7 +596,9 @@ irt::features::RoiClusterProgressCallback RoiClusterController::createProgressRe
         const QString message = roiClusterProgressMessage(progress, total_count);
         if (!message.isEmpty() && !cancellation_token->load(std::memory_order_acquire)
             && !controller->shutting_down_.load(std::memory_order_acquire))
-            addProgressMessage(spdlog::level::info, message);
+        {
+            addProgressMessage(spdlog::level::info, message, task_id);
+        }
     };
 }
 

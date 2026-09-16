@@ -10,6 +10,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "dltool/data/Export.h"
+
 namespace dltool::data {
 
 class DataManager;
@@ -23,7 +25,7 @@ class LabelInstancesListModel;
  * 可见行由 ImageInstancesViewModel 和 LabelInstancesViewModel 两个代理模型
  * 根据这些条件即时映射。
  */
-class GlobalFilter final : public QObject
+class DATA_API GlobalFilter final : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(GlobalFilter)
@@ -57,6 +59,7 @@ public:
         UniqueFileName    = 3,
         ImageSearchResult = 4,
         LabelSearchResult = 5,
+        RegionSearchResult = 6,
     };
     Q_ENUM(CustomCondition)
 
@@ -169,6 +172,29 @@ public:
     void setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter);
 
     /**
+     * @brief 清除区域检索结果。
+     */
+    Q_INVOKABLE void clearRegionSearchResults();
+
+    /**
+     * @brief 设置区域检索结果。
+     * @param label_ids 命中的标注 ID。
+     * @param enable_filter 是否同时启用该自定义条件。
+     */
+    void setRegionSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter = false);
+
+    /**
+     * @brief 查询区域检索是否已完成（有最新结果，即使为空）。
+     * @return 是否已就绪。
+     */
+    Q_INVOKABLE bool regionResultsReady() const;
+
+    /**
+     * @brief 获取当前有效的区域检索命中标注 ID 集合。
+     */
+    std::unordered_set<int64_t> regionSearchResultIds() const;
+
+    /**
      * @brief 返回文件名筛选文本。
      * @return 当前筛选文本。
      */
@@ -193,6 +219,21 @@ public:
      * @return 标注是否通过当前筛选。
      */
     Q_INVOKABLE bool acceptsLabel(int64_t label_id) const;
+
+    /**
+     * @brief 判断图像是否通过自定义条件筛选。
+     * @param image_id 图像 ID。
+     * @return 图像是否通过自定义筛选。
+     */
+    Q_INVOKABLE bool acceptsCustomImage(int64_t image_id) const;
+
+    /**
+     * @brief 判断标注是否通过自定义条件筛选。
+     * @param label_id 标注 ID。
+     * @param image_id 图像 ID。
+     * @return 标注是否通过自定义筛选。
+     */
+    Q_INVOKABLE bool acceptsCustomLabel(int64_t label_id, int64_t image_id) const;
 
     /**
      * @brief 判断一个标签类别 ID 是否通过当前 LabelClass 过滤。
@@ -246,6 +287,11 @@ signals:
      */
     void customFilterSearchResultsChanged(bool has_image_search_results, bool has_label_search_results);
 
+    /**
+     * @brief 区域检索结果可用性或集合变化。
+     */
+    void regionSearchResultsChanged();
+
 private:
     struct IdFilter
     {
@@ -269,8 +315,6 @@ private:
     void collectAvailableIds(FilterType type, std::unordered_set<int64_t> &ids) const;
     bool passesIdFilter(const IdFilter &filter, int64_t id) const;
     bool acceptsImageWithoutCustom(int64_t image_id) const;
-    bool acceptsCustomImage(int64_t image_id) const;
-    bool acceptsCustomLabel(int64_t label_id, int64_t image_id) const;
     bool matchesTags(int64_t image_id, const std::unordered_set<int64_t> &tag_ids) const;
     bool matchesImageLabelClasses(int64_t image_id, const std::unordered_set<int64_t> &label_class_ids) const;
     bool matchesCustomImageCondition(int64_t image_id, int64_t condition_id) const;
@@ -278,6 +322,7 @@ private:
     bool usesRegularCustomCondition() const;
     void rebuildDuplicateIndexes() const;
     void invalidateDuplicateIndexes();
+    void refreshCurrentRegionIds();
     void notifyFilterChanged();
     void notifyStateChanged(bool notify_search_results);
     void updateCustomEnabledAfterSearchRemoval();
@@ -287,6 +332,10 @@ private:
     QString file_name_filter_text_; ///< 文件名筛选文本。
     std::unordered_set<int64_t> image_search_result_ids_; ///< 图像搜索命中 ID。
     std::unordered_set<int64_t> label_search_result_ids_; ///< 标注搜索命中 ID。
+    bool region_results_ready_{false}; ///< 区域检索是否已完成过。
+    std::vector<int64_t> region_last_ids_; ///< 最近一轮原始标注 ID。
+    std::unordered_set<int64_t> region_search_result_ids_; ///< 当前有效区域检索标注 ID。
+    std::unordered_set<int64_t> region_search_image_ids_; ///< 当前有效区域检索图像 ID。
     bool custom_empty_selection_enabled_{false}; ///< 自定义条件的“全不选且启用”状态。
 
     mutable bool duplicate_indexes_valid_{false}; ///< 重复文件条件索引是否有效。

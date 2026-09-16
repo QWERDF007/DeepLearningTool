@@ -4,6 +4,7 @@
 #include "feature/ImageClusterDataProvider.h"
 #include "feature/ImageSearchController.h"
 #include "feature/RoiClusterController.h"
+#include "feature/RegionSearchController.h"
 #include "feature/SearchControllerBase.h"
 #include "feature/SmartAnnotationController.h"
 #include "core/CoreDef.h"
@@ -481,12 +482,18 @@ private slots:
         QCOMPARE(manager.fewShotLearning()->lastError(), QStringLiteral("小样本学习控制器正在关闭"));
         QVERIFY(!manager.fewShotLearning()->running());
 
-        // 5. 智能标注推理入口被拒绝
+        // 5. 区域检索入口校验被拒绝且不启动 worker
+        QCOMPARE(manager.regionSearch()->validationError(), QStringLiteral("区域检索控制器正在关闭"));
+        QVERIFY(!manager.regionSearch()->start({}));
+        QCOMPARE(manager.regionSearch()->errorText(), QStringLiteral("区域检索控制器正在关闭"));
+        QVERIFY(!manager.regionSearch()->isBusy());
+
+        // 6. 智能标注推理入口被拒绝
         const auto infer_res = manager.smartAnnotation()->infer(fixture.image_paths[0], {}, {});
         QVERIFY(!infer_res.value(QStringLiteral("success")).toBool());
         QCOMPARE(infer_res.value(QStringLiteral("error")).toString(), QStringLiteral("智能标注控制器正在关闭"));
 
-        // 6. 验证数据库状态未发生任何写入或污染
+        // 7. 验证数据库状态未发生任何写入或污染
         const int64_t count = fixture.database->getImagesCount(fixture.dataset_id);
         QCOMPARE(count, static_cast<int64_t>(fixture.image_ids.size()));
         std::vector<int64_t> datasets;
@@ -495,11 +502,12 @@ private slots:
         QVERIFY(fixture.database->getAllDatasets(datasets, dataset_names, db_err));
         QCOMPARE(datasets.size(), static_cast<size_t>(1));
 
-        // 7. 第二阶段清理平稳幂等完成
+        // 8. 第二阶段清理平稳幂等完成
         manager.shutdown();
         QVERIFY(!manager.imageCluster()->isRunning());
         QVERIFY(!manager.roiCluster()->isRunning());
         QVERIFY(!manager.imageSearch()->isRunning());
+        QVERIFY(!manager.regionSearch()->isBusy());
     }
 
     void featureManagerShutdownPropagatesToChildren()
@@ -516,6 +524,11 @@ private slots:
         QVERIFY(manager.roiCluster() != nullptr);
         QVERIFY(!manager.roiCluster()->cluster({1}));
         QCOMPARE(manager.roiCluster()->lastError(), QStringLiteral("标注聚类控制器正在关闭"));
+
+        QVERIFY(manager.regionSearch() != nullptr);
+        QCOMPARE(manager.regionSearch()->validationError(), QStringLiteral("区域检索控制器正在关闭"));
+        QVERIFY(!manager.regionSearch()->start({}));
+        QCOMPARE(manager.regionSearch()->errorText(), QStringLiteral("区域检索控制器正在关闭"));
 
         QVERIFY(manager.smartAnnotation() != nullptr);
         const QVariantMap result = manager.smartAnnotation()->infer({}, {}, {});

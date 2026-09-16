@@ -329,6 +329,9 @@ public:
 
     Q_INVOKABLE void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                                const std::vector<QVariantMap> &data);
+    bool addLabelsWithIds(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
+                          const std::vector<QVariantMap> &data, std::vector<int64_t> *added_label_ids,
+                          QString *err_msg = nullptr);
     Q_INVOKABLE bool addLabel(const int64_t image_id, const int64_t label_class_id, const QVariantMap &data);
     Q_INVOKABLE void updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data);
     Q_INVOKABLE void updateLabelsClass(const std::vector<int64_t> &label_ids,
@@ -344,6 +347,7 @@ public:
     Q_INVOKABLE bool    updateTagClass(const int64_t tag_id, const QString &name, const QString &shortcut = {});
     Q_INVOKABLE int64_t findTagClassId(const QString &name) const;
     Q_INVOKABLE bool    setLabelsTag(const std::vector<int64_t> &label_ids, const int64_t tag_id);
+    std::set<int64_t>   labelTagIds(const int64_t label_id) const;
     Q_INVOKABLE bool    deleteTagClass(const int64_t tag_id);
 
     /**
@@ -388,16 +392,16 @@ public:
 
     QVariantMap labelData(int64_t label_id) const;
 
-    QString labelClassName(int64_t label_class_id) const;
+    Q_INVOKABLE QString labelClassName(int64_t label_class_id) const;
 
     /**
      * @brief 返回标签类别颜色。
      * @param label_class_id 标签类别 ID。
      * @return 标签类别颜色。
      */
-    QString              labelClassColor(int64_t label_class_id) const;
-    QString              labelClassGroup(int64_t label_class_id) const;
-    QString              datasetName(int64_t dataset_id) const;
+    Q_INVOKABLE QString  labelClassColor(int64_t label_class_id) const;
+    Q_INVOKABLE QString  labelClassGroup(int64_t label_class_id) const;
+    Q_INVOKABLE QString  datasetName(int64_t dataset_id) const;
     std::vector<int64_t> imageLabelIds(int64_t image_id) const;
 
     /**
@@ -423,6 +427,9 @@ public:
     void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter);
     void clearLabelSearchResults();
     void setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter);
+    void clearRegionSearchResults();
+    void setRegionSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter = false);
+    bool regionResultsReady() const;
 
 signals:
     void dataImportFinished(bool success, const QString &message);

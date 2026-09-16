@@ -1,0 +1,61 @@
+RegionSearchSettings:
+  table: region_search_settings
+  parent_accessor: advanced
+  accessor: regionSearch
+  category: advanced
+  ordinal_index: 115
+  label: 区域检索
+  sections:
+    基础:
+      - name_en: enabled
+        name_cn: 启用
+        description: 用于配置区域检索中基础相关的启用。
+        property_name: enabled
+        value: true
+        value_type: bool
+        display_type: checkbox
+
+    配置:
+      - name_en: profile_path
+        name_cn: 配置文件
+        description: 用于配置区域检索的 profile yaml 路径。
+        property_name: profilePath
+        value: ""
+        value_type: string
+        display_type: path
+
+      - name_en: weights_path
+        name_cn: 模型权重
+        description: 用于配置区域检索的骨干模型权重路径。
+        property_name: weightsPath
+        value: ""
+        value_type: string
+        display_type: path
+
+    检索:
+      - name_en: top_k
+        name_cn: 返回数量
+        description: 用于配置区域检索返回的最大相似区域数量。
+        property_name: topK
+        value: 50
+        value_type: int
+        value_range: [1, 1000, 1]
+        display_type: spin
+
+      - name_en: include_same_image
+        name_cn: 包含同图
+        description: 用于配置是否检索并生成与查询标注在同一图像中的其它相似区域。
+        property_name: includeSameImage
+        value: true
+        value_type: bool
+        display_type: checkbox
+
+    运行时:
+      - name_en: model_runtime
+        name_cn: 运行时设备
+        description: 用于配置区域检索模型推理的后端和设备。
+        property_name: modelRuntime
+        value_type: string
+        param_type: dynamic
+        display_type: combo
+        backend_key: inferrt.compute_devices

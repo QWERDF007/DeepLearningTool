@@ -107,7 +107,7 @@ Rectangle {
         }
         Rectangle {
             visible: ProgressManager ? ProgressManager.isRunning : false
-            Layout.preferredWidth: 80
+            Layout.preferredWidth: 90
             Layout.fillHeight: true
             color: QuiColor.Primary
             ProgressInfoBadge {

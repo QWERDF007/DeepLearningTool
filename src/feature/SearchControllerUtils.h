@@ -1,8 +1,10 @@
 #pragma once
 
+#include "dltool/feature/Export.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsKeys.h"
 
+#include <inferrt/features/DinoRegionSearch.hpp>
 #include <inferrt/features/ImageCluster.hpp>
 #include <inferrt/features/ImageSearch.hpp>
 #include <inferrt/features/RoiCluster.hpp>
@@ -90,6 +92,20 @@ struct RoiClusterSettings
 std::filesystem::path toFsPath(const QString &path);
 
 /**
+ * @brief 将 std::filesystem::path 转换为 QString
+ * @param path 文件系统路径
+ * @return QString
+ */
+QString fromFsPath(const std::filesystem::path &path);
+
+/**
+ * @brief 将 std::filesystem::path 转换为规范化 UTF-8 路径字符串（统一使用 '/' 分隔符）
+ * @param path 文件系统路径
+ * @return UTF-8 路径字符串
+ */
+std::string toDinoPathUtf8(const std::filesystem::path &path);
+
+/**
  * @brief 将数据集/类别树选择转换为按数据集分组的范围。
  *
  * 空类别集合表示选择该数据集下的全部类别。
@@ -169,63 +185,31 @@ QString indexDirectoryForProject(const QString &project_dir, const QString &defa
  * @param suffix 文件后缀
  * @return 索引文件完整路径
  */
-QString indexPathForRequest(const QString &index_dir_path, const QString &model_name, const QString &feature_name,
-                            const QString &suffix);
+FEATURE_API QString indexPathForRequest(const QString &index_dir_path, const QString &model_name, const QString &feature_name,
+                                        const QString &suffix);
 
-/**
- * @brief 格式化毫秒耗时为 HH:MM:SS.mmm 格式
- * @param elapsed_ms 耗时毫秒数
- * @return 格式化后的时间字符串
- */
-QString formatElapsed(qint64 elapsed_ms);
+FEATURE_API QString formatElapsed(qint64 elapsed_ms);
 
-/**
- * @brief 从构建进度中解析已处理和总数量
- * @param progress 构建进度
- * @param gallery_count 搜索库项数量
- * @param processed 已处理数量（输出）
- * @param total 总数量（输出）
- * @return 解析成功返回 true
- */
-bool resolveProgressCount(const irt::features::ImageSearchBuildProgress &progress, size_t gallery_count,
-                          size_t &processed, size_t &total);
+FEATURE_API bool resolveProgressCount(const irt::features::ImageSearchBuildProgress &progress, size_t gallery_count,
+                                      size_t &processed, size_t &total);
 
-/**
- * @brief 计算构建进度百分比
- * @param progress 构建进度
- * @param gallery_count 搜索库项数量
- * @return 进度百分比（0-100），无法计算时返回 -1
- */
-int progressPercent(const irt::features::ImageSearchBuildProgress &progress, size_t gallery_count);
+FEATURE_API int progressPercent(const irt::features::ImageSearchBuildProgress &progress, size_t gallery_count);
 
-/**
- * @brief 格式化构建进度消息
- * @param progress 构建进度
- * @param gallery_count 搜索库项数量
- * @return 格式化的进度消息
- */
-QString formatBuildProgressMessage(const irt::features::ImageSearchBuildProgress &progress, size_t gallery_count);
+FEATURE_API QString formatBuildProgressMessage(const irt::features::ImageSearchBuildProgress &progress, size_t gallery_count);
 
-/**
- * @brief 向进度管理器添加消息
- * @param level 日志级别
- * @param message 消息内容
- */
-void addProgressMessage(int level, const QString &message);
+FEATURE_API bool resolveProgressCount(const irt::features::DinoBuildProgress &progress, size_t gallery_count,
+                                      size_t &processed, size_t &total);
 
-/**
- * @brief 从标注数据中解析 ROI 搜索框
- * @param data 标注数据
- * @param box ROI 搜索框（输出）
- * @return 解析成功返回 true
- */
-bool roiFromLabelData(const QVariantMap &data, irt::features::RoiSearchBox &box);
+FEATURE_API int progressPercent(const irt::features::DinoBuildProgress &progress, size_t gallery_count);
 
-/**
- * @brief 将搜索评分结果按分数降序排序并返回 ID 列表
- * @param result_scores ID 到分数的映射
- * @return 按分数降序排列的 ID 列表
- */
-std::vector<int64_t> sortedSearchResultIds(const std::map<int64_t, float> &result_scores);
+FEATURE_API QString formatBuildProgressMessage(const irt::features::DinoBuildProgress &progress, size_t gallery_count);
+
+FEATURE_API QString formatSearchProgressMessage(const irt::features::DinoSearchProgress &progress);
+
+FEATURE_API void addProgressMessage(int level, const QString &message, const QString &task_id = QString());
+
+FEATURE_API bool roiFromLabelData(const QVariantMap &data, irt::features::RoiSearchBox &box);
+
+FEATURE_API std::vector<int64_t> sortedSearchResultIds(const std::map<int64_t, float> &result_scores);
 
 } // namespace dltool::feature

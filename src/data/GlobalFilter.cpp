@@ -61,6 +61,14 @@ GlobalFilter::GlobalFilter(DataManager *data_manager, QObject *parent)
                     }
                 });
     }
+
+    if (LabelInstancesListModel *labels = labelSource())
+    {
+        connect(labels, &QAbstractItemModel::rowsRemoved, this,
+                [this]() { if (region_results_ready_) refreshCurrentRegionIds(); });
+        connect(labels, &QAbstractItemModel::modelReset, this,
+                [this]() { if (region_results_ready_) refreshCurrentRegionIds(); });
+    }
 }
 
 std::vector<GlobalFilter::CustomConditionSpec> GlobalFilter::customConditions()
@@ -71,6 +79,7 @@ std::vector<GlobalFilter::CustomConditionSpec> GlobalFilter::customConditions()
         {static_cast<int64_t>(CustomCondition::UniqueFileName), QString("不重复文件名")},
         {static_cast<int64_t>(CustomCondition::ImageSearchResult), QString("图像搜索结果")},
         {static_cast<int64_t>(CustomCondition::LabelSearchResult), QString("标注搜索结果")},
+        {static_cast<int64_t>(CustomCondition::RegionSearchResult), QString("区域检索结果")},
     };
 }
 
@@ -433,6 +442,111 @@ void GlobalFilter::setLabelSearchResults(const std::vector<int64_t> &label_ids, 
     }
 }
 
+void GlobalFilter::clearRegionSearchResults()
+{
+    if (!region_results_ready_ && region_last_ids_.empty())
+    {
+        return;
+    }
+
+    region_results_ready_ = false;
+    region_last_ids_.clear();
+    region_search_result_ids_.clear();
+    region_search_image_ids_.clear();
+
+    const int64_t condition_id = static_cast<int64_t>(CustomCondition::RegionSearchResult);
+    IdFilter &custom = filter(FilterType::Custom);
+    const bool was_enabled = custom.enabled;
+    const bool removed = custom.ids.erase(condition_id) > 0;
+    updateCustomEnabledAfterSearchRemoval();
+    if (was_enabled && removed)
+    {
+        notifyFilterChanged();
+    }
+    else
+    {
+        notifyStateChanged(false);
+    }
+    emit regionSearchResultsChanged();
+}
+
+void GlobalFilter::setRegionSearchResults(const std::vector<int64_t> &label_ids, const bool enable_filter)
+{
+    std::vector<int64_t> unique_ids;
+    unique_ids.reserve(label_ids.size());
+    std::unordered_set<int64_t> seen;
+    for (const int64_t id : label_ids)
+    {
+        if (seen.insert(id).second)
+        {
+            unique_ids.push_back(id);
+        }
+    }
+
+    region_last_ids_ = std::move(unique_ids);
+    region_results_ready_ = true;
+
+    refreshCurrentRegionIds();
+
+    IdFilter &custom = filter(FilterType::Custom);
+    const int64_t condition_id = static_cast<int64_t>(CustomCondition::RegionSearchResult);
+    const bool was_enabled = custom.enabled;
+    const bool had_condition = custom.ids.contains(condition_id);
+    bool conditions_changed = false;
+    if (enable_filter)
+    {
+        conditions_changed = custom.ids.insert(condition_id).second;
+        custom.enabled = true;
+        custom_empty_selection_enabled_ = false;
+    }
+
+    if ((was_enabled && had_condition) || (custom.enabled && custom.ids.contains(condition_id)))
+    {
+        notifyFilterChanged();
+    }
+    else if (conditions_changed)
+    {
+        notifyStateChanged(false);
+    }
+}
+
+bool GlobalFilter::regionResultsReady() const
+{
+    return region_results_ready_;
+}
+
+std::unordered_set<int64_t> GlobalFilter::regionSearchResultIds() const
+{
+    return region_search_result_ids_;
+}
+
+void GlobalFilter::refreshCurrentRegionIds()
+{
+    region_search_result_ids_.clear();
+    region_search_image_ids_.clear();
+
+    LabelInstancesListModel *labels = labelSource();
+    for (const int64_t label_id : region_last_ids_)
+    {
+        if (labels != nullptr)
+        {
+            const LabelInstance *label = labels->getLabelInstance(label_id);
+            if (label != nullptr)
+            {
+                region_search_result_ids_.insert(label_id);
+                region_search_image_ids_.insert(label->imageId());
+            }
+        }
+        else
+        {
+            region_search_result_ids_.insert(label_id);
+        }
+    }
+
+    emit regionSearchResultsChanged();
+    notifyFilterChanged();
+}
+
 QString GlobalFilter::fileNameFilterText() const
 {
     return file_name_filter_text_;
@@ -749,13 +863,19 @@ bool GlobalFilter::acceptsCustomLabel(const int64_t label_id, const int64_t imag
     }
 
     const int64_t label_condition = static_cast<int64_t>(CustomCondition::LabelSearchResult);
+    const int64_t region_condition = static_cast<int64_t>(CustomCondition::RegionSearchResult);
     if (custom.ids.contains(label_condition) && label_search_result_ids_.contains(label_id))
+    {
+        return true;
+    }
+    if (custom.ids.contains(region_condition) && region_search_result_ids_.contains(label_id))
     {
         return true;
     }
     for (const int64_t condition_id : custom.ids)
     {
-        if (condition_id != label_condition && matchesCustomImageCondition(image_id, condition_id))
+        if (condition_id != label_condition && condition_id != region_condition
+            && matchesCustomImageCondition(image_id, condition_id))
         {
             return true;
         }
@@ -852,6 +972,8 @@ bool GlobalFilter::matchesCustomImageCondition(const int64_t image_id, const int
         }
         return false;
     }
+    case CustomCondition::RegionSearchResult:
+        return region_search_image_ids_.contains(image_id);
     }
     return false;
 }
@@ -868,6 +990,8 @@ bool GlobalFilter::customConditionAvailable(const int64_t condition_id) const
         return !image_search_result_ids_.empty();
     case CustomCondition::LabelSearchResult:
         return !label_search_result_ids_.empty();
+    case CustomCondition::RegionSearchResult:
+        return region_results_ready_;
     }
     return false;
 }

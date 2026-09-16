@@ -15,10 +15,10 @@ QuiPopup {
     property DataManager dataManager
     property FeatureManager featureManager
     property var queryLabelIds: []
-    property bool roiSearchEnabled: true
+    property bool regionSearchEnabled: true
     property string validationMessage: ""
     property bool startAttempted: false
-    readonly property var roiSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.RoiSearch)
+    readonly property var regionSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.RegionSearch)
 
     DataSelectionTreeModel {
         id: datasetSelectionModel
@@ -30,8 +30,8 @@ QuiPopup {
     focus: true
     closePolicy: Popup.CloseOnEscape
 
-    function roiSearchController() {
-        return featureManager ? featureManager.roiSearch : null
+    function regionSearchController() {
+        return featureManager ? featureManager.regionSearch : null
     }
 
     function bindDatasetSelectionModel() {
@@ -43,8 +43,22 @@ QuiPopup {
                     manager ? manager.labelSource : null)
     }
 
+    function openForLabel(labelId) {
+        queryLabelIds = (labelId !== undefined && labelId !== null && labelId >= 0) ? [labelId] : []
+        let controller = regionSearchController()
+        if (controller && queryLabelIds.length > 0) {
+            controller.captureQuery(queryLabelIds[0])
+        }
+        resetDatasetSelection()
+        open()
+    }
+
     function openForLabels(labelIds) {
         queryLabelIds = labelIds ? labelIds : []
+        let controller = regionSearchController()
+        if (controller && queryLabelIds.length > 0) {
+            controller.captureQuery(queryLabelIds[0])
+        }
         resetDatasetSelection()
         open()
     }
@@ -59,21 +73,21 @@ QuiPopup {
 
     function updateValidation() {
         startAttempted = false
-        let controller = roiSearchController()
+        let controller = regionSearchController()
         if (!controller) {
-            validationMessage = "标注搜索功能未初始化"
+            validationMessage = "区域检索功能未初始化"
             return
         }
         if (controller.running) {
-            validationMessage = "标注搜索正在运行"
+            validationMessage = "区域检索正在运行"
             return
         }
-        if (!roiSearchEnabled || !controller.enabled) {
-            validationMessage = "标注搜索未启用"
+        if (!regionSearchEnabled || !controller.enabled) {
+            validationMessage = "区域检索未启用"
             return
         }
         if (!queryLabelIds || queryLabelIds.length === 0) {
-            validationMessage = "请先选择要搜索的标注"
+            validationMessage = "请先选择要检索的标注"
             return
         }
         if (selectedSearchScope().length === 0) {
@@ -83,15 +97,15 @@ QuiPopup {
         validationMessage = controller.validationError()
     }
 
-    function refreshRoiSearchEnabled() {
-        roiSearchEnabled = GlobalSettings.valueForField(
-                    SettingsAccessor.RoiSearch,
-                    RoiSearchField.Enabled,
+    function refreshRegionSearchEnabled() {
+        regionSearchEnabled = GlobalSettings.valueForField(
+                    SettingsAccessor.RegionSearch,
+                    RegionSearchField.Enabled,
                     true)
     }
 
     function startSearch() {
-        let controller = roiSearchController()
+        let controller = regionSearchController()
         updateValidation()
         if (!controller || validationMessage.length > 0) {
             return
@@ -105,8 +119,11 @@ QuiPopup {
     }
 
     onOpened: {
-        resetDatasetSelection()
-        refreshRoiSearchEnabled()
+        refreshRegionSearchEnabled()
+        let controller = regionSearchController()
+        if (controller && queryLabelIds && queryLabelIds.length > 0) {
+            controller.captureQuery(queryLabelIds[0])
+        }
         Qt.callLater(updateValidation)
     }
 
@@ -114,18 +131,24 @@ QuiPopup {
         bindDatasetSelectionModel()
         updateValidation()
     }
-    onQueryLabelIdsChanged: updateValidation()
-    onRoiSearchEnabledChanged: updateValidation()
+    onQueryLabelIdsChanged: {
+        let controller = regionSearchController()
+        if (controller && queryLabelIds && queryLabelIds.length > 0) {
+            controller.captureQuery(queryLabelIds[0])
+        }
+        updateValidation()
+    }
+    onRegionSearchEnabledChanged: updateValidation()
     Component.onCompleted: {
         bindDatasetSelectionModel()
         updateValidation()
     }
 
     Connections {
-        target: roiSearchSettings ? roiSearchSettings.fieldModel : null
+        target: regionSearchSettings ? regionSearchSettings.fieldModel : null
 
         function onValueChanged(name, value) {
-            dialog.refreshRoiSearchEnabled()
+            dialog.refreshRegionSearchEnabled()
             dialog.updateValidation()
         }
     }
@@ -139,8 +162,8 @@ QuiPopup {
     }
 
     FeatureDialogLayout {
-        title: "标注搜索"
-        settingsFieldModel: roiSearchSettings ? roiSearchSettings.fieldModel : null
+        title: "区域检索"
+        settingsFieldModel: regionSearchSettings ? regionSearchSettings.fieldModel : null
         datasetSectionComponent: Component {
             DatasetSelectionTreeView {
                 roleTitle: "搜索数据集"
@@ -150,11 +173,11 @@ QuiPopup {
         }
         errorText: dialog.validationMessage.length > 0
                    ? dialog.validationMessage
-                   : (dialog.startAttempted && dialog.roiSearchController()
-                      ? dialog.roiSearchController().lastError : "")
-        primaryButtonText: "开始搜索"
-        primaryButtonEnabled: dialog.roiSearchController()
-                              && !dialog.roiSearchController().running
+                   : (dialog.startAttempted && dialog.regionSearchController()
+                      ? dialog.regionSearchController().lastError : "")
+        primaryButtonText: "开始检索"
+        primaryButtonEnabled: dialog.regionSearchController()
+                              && !dialog.regionSearchController().running
                               && dialog.validationMessage.length === 0
         onCancelRequested: dialog.close()
         onPrimaryRequested: dialog.startSearch()

@@ -19,6 +19,7 @@ Item {
     property ImageSearchController imageSearch: null
     property RoiSearchController roiSearch: null
     property RoiClusterController roiCluster: null
+    readonly property RegionSearchController regionSearch: featureManager ? featureManager.regionSearch : null
     property bool roiSearchEnabled: true
     property bool roiClusterEnabled: true
 
@@ -35,12 +36,35 @@ Item {
             onClicked: actions.startImageSearchForCurrentImage()
         }
 
-        QuiMenuItem {
-            text: "标注搜索"
-            enabled: actions.dataManager && actions.roiSearch && !actions.roiSearch.running
-                     && actions.roiSearchEnabled && actions.selection && actions.selection.hasSelection
+        QuiMenu {
+            title: "标注搜索"
             iconSource: QuiFontIcon.Search
-            onClicked: actions.startRoiSearchForSelectedLabels()
+            enabled: true
+
+            QuiMenuItem {
+                id: legacyItem
+                text: "已有标注搜索"
+                enabled: actions.dataManager && actions.roiSearch && !actions.roiSearch.running
+                         && actions.roiSearchEnabled && actions.selection && actions.selection.hasSelection
+                onClicked: actions.startRoiSearchForSelectedLabels()
+            }
+
+            QuiMenuItem {
+                id: regionItem
+                text: "区域检索并生成标注"
+                enabled: actions.dataManager && actions.regionSearch && actions.regionSearch.enabled
+                         && !actions.regionSearch.busy && actions.selection && actions.selection.hasSelection
+                         && actions.imageLabelsList && actions.imageLabelsList.getSelectedLabelIds().length === 1
+                         && actions.regionSearch.canRepresentResultRect
+                onClicked: {
+                    if (actions.imageLabelsList) {
+                        let ids = actions.imageLabelsList.getSelectedLabelIds()
+                        if (ids.length === 1) {
+                            regionSearchDialog.openForLabel(ids[0])
+                        }
+                    }
+                }
+            }
         }
 
         QuiMenuItem {
@@ -81,6 +105,12 @@ Item {
 
     RoiSearchDialog {
         id: roiSearchDialog
+        dataManager: actions.dataManager
+        featureManager: actions.featureManager
+    }
+
+    RegionSearchDialog {
+        id: regionSearchDialog
         dataManager: actions.dataManager
         featureManager: actions.featureManager
     }

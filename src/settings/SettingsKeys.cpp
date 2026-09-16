@@ -22,6 +22,8 @@ std::optional<generated::AccessorKey> accessorKeyForPath(const QString &path)
         return generated::AccessorKey::ImageCluster;
     if (path == QStringLiteral("advanced.imageSearch"))
         return generated::AccessorKey::ImageSearch;
+    if (path == QStringLiteral("advanced.regionSearch"))
+        return generated::AccessorKey::RegionSearch;
     if (path == QStringLiteral("advanced.roiCluster"))
         return generated::AccessorKey::RoiCluster;
     if (path == QStringLiteral("advanced.roiSearch"))
@@ -45,6 +47,8 @@ std::optional<generated::AccessorKey> accessorKeyForGroupKey(const QString &grou
         return generated::AccessorKey::ImageCluster;
     if (group_key == QStringLiteral("ImageSearchSettings"))
         return generated::AccessorKey::ImageSearch;
+    if (group_key == QStringLiteral("RegionSearchSettings"))
+        return generated::AccessorKey::RegionSearch;
     if (group_key == QStringLiteral("RoiClusterSettings"))
         return generated::AccessorKey::RoiCluster;
     if (group_key == QStringLiteral("RoiSearchSettings"))

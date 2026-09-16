@@ -46,7 +46,7 @@ class UI_API ProgressManager : public QObject
     QML_NAMED_ELEMENT(ProgressManager)
     QT_QML_SINGLETON(ProgressManager)
 
-    Q_PROPERTY(int progress READ getProgress NOTIFY progressChanged)
+    Q_PROPERTY(double progress READ getProgress NOTIFY progressChanged)
     Q_PROPERTY(bool isRunning READ getIsRunning NOTIFY runningStateChanged)
     Q_PROPERTY(QString message READ getColorfulMessage NOTIFY messageChanged)
     Q_PROPERTY(QString activeTaskId READ activeTaskId NOTIFY activeTaskIdChanged)
@@ -57,7 +57,7 @@ public:
      * @brief 获取当前进度值
      * @return 进度百分比 (0-100)
      */
-    int getProgress() const
+    double getProgress() const
     {
         return progress_;
     }
@@ -116,7 +116,7 @@ public:
      * @param progress 进度百分比 (0-100)
      * @param taskId 任务标识符（可选）
      */
-    Q_INVOKABLE void updateProgress(int progress, const QString &taskId = "");
+    Q_INVOKABLE void updateProgress(double progress, const QString &taskId = "");
 
     /**
      * @brief 向消息队列添加消息
@@ -143,8 +143,7 @@ public:
     Q_INVOKABLE void finishTask(const QString &taskId = "", bool success = true);
 
     /**
-     * @brief 重置所有进度状态
-     * 清空进度、运行状态、任务标识符、任务名称和消息队列
+     * @brief 重置所有状态并清空消息
      */
     Q_INVOKABLE void reset();
 
@@ -160,7 +159,7 @@ signals:
     void runningStateChanged();
 
     /**
-     * @brief 消息添加或队列改变时发射
+     * @brief 消息队列改变时发射
      */
     void messageChanged();
 
@@ -184,7 +183,7 @@ private:
 
     QString generateUniqueTaskId();
 
-    int                             progress_{0};
+    double                          progress_{0.0};
     bool                            is_running_{false};
     bool                            is_anonymous_{false};
     QString                         active_task_id_;

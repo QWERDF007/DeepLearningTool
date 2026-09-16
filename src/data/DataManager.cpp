@@ -386,6 +386,14 @@ void DataManager::init(const int method)
     connect(global_filter_, &GlobalFilter::customFilterSearchResultsChanged, this,
             [this](bool has_image_search_results, bool has_label_search_results)
             { custom_filter_items_->setSearchResultsAvailable(has_image_search_results, has_label_search_results); });
+    connect(global_filter_, &GlobalFilter::regionSearchResultsChanged, this,
+            [this]()
+            {
+                if (custom_filter_items_ != nullptr && global_filter_ != nullptr)
+                {
+                    custom_filter_items_->setRegionSearchResultAvailable(global_filter_->regionResultsReady());
+                }
+            });
 
     // Connect source model changes to refresh filter items models
     connect(datasets_, &QAbstractItemModel::rowsInserted, this,
@@ -800,6 +808,27 @@ void DataManager::setLabelSearchResults(const std::vector<int64_t> &label_ids, b
     {
         global_filter_->setLabelSearchResults(label_ids, enable_filter);
     }
+}
+
+void DataManager::clearRegionSearchResults()
+{
+    if (global_filter_ != nullptr)
+    {
+        global_filter_->clearRegionSearchResults();
+    }
+}
+
+void DataManager::setRegionSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter)
+{
+    if (global_filter_ != nullptr)
+    {
+        global_filter_->setRegionSearchResults(label_ids, enable_filter);
+    }
+}
+
+bool DataManager::regionResultsReady() const
+{
+    return global_filter_ != nullptr && global_filter_->regionResultsReady();
 }
 
 QString DataManager::getDatasetName(const int dataset_id) const
@@ -1335,6 +1364,22 @@ void DataManager::addLabels(const std::vector<int64_t> &image_ids, const std::ve
     addLabelsInternal(image_ids, label_class_ids, data);
 }
 
+bool DataManager::addLabelsWithIds(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
+                                   const std::vector<QVariantMap> &data, std::vector<int64_t> *added_label_ids,
+                                   QString *err_msg)
+{
+    if (isDataOperationRunning())
+    {
+        if (err_msg != nullptr)
+        {
+            *err_msg = QStringLiteral("当前已有数据操作正在进行中");
+        }
+        ui::SignalHelper::notifyWarn(QString("添加标注"), QString("当前已有数据操作正在进行中"));
+        return false;
+    }
+    return addLabelsInternal(image_ids, label_class_ids, data, err_msg, true, added_label_ids);
+}
+
 bool DataManager::addLabel(const int64_t image_id, const int64_t label_class_id, const QVariantMap &data)
 {
     if (isDataOperationRunning())
@@ -1716,6 +1761,16 @@ bool DataManager::setLabelsTag(const std::vector<int64_t> &label_ids, const int6
         return false;
     }
     return image_tags_ != nullptr && image_tags_->addLabelsTag(label_ids, tag_id);
+}
+
+std::set<int64_t> DataManager::labelTagIds(const int64_t label_id) const
+{
+    if (label_source_ == nullptr)
+    {
+        return {};
+    }
+    const auto *instance = label_source_->getLabelInstance(label_id);
+    return instance != nullptr ? instance->tagIds() : std::set<int64_t>{};
 }
 
 bool DataManager::deleteTagClass(const int64_t tag_id)

@@ -88,6 +88,7 @@ FeatureManager::FeatureManager(dltool::data::DataManager *data_manager,
 {
     image_search_ = new ImageSearchController(image_search_provider_.get(), this);
     roi_search_ = new RoiSearchController(roi_search_provider_.get(), this);
+    region_search_ = new RegionSearchController(data_manager, this);
     image_cluster_ = new ImageClusterController(image_cluster_provider_.get(), data_manager, this);
     roi_cluster_ = new RoiClusterController(roi_cluster_provider_.get(), data_manager, this);
     smart_annotation_ = new SmartAnnotationController(this);
@@ -129,6 +130,8 @@ FeatureManager::~FeatureManager()
     image_cluster_ = nullptr;
     delete roi_cluster_;
     roi_cluster_ = nullptr;
+    delete region_search_;
+    region_search_ = nullptr;
     delete roi_search_;
     roi_search_ = nullptr;
     delete image_search_;
@@ -154,6 +157,8 @@ void FeatureManager::shutdown()
         roi_cluster_->shutdown();
     if (roi_search_ != nullptr)
         roi_search_->shutdown();
+    if (region_search_ != nullptr)
+        region_search_->shutdown();
     if (image_search_ != nullptr)
         image_search_->shutdown();
 }
@@ -162,6 +167,7 @@ void FeatureManager::requestShutdown()
 {
     if (image_search_ != nullptr) image_search_->requestShutdown();
     if (roi_search_ != nullptr) roi_search_->requestShutdown();
+    if (region_search_ != nullptr) region_search_->requestShutdown();
     if (image_cluster_ != nullptr) image_cluster_->requestShutdown();
     if (roi_cluster_ != nullptr) roi_cluster_->requestShutdown();
     if (smart_annotation_ != nullptr) smart_annotation_->requestShutdown();
@@ -176,6 +182,11 @@ ImageSearchController *FeatureManager::imageSearch() const
 RoiSearchController *FeatureManager::roiSearch() const
 {
     return roi_search_;
+}
+
+RegionSearchController *FeatureManager::regionSearch() const
+{
+    return region_search_;
 }
 
 ImageClusterController *FeatureManager::imageCluster() const

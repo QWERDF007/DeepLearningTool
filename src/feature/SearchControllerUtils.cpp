@@ -267,6 +267,31 @@ std::filesystem::path toFsPath(const QString &path)
 #endif
 }
 
+/**
+ * @brief 将 std::filesystem::path 转换为 QString
+ * @param path 文件系统路径
+ * @return QString
+ */
+QString fromFsPath(const std::filesystem::path &path)
+{
+#ifdef _WIN32
+    return QString::fromStdWString(path.wstring());
+#else
+    return QString::fromStdString(path.string());
+#endif
+}
+
+/**
+ * @brief 将 std::filesystem::path 转换为规范化 UTF-8 路径字符串（统一使用 '/' 分隔符）
+ * @param path 文件系统路径
+ * @return UTF-8 路径字符串
+ */
+std::string toDinoPathUtf8(const std::filesystem::path &path)
+{
+    const auto generic = std::filesystem::absolute(path).lexically_normal().generic_u8string();
+    return std::string(generic.begin(), generic.end());
+}
+
 std::map<int64_t, std::set<int64_t>> parseDatasetClassScope(const QVariantList &scope)
 {
     std::map<int64_t, std::set<int64_t>> result;
@@ -539,14 +564,187 @@ QString formatBuildProgressMessage(const irt::features::ImageSearchBuildProgress
 }
 
 /**
+ * @brief 从 DINO 区域检索构建进度中解析已处理和总数量
+ * @param progress 构建进度
+ * @param gallery_count 搜索库项数量
+ * @param processed 已处理数量（输出）
+ * @param total 总数量（输出）
+ * @return 解析成功返回 true
+ */
+bool resolveProgressCount(const irt::features::DinoBuildProgress &progress, size_t gallery_count,
+                          size_t &processed, size_t &total)
+{
+    using Stage = irt::features::DinoBuildStage;
+
+    if (progress.stage == Stage::Unknown)
+        return false;
+
+    if (progress.total_count > 0 && progress.processed_count <= progress.total_count)
+    {
+        processed = progress.processed_count;
+        total     = progress.total_count;
+        return true;
+    }
+
+    if (progress.batch_count > 0 && gallery_count > 0)
+    {
+        processed = std::min(gallery_count, progress.batch_begin + progress.batch_count);
+        total     = gallery_count;
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * @brief 计算 DINO 区域检索构建进度百分比
+ * @param progress 构建进度
+ * @param gallery_count 搜索库项数量
+ * @return 进度百分比（0-100），无法计算时返回 -1
+ */
+int progressPercent(const irt::features::DinoBuildProgress &progress, size_t gallery_count)
+{
+    size_t processed = 0;
+    size_t total     = 0;
+    if (!resolveProgressCount(progress, gallery_count, processed, total) || total == 0)
+        return -1;
+    return std::min(100, static_cast<int>(processed * 100 / total));
+}
+
+/**
+ * @brief 格式化 DINO 区域检索构建进度消息
+ * @param progress 构建进度
+ * @param gallery_count 搜索库项数量
+ * @return 格式化的进度消息
+ */
+QString formatBuildProgressMessage(const irt::features::DinoBuildProgress &progress, size_t gallery_count)
+{
+    QString stage_str;
+    switch (progress.stage)
+    {
+    case irt::features::DinoBuildStage::ScanningImages:
+        stage_str = QString("扫描图库图像");
+        break;
+    case irt::features::DinoBuildStage::LoadingModel:
+        stage_str = QString("加载模型");
+        break;
+    case irt::features::DinoBuildStage::ExtractingViews:
+        stage_str = QString("提取特征");
+        break;
+    case irt::features::DinoBuildStage::WritingIndex:
+        stage_str = QString("写入索引");
+        break;
+    case irt::features::DinoBuildStage::Quantizing:
+        stage_str = QString("量化特征");
+        break;
+    case irt::features::DinoBuildStage::Finalizing:
+        stage_str = QString("完成索引");
+        break;
+    default:
+        stage_str = QString("建立图库特征");
+        break;
+    }
+
+    size_t processed = 0;
+    size_t total     = 0;
+    if (resolveProgressCount(progress, gallery_count, processed, total))
+    {
+        if (progress.batch_count > 1)
+        {
+            return QString("图库特征建库 [%1]: 批次 %2 [%3-%4] / %5")
+                .arg(stage_str)
+                .arg(progress.batch_index + 1)
+                .arg(progress.batch_begin + 1)
+                .arg(progress.batch_begin + progress.batch_count)
+                .arg(total);
+        }
+        return QString("图库特征建库 [%1]: %2 / %3").arg(stage_str).arg(processed).arg(total);
+    }
+
+    if (!progress.message.empty())
+    {
+        return QString("图库特征建库 [%1]: %2").arg(stage_str, QString::fromStdString(progress.message));
+    }
+    return QString("图库特征建库 [%1]").arg(stage_str);
+}
+
+/**
+ * @brief 格式化 DINO 区域检索查询进度消息
+ * @param progress 查询进度
+ * @return 格式化的进度消息
+ */
+QString formatSearchProgressMessage(const irt::features::DinoSearchProgress &progress)
+{
+    QString stage_str;
+    switch (progress.stage)
+    {
+    case irt::features::DinoSearchStage::Decode:
+        stage_str = QString("解码查询图像");
+        break;
+    case irt::features::DinoSearchStage::QueryExtract:
+        stage_str = QString("提取查询特征");
+        break;
+    case irt::features::DinoSearchStage::RegionScan:
+        stage_str = QString("全图扫描");
+        break;
+    case irt::features::DinoSearchStage::LocalScan:
+        stage_str = QString("局部精选");
+        break;
+    case irt::features::DinoSearchStage::LocalWindowRescore:
+        stage_str = QString("窗口重打分");
+        break;
+    case irt::features::DinoSearchStage::Fusion:
+        stage_str = QString("融合排序");
+        break;
+    case irt::features::DinoSearchStage::FineExtract:
+        stage_str = QString("候选特征提取");
+        break;
+    case irt::features::DinoSearchStage::FineMatch:
+        stage_str = QString("精细匹配");
+        break;
+    case irt::features::DinoSearchStage::Output:
+        stage_str = QString("整理结果");
+        break;
+    default:
+        stage_str = QString("正在检索");
+        break;
+    }
+
+    if (progress.total_count > 0)
+    {
+        if (progress.batch_count > 1)
+        {
+            return QString("区域检索 [%1]: 批次 %2 (%3 / %4)")
+                .arg(stage_str)
+                .arg(progress.batch_index + 1)
+                .arg(progress.processed_count)
+                .arg(progress.total_count);
+        }
+        return QString("区域检索 [%1]: %2 / %3").arg(stage_str).arg(progress.processed_count).arg(progress.total_count);
+    }
+
+    if (!progress.message.empty())
+    {
+        return QString("区域检索 [%1]: %2").arg(stage_str, QString::fromStdString(progress.message));
+    }
+    return QString("区域检索 [%1]").arg(stage_str);
+}
+
+/**
  * @brief 向进度管理器添加消息
  * @param level 日志级别
  * @param message 消息内容
+ * @param task_id 关联的任务 ID，若为空则自动使用当前活跃任务 ID
  */
-void addProgressMessage(int level, const QString &message)
+void addProgressMessage(int level, const QString &message, const QString &task_id)
 {
-    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::AutoConnection, Q_ARG(int, level),
-                              Q_ARG(QString, withProgressTimestamp(message)));
+    const QString target_task_id = task_id.isEmpty()
+                                       ? ui::ProgressManager::getInstance()->activeTaskId()
+                                       : task_id;
+    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::AutoConnection,
+                              Q_ARG(int, level),
+                              Q_ARG(QString, withProgressTimestamp(message)),
+                              Q_ARG(QString, target_task_id));
 }
 
 /**

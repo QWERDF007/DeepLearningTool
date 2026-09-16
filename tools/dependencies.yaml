@@ -5,12 +5,12 @@ dependencies:
   - name: qt
     cmake: cmake/ConfigQT.cmake
     root: Qt6_ROOT
-    default: E:/Softwares/Qt/6.11.0/msvc2022_64
+    default: D:/Software/Qt6/6.6.2/msvc2019_64
 
   - name: sqlite
     cmake: cmake/ConfigSQLite.cmake
     root: SQLITE_ROOT
-    default: D:/Software/sqlite-3.46.0
+    default: D:/Software/dev/sqlite-3.46.0
     destinations:
       - build/bin
     windows:
@@ -25,7 +25,7 @@ dependencies:
     cmake: cmake/ConfigOpenCV.cmake
     root: OpenCV_HOME
     windows_root: OpenCV_BIN_DIR
-    default: D:/Software/opencv/build/x64/vc16
+    default: D:/Software/dev/opencv-4.8.0/build/x64/vc16
     destinations:
       - build/bin
     windows:
@@ -40,7 +40,7 @@ dependencies:
     cmake: cmake/ConfigInferRT.cmake
     root: INFERRT_ROOT
     windows_root: INFERRT_BIN_DIR
-    default: D:/Project/InferRT/InferRT-0.0.3
+    default: F:/Projects/InferRT/InferRT-0.0.3
     destinations:
       - build/bin
     windows:
@@ -55,7 +55,7 @@ dependencies:
     cmake: cmake/ConfigCUDA.cmake
     env: CUDA_PATH
     root: CUDAToolkit_ROOT
-    default: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8
+    default: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8
     destinations:
       - build/bin
     windows:
@@ -78,7 +78,7 @@ dependencies:
   - name: tensorrt
     cmake: cmake/ConfigInferRT.cmake
     root: TRT_ROOT
-    default: D:/Software/TensorRT-10.16.0.72
+    default: D:/Software/dev/TensorRT-10.16.1.11
     destinations:
       - build/bin
     windows:
@@ -93,7 +93,7 @@ dependencies:
   - name: faiss
     cmake: cmake/ConfigInferRT.cmake
     root: Faiss_HOME
-    default: D:/Software/faiss
+    default: F:/Github/faiss/install
     destinations:
       - build/bin
     windows:
@@ -106,7 +106,7 @@ dependencies:
   - name: mkl
     cmake: cmake/ConfigInferRT.cmake
     root: MKL_ROOT
-    default: D:/Software/mkl/mkl
+    default: D:/Software/dev/mkl/mkl
     destinations:
       - build/bin
     windows:
@@ -119,7 +119,7 @@ dependencies:
   - name: libiomp5md
     cmake: cmake/ConfigInferRT.cmake
     root: MKL_COMPILER_ROOT
-    default: D:/Software/mkl/compiler
+    default: D:/Software/dev/mkl/compiler
     destinations:
       - build/bin
     windows:
@@ -128,7 +128,7 @@ dependencies:
   - name: onnxruntime
     cmake: cmake/ConfigInferRT.cmake
     root: ONNXRUNTIME_ROOT
-    default: D:/Software/onnxruntime-gpu-1.26.0
+    default: D:/Software/onnxruntime-gpu-1.19.0
     destinations:
       - build/bin
     windows:
@@ -164,7 +164,7 @@ dependencies:
   - name: zlib
     cmake: cmake/ConfigInferRT.cmake
     root: INFERRT_PYTHON_ROOT
-    default: E:/Softwares/Anaconda3/envs/py312
+    default: D:/Software/anaconda3/envs/py312
     destinations:
       - build/bin
     windows:

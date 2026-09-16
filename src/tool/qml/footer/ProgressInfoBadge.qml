@@ -23,6 +23,7 @@ Rectangle {
 
     RowLayout {
         anchors.fill: parent
+        spacing: 4
         
         // "进度" 文本标签
         QuiText {
@@ -31,16 +32,12 @@ Rectangle {
             verticalAlignment: Text.AlignVCenter
         }
         
-        // 进度百分比文本 - 仅在运行时显示
+        // 进度百分比文本 - 仅在运行时显示，与处理进度对话框对齐显示两位小数
         QuiText {
-            Layout.preferredWidth: 32
-            text: ProgressManager ? ProgressManager.progress + "%" : ""
+            Layout.fillWidth: true
+            text: ProgressManager ? Number(ProgressManager.progress).toFixed(2) + "%" : ""
             visible: ProgressManager ? ProgressManager.isRunning : false
             verticalAlignment: Text.AlignVCenter
-        }
-        
-        Item {
-            Layout.fillWidth: true
         }
     }
 

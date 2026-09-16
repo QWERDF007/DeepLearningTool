@@ -325,7 +325,8 @@ void CustomFilterItemsModel::populateFromCustomConditions()
     {
         const bool is_image_search = condition.id == static_cast<int64_t>(GlobalFilter::CustomCondition::ImageSearchResult);
         const bool is_label_search = condition.id == static_cast<int64_t>(GlobalFilter::CustomCondition::LabelSearchResult);
-        const bool enabled         = !is_image_search && !is_label_search;
+        const bool is_region_search = condition.id == static_cast<int64_t>(GlobalFilter::CustomCondition::RegionSearchResult);
+        const bool enabled         = !is_image_search && !is_label_search && !is_region_search;
         items.emplace_back(condition.id, condition.text, false, enabled);
     }
     replaceItems(std::move(items));
@@ -360,6 +361,30 @@ void CustomFilterItemsModel::setSearchResultsAvailable(bool image_search_availab
         item.checked = checked;
         const QModelIndex item_index = index(row);
         emit dataChanged(item_index, item_index, {CheckedRole, EnabledRole});
+    }
+}
+
+void CustomFilterItemsModel::setRegionSearchResultAvailable(bool available)
+{
+    for (int row = 0; row < static_cast<int>(items_.size()); ++row)
+    {
+        FilterItem &item = items_[static_cast<size_t>(row)];
+        if (item.id != static_cast<int64_t>(GlobalFilter::CustomCondition::RegionSearchResult))
+        {
+            continue;
+        }
+
+        const bool checked = available ? item.checked || !item.enabled : false;
+        if (item.enabled == available && item.checked == checked)
+        {
+            continue;
+        }
+
+        item.enabled = available;
+        item.checked = checked;
+        const QModelIndex item_index = index(row);
+        emit dataChanged(item_index, item_index, {CheckedRole, EnabledRole});
+        break;
     }
 }
 

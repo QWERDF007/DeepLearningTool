@@ -22,6 +22,7 @@ Rectangle {
     property ItemSelectionModel selection : labelInstances ? labelInstances.selection : null
     property var roiSearch: featureManager ? featureManager.roiSearch : null
     property var roiCluster: featureManager ? featureManager.roiCluster : null
+    property var regionSearch: featureManager ? featureManager.regionSearch : null
     property bool roiSearchEnabled: true
     property bool roiClusterEnabled: true
     property real labelThumbnailScale: 1.0
@@ -46,6 +47,12 @@ Rectangle {
         featureManager: root.featureManager
     }
 
+    RegionSearchDialog {
+        id: regionSearchDialog
+        dataManager: root.dataManager
+        featureManager: root.featureManager
+    }
+
     RoiClusterDialog {
         id: roiClusterDialog
         dataManager: root.dataManager
@@ -56,15 +63,40 @@ Rectangle {
     QuiMenu {
         id: contextMenu
         width: 200
-        QuiMenuItem {
-            text: "标注搜索"
+
+        QuiMenu {
+            title: "标注搜索"
             iconSource: QuiFontIcon.Search
-            enabled: dataManager && roiSearch
-                     && selection && selection.hasSelection
-                     && !roiSearch.running
-                     && roiSearchEnabled
-            onClicked: startRoiSearchForSelectedLabels()
+            enabled: true
+
+            QuiMenuItem {
+                id: legacyItem
+                text: "已有标注搜索"
+                enabled: dataManager && roiSearch
+                         && selection && selection.hasSelection
+                         && !roiSearch.running
+                         && roiSearchEnabled
+                onClicked: startRoiSearchForSelectedLabels()
+            }
+
+            QuiMenuItem {
+                id: regionItem
+                text: "区域检索并生成标注"
+                enabled: dataManager && regionSearch && regionSearch.enabled
+                         && !regionSearch.busy && selection && selection.hasSelection
+                         && labelInstances && labelInstances.getSelectedLabelIds().length === 1
+                         && regionSearch.canRepresentResultRect
+                onClicked: {
+                    if (labelInstances) {
+                        let ids = labelInstances.getSelectedLabelIds()
+                        if (ids.length === 1) {
+                            regionSearchDialog.openForLabel(ids[0])
+                        }
+                    }
+                }
+            }
         }
+
         QuiMenuItem {
             text: "标注聚类"
             iconSource: QuiFontIcon.GridView

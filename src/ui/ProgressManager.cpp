@@ -2,8 +2,7 @@
 
 #include <spdlog/spdlog.h>
 
-#include <QTextCursor>
-#include <QTextDocument>
+#include <cmath>
 
 namespace dltool::ui {
 
@@ -45,11 +44,11 @@ QString ProgressManager::generateUniqueTaskId()
 
 QString ProgressManager::startTask(const QString &taskName, const QString &taskId)
 {
-    const QString previous_task_id = active_task_id_;
+    const QString previous_task_id   = active_task_id_;
     const QString previous_task_name = task_name_;
-    const bool was_running   = is_running_;
-    const bool had_progress  = (progress_ != 0);
-    const bool had_messages  = !message_queue_.isEmpty();
+    const bool    was_running        = is_running_;
+    const bool    had_progress       = (std::abs(progress_) > 1e-4);
+    const bool    had_messages       = !message_queue_.isEmpty();
 
     if (taskId.isEmpty())
     {
@@ -63,7 +62,7 @@ QString ProgressManager::startTask(const QString &taskName, const QString &taskI
     }
 
     task_name_  = taskName;
-    progress_   = 0;
+    progress_   = 0.0;
     is_running_ = true;
     message_queue_.clear();
 
@@ -81,7 +80,7 @@ QString ProgressManager::startTask(const QString &taskName, const QString &taskI
     return active_task_id_;
 }
 
-void ProgressManager::updateProgress(int progress, const QString &taskId)
+void ProgressManager::updateProgress(double progress, const QString &taskId)
 {
     if (!is_running_)
     {
@@ -110,19 +109,17 @@ void ProgressManager::updateProgress(int progress, const QString &taskId)
         }
     }
 
-    // 验证并将进度值限制在 [0, 100] 范围内
-    if (progress < 0)
+    // 验证并将进度值限制在 [0.0, 100.0] 范围内
+    if (progress < 0.0)
     {
-        spdlog::warn("进度值 {} 小于 0，限制为 0", progress);
-        progress = 0;
+        progress = 0.0;
     }
-    else if (progress > 100)
+    else if (progress > 100.0)
     {
-        spdlog::warn("进度值 {} 超过 100，限制为 100", progress);
-        progress = 100;
+        progress = 100.0;
     }
 
-    if (progress_ != progress)
+    if (std::abs(progress_ - progress) > 1e-4)
     {
         progress_ = progress;
         emit progressChanged();
@@ -188,9 +185,9 @@ void ProgressManager::finishTask(const QString &taskId, bool success)
 
     if (success)
     {
-        if (progress_ != 100)
+        if (std::abs(progress_ - 100.0) > 1e-4)
         {
-            progress_ = 100;
+            progress_ = 100.0;
             emit progressChanged();
         }
     }
@@ -201,11 +198,11 @@ void ProgressManager::finishTask(const QString &taskId, bool success)
 void ProgressManager::reset()
 {
     const bool was_running  = is_running_;
-    const bool had_progress = (progress_ != 0);
+    const bool had_progress = (std::abs(progress_) > 1e-4);
     const bool had_messages = !message_queue_.isEmpty();
     const bool had_task     = !active_task_id_.isEmpty() || !task_name_.isEmpty();
 
-    progress_     = 0;
+    progress_     = 0.0;
     is_running_   = false;
     is_anonymous_ = false;
     active_task_id_.clear();
