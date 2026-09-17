@@ -12,8 +12,11 @@
 
 项目根目录/
 ├── <项目名>.dlpro        项目 SQLite 数据库
-└── models/
-    └── <模型名>/          模型文件和任务产物
+├── models/
+│   └── <模型名>/          模型文件和任务产物
+├── region_search/        DINO 区域检索特征索引
+├── image_search/         图像相似度 FAISS 索引
+└── roi_search/           标注 ROI FAISS 索引
 ```
 
 应用级数据库路径由 `DataBase::applicationDatabasePath()` 计算为应用程序目录下的 `db/`；项目数据库路径由项目管理器传入。不要根据目录名猜测 schema，使用对应访问类和 DDL。
@@ -86,6 +89,33 @@ prediction     image_id 到预测数据的映射
 - 任务运行期间参数编辑由 QML 禁用；任务停止、完成或失败后恢复。
 
 完整语义以 [参数拆分访谈记录](GRILL_ME_EVALUATION_PARAMETER_SPLIT.md) 和 [异常检测可视化访谈记录](GRILL_ME_ANOMALY_SEGMENTATION_HEATMAP.md) 为准。
+
+## 特征索引与检索产物
+
+### DINO 区域检索索引 (`region_search/`)
+
+DINO 区域检索由 [`RegionSearchController`](../src/feature/RegionSearchController.cpp) 管理，特征数据保存在项目根目录下的 `region_search/`：
+
+```text
+region_search/
+├── index.yaml         索引元数据与强契约清单 (包含 manifest 与 images 记录)
+├── index_scope.yaml   索引覆盖的数据集范围 (indexed_datasets) 与图像统计
+├── views.npy          瓦片视图几何信息
+├── offsets.npy        图像视图偏移量
+├── region_meta.npy    区域级特征元数据
+├── local_meta.npy     局部 Patch 特征元数据
+├── global.bin         全局特征向量库
+├── region.bin         区域特征向量库
+└── local.bin          局部特征向量库
+```
+
+- **强一致契约校验**：`index.yaml` 中的 `manifest` 记录建库时的关键参数（`model_name`、`weights_id`、`encoder_edge`、`view_overlap`、`quantize_int8` 等）。
+- **重建决策规则**：当 `index.yaml` 或 `index_scope.yaml` 缺失、当前配置与契约清单不一致（通过 `irt::features::DinoRegionSearch::needsRebuild` 比对）、或搜索目标数据集未被 `index_scope.yaml` 完整覆盖时，控制器判定需要重新建库，并通过 `buildReason` 记录具体触发差异。
+
+### 向量搜索索引 (`image_search/` 与 `roi_search/`)
+
+- 以图搜图和标注 ROI 搜索分别在项目目录下的 `image_search/` 和 `roi_search/` 保存 FAISS 向量索引文件（`.faiss` / `.roi.faiss`）。
+- 索引文件名由模型名称与特征层名称派生，特征层配置变化时会自动使用新文件名或触发重建。
 
 ## 数据导出边界
 

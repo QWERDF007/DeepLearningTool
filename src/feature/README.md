@@ -2,38 +2,33 @@
 
 ## 模块定位
 
-`feature` 构建目标为 `dltool_feature`，默认 QML URI 为 `dltool.feature`。它承载需要模型推理、特征计算或外部训练流程的高级能力，目前包含图像相似搜索、标注 ROI 搜索、智能标注和小样本学习。
+`feature` 构建目标为 `dltool_feature`，默认 QML URI 为 `dltool.feature`。它承载需要模型推理、特征计算或外部训练流程的高级能力，目前包含图像相似搜索、标注 ROI 搜索、DINO 细粒度区域检索、图像/标注 ROI 特征聚类、智能标注和小样本学习。
 
 ## 架构设计
 
+- `RegionSearchController` 基于 InferRT `DinoRegionSearch` 实现细粒度多尺度目标区域检索，负责 Profile 预设与全局设置合并、`region_search/` 强契约索引生命周期与 `buildReason` 诊断、检索任务阶段进度控制以及候选框去重与标注实例回写。
 - `ImageSearchController` 基于 InferRT + FAISS 执行以图搜图。
+- `RoiSearchController` 继承 `SearchControllerBase`，基于 InferRT + ROIAlign + FAISS 执行标注实例 ROI 检索。
+- `ImageClusterController` 基于 InferRT + HDBSCAN 执行全图特征聚类并写回数据集。
+- `RoiClusterController` 继承 `ImageClusterController`，执行标注 ROI 实例特征聚类并写回数据集。
 - `SmartAnnotationController` 负责智能标注模型加载、缓存和推理请求，返回 QML 可消费的 mask/polygon 结果。
 - `FewShotLearningController` 是小样本学习的 QML 编排层，负责读取页面选择、创建隐藏的 FS-SAM2 普通模型记录，并通过普通模型任务接口启动任务链。
-- `ImageSearchDataProvider` 是图像搜索对宿主数据模块的最小依赖接口，提供图像 ID、路径、数据集 ID、项目数据库路径以及搜索结果写回能力。
-- 小样本学习的数据准备、FS-SAM2 进程、任务中心状态和项目目录落盘复用普通模型任务链路；预测结果导入由 `FewShotLearningController` 在测试任务完成后触发。
-- `FeatureManager` 继续向 QML 暴露 `imageSearch`、`smartAnnotation` 和 `fewShotLearning` 属性，保持页面调用方式稳定。
+- `FeatureManager` 向 QML 暴露 `imageSearch`、`roiSearch`、`regionSearch`、`imageCluster`、`roiCluster`、`smartAnnotation` 和 `fewShotLearning` 属性，保持页面调用方式稳定统一。
 
 Feature 控制器的项目关闭顺序、线程等待和迟到回调规则见 [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)；搜索和聚类的后台进度回调在控制器进入关闭状态后不再投递到全局进度模型，行为测试见 [`tests/feature/test_FeatureLifecycle.cpp`](../../tests/feature/test_FeatureLifecycle.cpp)。
 
 ## 与其他模块的关系
 
-- 依赖 `settings` 读取图像搜索、智能标注和小样本学习配置。
+- 依赖 `settings` 读取图像搜索、区域检索、聚类、智能标注和小样本学习配置。
 - 依赖 `model` 的任务中心接口对接外部训练/推理任务。
 - 依赖 `ui` 和 `quickui` 提供 feature QML 组件使用的基础控件。
-- 图像搜索通过 provider 使用 `data` 的图像列表、过滤结果写回能力；小样本学习通过普通模型记录和任务复用模型层的数据导出、配置写入和外部任务运行能力。
+- 检索与聚类通过 provider 接口使用 `data` 的图像列表、过滤结果和数据集写回能力；区域检索完成后直接通过 `data::DataManager` 创建候选标注实例。
 - 通过 `setup_inferrt(feature)` 接入 InferRT、FAISS、CUDA 和 OpenCV 相关能力。
 
 ## 边界定义
 
-- 本模块不管理项目数据库 schema，也不直接修改数据模型。
+- 本模块不管理项目数据库 schema，也不直接操作底层数据库连接。
 - 图像搜索结果过滤仍属于 `data::GlobalFilter`，由 `DataManager` 作为 provider 写回。
-- 小样本学习预测结果导入仍属于 `data`，由 `FewShotLearningController` 在测试任务完成后调用 `DataManager` 触发。
-- 新增模型推理类功能优先放在本模块，数据集、标注、标签、导入导出和过滤模型仍放在 `data`。
-
-# 高级功能流程
-
-## 图像搜索流程
-
 `ImageSearchController` 当前执行以图搜图的流程如下：
 
 1. QML 调用 `searchSelectedImages()` 或 `search(ids, dataset_ids)`。前者从 `ImageSearchDataProvider::selectedImageIds()` 获取当前选中图像，再转入通用搜索入口。
@@ -56,6 +51,7 @@ Feature 控制器的项目关闭顺序、线程等待和迟到回调规则见 [`
 1. QML 调用 `search(ids, search_scope)`，其中 `ids` 是标注实例 ID，`search_scope` 包含数据集和类别范围。
 2. 控制器读取 `RoiSearch` 设置，包含模型、权重、空间特征层、TopK、索引配置、推理运行时、推理精度，以及 ROIAlign 参数 `pooled_height`、`pooled_width`、`sampling_ratio`、`aligned`、PCA 开关和 PCA 维度；ROIAlign 流程由 InferRT 固定执行。
 3. `validateSearchRequest()` 先执行图像搜索基础校验，再根据当前模型从设置 schema 中获取可用空间特征层。如果配置的特征层不可用，会回退到该模型最后一个可用空间特征层并写回设置。
+3. `validateSearchRequest()` 先执行图像搜索基础校验，再根据当前模型从设置 schema 中获取可用空间特征层。如果配置的特征层不可用，会回退到该模型最后一个可用空间特征层并写回设置。
 4. `collectGallery()` 遍历所有标注 ID，找到对应图像和数据集，过滤不存在的图像文件，并通过 `roiFromLabelData()` 从标注数据中的 `x/y/width/height` 构造 `RoiSearchBox`。
 5. 如果传入 `search_scope`，图库只保留范围内的标注 ROI。
 6. `collectQuery()` 对查询标注执行同样的图像路径校验和 ROI 解析。
@@ -63,6 +59,32 @@ Feature 控制器的项目关闭顺序、线程等待和迟到回调规则见 [`
 8. `executeSearch()` 创建 `irt::features::RoiSearch`，调用 `buildOrLoad()` 构建或加载 ROI 特征索引。
 9. 对每个查询 ROI 调用 `search.search(query_item.image_path, query_item.roi, top_k)`，同一标注只保留最高分。
 10. 搜索结果按分数降序排序后，`applyResults()` 调用 `data_provider_->setLabelSearchResults(result_ids, enable_filter)`，由 data 模块应用标注过滤结果。
+
+## DINO 区域检索流程
+
+`RegionSearchController` 基于 InferRT `DinoRegionSearch` 实现细粒度多尺度目标区域检索：
+
+1. **输入与上下文**：QML 弹出 `RegionSearchDialog.qml`，绑定查询标注（`query_label_id`、原图路径及包围框），并可选择搜索的目标数据集范围。
+2. **参数配置与 Profile 模板**：
+   - 参数以 `config/profiles/`（如 `dinov2_vits14_reg4.yaml`）为 Preset 底稿，并与全局设置项（`config/settings/RegionSearchSettings.yaml` 划分为基础、预设、模型、图库、特征、运行时、检索、粗排、精排、权重、判定 11 个独立概念节）合并覆盖；
+   - 切换 `profile_path` 时，调用 `applyProfileToSettings()` 解析 Profile 并即时写回 `GlobalSettings`，驱动 QML 界面刷新。
+3. **图库特征索引状态检查（`checkNeedsBuild`）**：
+   - 检查项目根目录下 `region_search/index.yaml` 与 `index_scope.yaml`；
+   - 比对 `index.yaml` 中 `manifest` 的关键契约参数（`model_name`、`weights_id`、`encoder_edge`、`view_overlap`、`quantize_int8`）；
+   - 检查请求的目标数据集 ID 是否全部包含于 `index_scope.yaml` 的 `indexed_datasets`；
+   - 若任一条件不满足，设置 `needsBuild = true` 并记录详细的 `buildReason` 诊断（如参数差异、缺失文件、未覆盖的数据集 ID 等）。
+4. **执行检索（`start`）**：
+   - **建库阶段（若 `needsBuild` 为真）**：
+     - 收集目标图库图像，调用 `irt::features::DinoRegionSearch::buildIndex()`；
+     - 阶段进度：`Encode` (0%~70%) -> `Quantize` (70%~85%) -> `Cluster` (85%~95%) -> `Save` (95%~100%)；
+     - 建库完成后生成 `index.yaml` 与 `index_scope.yaml`。
+   - **检索阶段**：
+     - 调用 `irt::features::DinoRegionSearch::search()`；
+     - 管线阶段进度：`Fusion` (70%~75%) -> `FineMatch` (75%~85%) -> `FineExtract` (85%~95%) -> `Output` (95%~100%)；
+     - 通过单调递增阈值节流器保证 UI 进度平滑递增。
+5. **结果去重与标注写入**：
+   - 根据 `fine_nms_iou` 对候选检测框去重，并依判定阈值过滤；
+   - 调用 `DataManager` 的标注创建接口，将检测到的候选框作为新标注实例存入对应图像和数据集，并发出完成信号与结果摘要。
 
 ## 图像聚类流程
 
@@ -80,6 +102,13 @@ Feature 控制器的项目关闭顺序、线程等待和迟到回调规则见 [`
 10. `finishCluster()` 回到主线程后调用 `data_provider_->applyImageClusterAssignments()`。
 11. data 模块根据配置的应用方式将图像复制或移动到聚类生成的数据集中；如果未启用 `include_noise`，噪声图像会被跳过。
 12. 控制器记录本次复制或移动的图像数量、目标数据集数量和噪声跳过数量，并更新结果状态。
+
+## 标注 ROI 聚类流程
+
+`RoiClusterController` 继承 `ImageClusterController`，将聚类对象从整图特征切换为标注实例 ROI 特征：
+1. 收集选定标注的图像路径与 ROI 矩形；
+2. 调用 InferRT ROI 特征抽取与 HDBSCAN 聚类；
+3. 聚类完成后将标注实例分配写回目标数据集。
 
 ## 智能标注 Mask 到轮廓流程
 

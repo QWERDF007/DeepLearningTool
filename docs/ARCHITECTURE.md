@@ -38,9 +38,16 @@ dltool/main.cpp
   └─ 加载 dltool.tool/Main.qml
        └─ ProjectManager（QML 单例）
             └─ currentProject: Project
-                 ├─ ProjectDataBase
-                 ├─ DataManager
-                 ├─ FeatureManager
+                 ├─ ProjectDataBase（持久化门面，协调各 Repository）
+                 ├─ DataManager（数据工作区门面，协调领域用例服务）
+                 ├─ FeatureManager（高级功能聚合）
+                 │    ├─ ImageSearchController
+                 │    ├─ RoiSearchController
+                 │    ├─ RegionSearchController（DINO 区域检索）
+                 │    ├─ ImageClusterController
+                 │    ├─ RoiClusterController
+                 │    ├─ SmartAnnotationController
+                 │    └─ FewShotLearningController
                  ├─ ModelManager
                  ├─ ModelTaskController
                  ├─ ModelTestTaskManager
@@ -53,13 +60,33 @@ dltool/main.cpp
 
 ```text
 QML 页面
-  -> DataManager
+  -> DataManager（门面）
       -> Qt Model / GlobalFilter / Statistics
+      -> 领域用例服务（DataImportService / DataExportService / ImageTransferService / DatasetSplitService / ClusterWritebackService）
       -> ProjectDataBase
-      -> DataImporter / DataExporter
+          -> 仓储层（ProjectRepository / DatasetRepository / ImageRepository / LabelRepository / ModelRepository / TagRepository）
 ```
 
-`data` 负责数据集、图片、类别、标注、标签、过滤、统计及格式转换；`database` 只负责存取。导入导出格式的扩展点和页面入口在 [`src/data/README.md`](../src/data/README.md)，表定义在 [`src/database/include/database/ddl/`](../src/database/include/database/ddl/)。
+`data` 负责数据集、图片、类别、标注、标签、过滤、统计及格式转换；数据持久化统一委托至 `database` 仓储层。导入导出格式的扩展点和页面入口在 [`src/data/README.md`](../src/data/README.md)，表定义在 [`src/database/include/database/ddl/`](../src/database/include/database/ddl/)。
+
+## 特征检索与高级功能链路
+
+```text
+QML 页面 / 对话框
+  -> FeatureManager（聚合入口）
+      ├─ RegionSearchController: DINO 多尺度细粒度区域检索
+      │    -> 校验/构建/加载 region_search/ 强契约索引
+      │    -> 调用 InferRT DinoRegionSearch 管线 (Fusion -> FineMatch -> FineExtract -> Output)
+      │    -> 结果候选去重并作为标注实例回写 DataManager
+      ├─ ImageSearchController / RoiSearchController: FAISS 向量检索
+      │    -> 将搜索结果写回 DataManager.GlobalFilter 应用视图过滤
+      ├─ ImageClusterController / RoiClusterController: HDBSCAN 特征聚类
+      │    -> 委托 ClusterWritebackService 将聚类分配写回数据集
+      ├─ SmartAnnotationController: SAM 交互式智能标注与 B 样条亚像素轮廓后处理
+      └─ FewShotLearningController: FS-SAM2 训练/推理任务链编排
+```
+
+各控制器的生命周期、InferRT 契约与配置加载约定见 [`src/feature/README.md`](../src/feature/README.md)。
 
 ## 模型任务链路
 

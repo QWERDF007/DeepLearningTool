@@ -6,22 +6,26 @@
 
 ## 架构设计
 
-- `DataManager` 是模块门面，由 `project::Project` 创建并持有。它接收项目任务类型和 `ProjectDataBase`，统一创建并暴露所有数据模型。
+- `DataManager` 是模块门面，由 `project::Project` 创建并持有。它接收项目任务类型和 `ProjectDataBase`，统一创建并暴露所有数据模型，将复杂业务编排委托给专属领域用例服务：
+  - `DataImportService`：负责外部数据导入编排、类别预扫描、颜色冲突规避、批次冲刷（`ImportBatchEmitter`）与数据库入库（`ImportDatabaseWriter`）；
+  - `DataExportService`：通过安全发布管道（`ExportPipeline`、`SafeExportScope`、`ExportValidation`）统一组织 Folder、Mask、LabelMe、COCO 四种格式的导出；
+  - `ImageTransferService`：收敛图像跨数据集复制、移动与删除，保证物理文件操作与仓储数据库更新的原子性；
+  - `DatasetSplitService`：处理数据集按比例切分与划分子集；
+  - `ClusterWritebackService`：接收特征聚类结果，按复制或移动策略写回对应数据集。
 - 数据模型包括 `DatasetsListModel`、`ImageInstancesListModel`、`LabelClassesListModel`、`ImageTagsListModel`、`LabelInstancesListModel`、`ImageLabelsListModel`、`ImageLabelsTableModel`、`ImageInfoListModel`。
 - 标注数据抽象在 `LabelData_t` 和 `LabelDataHelper_t` 中，当前支持检测框和分割多边形两类数据编辑逻辑。
-- 导入导出以 `DataImporter`/`DataExporter` 为扩展点，当前实现 LabelMe 和 COCO，公共文件扫描、尺寸读取、bbox/points 转换、文件复制放在 `DatasetIO`。
 - `GlobalFilter` 聚合数据集、图片标签、标注类别、图像级类别和图像搜索过滤模块，对图像和标注模型统一应用过滤。
-- `DataManager` 为图像搜索 provider 提供项目图像、数据集、项目路径和结果写回能力；小样本学习通过普通模型任务的数据导出链路读取训练/测试数据，由 `feature::FewShotLearningController` 在测试任务完成后触发 Mask 导入。
-- 图像搜索、智能标注和小样本学习入口位于 `feature` 模块，由 `FeatureManager` 通过 `imageSearch`、`smartAnnotation` 和 `fewShotLearning` 属性向 QML 暴露。
+- `DataManager` 为特征搜索与聚类提供数据源 provider，并接收区域检索（DINO）生成的候选标注实例批量入库；小样本学习通过普通模型任务的数据导出链路读取训练/测试数据，由 `feature::FewShotLearningController` 在测试任务完成后触发 Mask 导入。
 - `LabelInstanceImageProvider` 为 QML 提供标注实例缩略图。
 - `qml/` 下包含 Gallery、Label、Review 三个数据工作区页面及其子组件。
 
 ## 功能定义
 
-- 创建、重命名、删除数据集。
-- 导入图片和外部标注数据，支持批量解析和批量写库。
-- 导出数据集为 LabelMe 或 COCO 目录结构。
+- 创建、重命名、删除数据集，支持数据集比例划分。
+- 导入图片和外部标注数据（Folder、Mask、LabelMe、COCO），具备类别冲突规避与批次流式写入。
+- 导出数据集（Folder、Mask、LabelMe、COCO），采用原子发布与安全作用域。
 - 创建、编辑、删除、复制标注实例。
+- 接收 DINO 区域检索产出的目标候选框并批量创建为标注实例。
 - 管理标签类别、颜色、快捷键和排序。
 - 管理图片标签，并维护图片、标签、标注之间的关系。
 - 提供图片选择、标注选择、当前图片信息、类别统计和过滤后的可见列表。

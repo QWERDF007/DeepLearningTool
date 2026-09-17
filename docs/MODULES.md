@@ -23,9 +23,9 @@
 ## 模块选择
 
 - 修改项目创建、打开或最近项目：从 [`project`](../src/project/) 开始。
-- 修改数据集、图片、标注、导入导出或过滤：从 [`data`](../src/data/) 开始，并检查 [`database`](../src/database/) 的持久化接口。
+- 修改数据集、图片、标注、导入导出（DataImportService / DataExportService）、图像流转或过滤：从 [`data`](../src/data/) 开始，持久化检查 [`database`](../src/database/) 仓储层。
 - 修改模型记录、参数、训练、推理或评估：从 [`model`](../src/model/) 开始。
-- 修改图像搜索、ROI 搜索、智能标注或小样本学习：从 [`feature`](../src/feature/) 开始。
+- 修改图像搜索、DINO 区域检索、ROI 搜索、特征聚类、智能标注或小样本学习：从 [`feature`](../src/feature/) 开始。
 - 修改公共 QML 控件、日志、进度或图表适配：从 [`ui`](../src/ui/) 开始。
 - 修改全局配置 schema 或动态设置对象：从 [`settings`](../src/settings/) 和 [`parameter`](../src/parameter/) 开始。
 - 修改应用启动、顶层导航或资源装配：从 [`tool`](../src/tool/) 开始。

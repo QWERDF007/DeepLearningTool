@@ -7,10 +7,16 @@
 ## 架构设计
 
 - `DataBase` 是基础类，负责数据库路径、目录创建、SQLite 连接池和完整性检查。
-- `ProjectDataBase` 面向 `.dlpro` 项目文件，封装项目元数据、数据集、图像、标注类别、标签、模型记录等读写操作。
+- `ProjectDataBase` 作为项目数据库持久化门面（Facade），面向 `.dlpro` 项目文件，通过共享 `DatabaseContext` 统筹领域仓储层（Repositories）并统一管理事务边界：
+  - `ProjectRepository`：项目元信息、图像根目录与创建/修改时间；
+  - `DatasetRepository`：数据集 CRUD 与基础信息查询；
+  - `ImageRepository`：图像记录、路径维护、统计与批量删除/迁移；
+  - `LabelRepository`：标注类别（label_classes）与标注实例（labels）原子/批量读写；
+  - `ModelRepository`：模型记录注册与查询；
+  - `TagRepository`：标签类别与图像/标注多对多 Tag 关联维护（经 `TagIdCodec` 编解码）。
 - `RecentProjectsDataBase` 面向应用级 `history.db`，保存最近打开项目路径。
 - `SettingsDataBase` 面向应用级 `settings.db`，按设置分类加载和保存配置行。
-- `include/database/ddl/` 保存 sqlpp11 表定义和建表 SQL；`DatabaseSchema` 统一读取这些 SQL resource，负责版本、初始化和结构校验。
+- `include/database/ddl/` 保存 sqlpp11 表定义和建表 SQL；`DatabaseSchema` 统一读取这些 SQL resource，执行严格的 schema 初始化与结构校验（历史库以重建适配当前结构，杜绝双份 SQL 与模糊兼容）。
 
 ## 功能定义
 
