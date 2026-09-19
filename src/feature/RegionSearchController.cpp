@@ -98,7 +98,6 @@ struct GenerationSummary
     int                  unmapped{0};
     int                  invalid{0};
     int                  limit_skipped{0};
-    int64_t              tag_id{-1};
     std::vector<int64_t> created_label_ids{};
     std::vector<int64_t> result_ids{};
 };
@@ -1629,7 +1628,7 @@ void RegionSearchController::generateReturnedPartial()
         if (impl_->current_task_id.isEmpty())
         {
             impl_->current_task_id = QStringLiteral("region_search_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
-            ui::ProgressManager::getInstance()->startTask(QString("区域检索生成"), impl_->current_task_id);
+            ui::ProgressManager::getInstance()->startTask(QString("区域检索"), impl_->current_task_id);
         }
         onTaskProgress(1.0, QString("正在生成部分候选标注..."));
         auto partial = impl_->partial_response;
@@ -1799,7 +1798,6 @@ void RegionSearchController::commitResults(const std::shared_ptr<irt::features::
     GenerationSummary summary;
     summary.returned = static_cast<int>(response->results.size());
 
-    int64_t source_tag_id = impl_->data_manager->findTagClassId(QString("区域检索生成"));
     std::vector<AcceptedItem> accepted;
 
     for (const auto &hit : response->results)
@@ -1884,12 +1882,9 @@ void RegionSearchController::commitResults(const std::shared_ptr<irt::features::
             if (iou >= 0.90)
             {
                 const int64_t el_class = impl_->data_manager->labelClassId(el_id);
-                const auto tag_set     = impl_->data_manager->labelTagIds(el_id);
-                const bool is_region_generated = (source_tag_id >= 0 && tag_set.count(source_tag_id) > 0);
-
-                if (!is_region_generated || el_class != impl_->active_job.target_class_id)
+                if (el_class != impl_->active_job.target_class_id)
                 {
-                    // 人工标注或类别冲突，跳过
+                    // 类别冲突，跳过
                     has_conflict = true;
                     break;
                 }
@@ -1946,12 +1941,6 @@ void RegionSearchController::commitResults(const std::shared_ptr<irt::features::
     std::vector<int64_t> added_ids;
     if (!draft_image_ids.empty())
     {
-        if (source_tag_id < 0)
-        {
-            impl_->data_manager->addTagClass(QString("区域检索生成"), {});
-            source_tag_id = impl_->data_manager->findTagClassId(QString("区域检索生成"));
-        }
-
         QString err_msg;
         const bool ok = impl_->data_manager->addLabelsWithIds(
             draft_image_ids, draft_class_ids, draft_datas, &added_ids, &err_msg);
@@ -1974,15 +1963,9 @@ void RegionSearchController::commitResults(const std::shared_ptr<irt::features::
             ui::SignalHelper::notifyError(QString("区域检索失败"), impl_->error_text);
             return;
         }
-
-        if (source_tag_id >= 0 && !added_ids.empty())
-        {
-            impl_->data_manager->setLabelsTag(added_ids, source_tag_id);
-        }
     }
 
     summary.created = static_cast<int>(added_ids.size());
-    summary.tag_id  = source_tag_id;
 
     size_t new_idx = 0;
     for (const auto &item : accepted)

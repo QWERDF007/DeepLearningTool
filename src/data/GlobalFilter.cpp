@@ -609,6 +609,17 @@ bool GlobalFilter::acceptsLabel(const int64_t label_id) const
     {
         return false;
     }
+
+    const IdFilter &label_tags = filter(FilterType::LabelTag);
+    if (label_tags.enabled)
+    {
+        const LabelInstance *label = labels->getLabelInstance(label_id);
+        if (label == nullptr || !passesSetFilter(label_tags, label->tagIds()))
+        {
+            return false;
+        }
+    }
+
     return acceptsCustomLabel(label_id, image_id);
 }
 
@@ -696,15 +707,26 @@ QString GlobalFilter::description() const
         parts.push_back(QString("%1=%2").arg(prefix(FilterType::ImageLabelClass, QString("图像标签")),
                                               values.isEmpty() ? QString("无") : values));
     }
-    const IdFilter &tags = filter(FilterType::Tag);
-    if (tags.enabled)
+    const IdFilter &image_tags = filter(FilterType::ImageTag);
+    if (image_tags.enabled)
     {
-        const QString values = namesFor(idsFor(FilterType::Tag), [this](const int64_t id)
+        const QString values = namesFor(idsFor(FilterType::ImageTag), [this](const int64_t id)
         {
             return data_manager_ != nullptr && data_manager_->imageTags() != nullptr
                 ? data_manager_->imageTags()->getTagClassName(id) : QString();
         });
-        parts.push_back(QString("%1=%2").arg(prefix(FilterType::Tag, QString("Tag")),
+        parts.push_back(QString("%1=%2").arg(prefix(FilterType::ImageTag, QString("图像Tag")),
+                                              values.isEmpty() ? QString("无") : values));
+    }
+    const IdFilter &label_tags = filter(FilterType::LabelTag);
+    if (label_tags.enabled)
+    {
+        const QString values = namesFor(idsFor(FilterType::LabelTag), [this](const int64_t id)
+        {
+            return data_manager_ != nullptr && data_manager_->imageTags() != nullptr
+                ? data_manager_->imageTags()->getTagClassName(id) : QString();
+        });
+        parts.push_back(QString("%1=%2").arg(prefix(FilterType::LabelTag, QString("标注Tag")),
                                               values.isEmpty() ? QString("无") : values));
     }
     if (!file_name_filter_text_.isEmpty())
@@ -762,7 +784,8 @@ void GlobalFilter::collectAvailableIds(const FilterType type, std::unordered_set
         model = data_manager_->datasets();
         id_role = DatasetsListModel::DatasetIdRole;
         break;
-    case FilterType::Tag:
+    case FilterType::ImageTag:
+    case FilterType::LabelTag:
         model = data_manager_->imageTags();
         id_role = ImageTagsListModel::TagIdRole;
         break;
@@ -807,6 +830,20 @@ bool GlobalFilter::passesIdFilter(const IdFilter &state, const int64_t id) const
     return state.inverted ? !matches : matches;
 }
 
+bool GlobalFilter::passesSetFilter(const IdFilter &state, const std::set<int64_t> &candidate_ids) const
+{
+    if (!state.enabled)
+    {
+        return true;
+    }
+    if (state.ids.empty())
+    {
+        return state.inverted;
+    }
+    const bool matches = intersects(candidate_ids, state.ids);
+    return state.inverted ? !matches : matches;
+}
+
 bool GlobalFilter::acceptsImageWithoutCustom(const int64_t image_id) const
 {
     ImageInstancesListModel *images = imageSource();
@@ -824,11 +861,20 @@ bool GlobalFilter::acceptsImageWithoutCustom(const int64_t image_id) const
     {
         return false;
     }
-    const IdFilter &tags = filter(FilterType::Tag);
-    if (tags.enabled)
+    const IdFilter &image_tags = filter(FilterType::ImageTag);
+    if (image_tags.enabled)
     {
-        const bool matches = !tags.ids.empty() && matchesTags(image_id, tags.ids);
-        if (tags.inverted ? matches : !matches)
+        const bool matches = !image_tags.ids.empty() && matchesImageTags(image_id, image_tags.ids);
+        if (image_tags.inverted ? matches : !matches)
+        {
+            return false;
+        }
+    }
+    const IdFilter &label_tags = filter(FilterType::LabelTag);
+    if (label_tags.enabled)
+    {
+        const bool matches = !label_tags.ids.empty() && matchesLabelTags(image_id, label_tags.ids);
+        if (label_tags.inverted ? matches : !matches)
         {
             return false;
         }
@@ -904,7 +950,18 @@ bool GlobalFilter::acceptsCustomLabel(const int64_t label_id, const int64_t imag
     return false;
 }
 
-bool GlobalFilter::matchesTags(const int64_t image_id, const std::unordered_set<int64_t> &tag_ids) const
+bool GlobalFilter::matchesImageTags(const int64_t image_id, const std::unordered_set<int64_t> &tag_ids) const
+{
+    if (tag_ids.empty())
+    {
+        return false;
+    }
+    ImageInstancesListModel *images = imageSource();
+    const ImageInstance *image = images != nullptr ? images->getImageInstance(image_id) : nullptr;
+    return image != nullptr && intersects(image->tagIds(), tag_ids);
+}
+
+bool GlobalFilter::matchesLabelTags(const int64_t image_id, const std::unordered_set<int64_t> &tag_ids) const
 {
     if (tag_ids.empty())
     {
@@ -914,15 +971,7 @@ bool GlobalFilter::matchesTags(const int64_t image_id, const std::unordered_set<
     ImageInstancesListModel *images = imageSource();
     LabelInstancesListModel *labels = labelSource();
     const ImageInstance *image = images != nullptr ? images->getImageInstance(image_id) : nullptr;
-    if (image == nullptr)
-    {
-        return false;
-    }
-    if (intersects(image->tagIds(), tag_ids))
-    {
-        return true;
-    }
-    if (labels == nullptr)
+    if (image == nullptr || labels == nullptr)
     {
         return false;
     }

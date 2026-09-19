@@ -362,7 +362,8 @@ void DataManager::init(const int method)
 
     // Create filter items models
     dataset_filter_items_     = new DatasetFilterItemsModel(this);
-    tag_filter_items_         = new TagFilterItemsModel(this);
+    image_tag_filter_items_   = new TagFilterItemsModel(TagFilterItemsModel::Target::Image, this);
+    label_tag_filter_items_   = new TagFilterItemsModel(TagFilterItemsModel::Target::Label, this);
     label_class_filter_items_ = new LabelClassFilterItemsModel(this);
     custom_filter_items_      = new CustomFilterItemsModel(this);
 
@@ -372,7 +373,8 @@ void DataManager::init(const int method)
 
     // Populate filter items models from datasets and tags
     dataset_filter_items_->populateFromDatasets(datasets_);
-    tag_filter_items_->populateFromTags(image_tags_);
+    image_tag_filter_items_->populateFromTags(image_tags_);
+    label_tag_filter_items_->populateFromTags(image_tags_);
     label_class_filter_items_->populateFromLabelClasses(label_classes_);
     custom_filter_items_->populateFromCustomConditions();
 
@@ -403,12 +405,19 @@ void DataManager::init(const int method)
     connect(datasets_, &QAbstractItemModel::modelReset, this,
             [this]() { dataset_filter_items_->populateFromDatasets(datasets_); });
 
+    auto repopulate_tags = [this]() {
+        if (image_tag_filter_items_ != nullptr && label_tag_filter_items_ != nullptr && image_tags_ != nullptr)
+        {
+            image_tag_filter_items_->populateFromTags(image_tags_);
+            label_tag_filter_items_->populateFromTags(image_tags_);
+        }
+    };
+    connect(image_tags_, &ImageTagsListModel::tagRelationsChanged, this, repopulate_tags);
     connect(image_tags_, &QAbstractItemModel::rowsInserted, this,
-            [this](const QModelIndex &, int, int) { tag_filter_items_->populateFromTags(image_tags_); });
+            [repopulate_tags](const QModelIndex &, int, int) { repopulate_tags(); });
     connect(image_tags_, &QAbstractItemModel::rowsRemoved, this,
-            [this](const QModelIndex &, int, int) { tag_filter_items_->populateFromTags(image_tags_); });
-    connect(image_tags_, &QAbstractItemModel::modelReset, this,
-            [this]() { tag_filter_items_->populateFromTags(image_tags_); });
+            [repopulate_tags](const QModelIndex &, int, int) { repopulate_tags(); });
+    connect(image_tags_, &QAbstractItemModel::modelReset, this, repopulate_tags);
 
     connect(label_classes_, &QAbstractItemModel::rowsInserted, this, [this](const QModelIndex &, int, int)
             { label_class_filter_items_->populateFromLabelClasses(label_classes_); });
@@ -1847,6 +1856,25 @@ QString DataManager::getImageTagName(const int64_t image_id) const
         return QString();
     QString tag_names;
     for (int64_t tag_id : tag_ids)
+    {
+        tag_names.append(image_tags_->getTagClassName(tag_id) + ";");
+    }
+    return tag_names;
+}
+
+QString DataManager::getLabelTagName(const int64_t label_id) const
+{
+    if (label_source_ == nullptr || image_tags_ == nullptr)
+    {
+        return QString();
+    }
+    const LabelInstance *label = label_source_->getLabelInstance(label_id);
+    if (label == nullptr || label->tagIds().empty())
+    {
+        return QString();
+    }
+    QString tag_names;
+    for (const int64_t tag_id : label->tagIds())
     {
         tag_names.append(image_tags_->getTagClassName(tag_id) + ";");
     }

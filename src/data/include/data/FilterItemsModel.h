@@ -130,14 +130,27 @@ class DATA_API TagFilterItemsModel : public FilterItemsModel
     QML_UNCREATABLE("Cannot create TagFilterItemsModel directly!")
 
 public:
-    explicit TagFilterItemsModel(QObject *parent = nullptr);
+    enum class Target
+    {
+        Image,
+        Label,
+    };
+
+    explicit TagFilterItemsModel(Target target = Target::Image, QObject *parent = nullptr);
+    explicit TagFilterItemsModel(QObject *parent);
     ~TagFilterItemsModel() override = default;
+
+    Target target() const { return target_; }
+    void   setTarget(Target target) { target_ = target; }
 
     /**
      * @brief 从ImageTagsListModel填充模型
      * @param tags_model 标签列表模型
      */
     void populateFromTags(QAbstractItemModel *tags_model);
+
+private:
+    Target target_{Target::Image};
 };
 
 /**

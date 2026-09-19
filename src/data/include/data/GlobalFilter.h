@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <set>
 #include <unordered_set>
 #include <vector>
 
@@ -42,7 +43,8 @@ public:
     enum class FilterType
     {
         Dataset,
-        Tag,
+        ImageTag,
+        LabelTag,
         LabelClass,
         ImageLabelClass,
         Custom,
@@ -314,8 +316,10 @@ private:
      */
     void collectAvailableIds(FilterType type, std::unordered_set<int64_t> &ids) const;
     bool passesIdFilter(const IdFilter &filter, int64_t id) const;
+    bool passesSetFilter(const IdFilter &filter, const std::set<int64_t> &candidate_ids) const;
     bool acceptsImageWithoutCustom(int64_t image_id) const;
-    bool matchesTags(int64_t image_id, const std::unordered_set<int64_t> &tag_ids) const;
+    bool matchesImageTags(int64_t image_id, const std::unordered_set<int64_t> &tag_ids) const;
+    bool matchesLabelTags(int64_t image_id, const std::unordered_set<int64_t> &tag_ids) const;
     bool matchesImageLabelClasses(int64_t image_id, const std::unordered_set<int64_t> &label_class_ids) const;
     bool matchesCustomImageCondition(int64_t image_id, int64_t condition_id) const;
     bool customConditionAvailable(int64_t condition_id) const;

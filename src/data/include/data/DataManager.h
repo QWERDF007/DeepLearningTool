@@ -60,7 +60,8 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(ImageInfoListModel *imageInfo READ imageInfo CONSTANT FINAL)
     Q_PROPERTY(GlobalFilter *globalFilter READ globalFilter CONSTANT FINAL)
     Q_PROPERTY(DatasetFilterItemsModel *datasetFilterItems READ datasetFilterItems CONSTANT FINAL)
-    Q_PROPERTY(TagFilterItemsModel *tagFilterItems READ tagFilterItems CONSTANT FINAL)
+    Q_PROPERTY(TagFilterItemsModel *imageTagFilterItems READ imageTagFilterItems CONSTANT FINAL)
+    Q_PROPERTY(TagFilterItemsModel *labelTagFilterItems READ labelTagFilterItems CONSTANT FINAL)
     Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT FINAL)
     Q_PROPERTY(CustomFilterItemsModel *customFilterItems READ customFilterItems CONSTANT FINAL)
     Q_PROPERTY(CategoryStatisticsModel *categoryStatisticsModel READ categoryStatisticsModel CONSTANT FINAL)
@@ -180,9 +181,14 @@ public:
         return dataset_filter_items_;
     }
 
-    TagFilterItemsModel *tagFilterItems() const
+    TagFilterItemsModel *imageTagFilterItems() const
     {
-        return tag_filter_items_;
+        return image_tag_filter_items_;
+    }
+
+    TagFilterItemsModel *labelTagFilterItems() const
+    {
+        return label_tag_filter_items_;
     }
 
     LabelClassFilterItemsModel *labelClassFilterItems() const
@@ -360,6 +366,7 @@ public:
     Q_INVOKABLE QString getImagePath(const int64_t image_id) const;
     Q_INVOKABLE QString getImageDatasetName(const int64_t image_id) const;
     Q_INVOKABLE QString getImageTagName(const int64_t image_id) const;
+    Q_INVOKABLE QString getLabelTagName(const int64_t label_id) const;
 
     /**
      * @brief 线程安全地查询图像尺寸,复用打开项目时后台预取的缓存。
@@ -504,7 +511,8 @@ private:
     GlobalFilter *global_filter_{nullptr};
 
     DatasetFilterItemsModel    *dataset_filter_items_{nullptr};
-    TagFilterItemsModel        *tag_filter_items_{nullptr};
+    TagFilterItemsModel        *image_tag_filter_items_{nullptr};
+    TagFilterItemsModel        *label_tag_filter_items_{nullptr};
     LabelClassFilterItemsModel *label_class_filter_items_{nullptr};
     CustomFilterItemsModel     *custom_filter_items_{nullptr};
 

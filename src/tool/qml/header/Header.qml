@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
@@ -158,8 +158,10 @@ Rectangle {
                                 // Reset UI state
                                 datasetDropDown.checked = false
                                 datasetDropDown.selectAll(false)
-                                tagDropDown.checked = false
-                                tagDropDown.selectAll(false)
+                                imageTagDropDown.checked = false
+                                imageTagDropDown.selectAll(false)
+                                labelTagDropDown.checked = false
+                                labelTagDropDown.selectAll(false)
                                 labelClassImageDropDown.checked = false
                                 labelClassImageDropDown.selectAll(false)
                                 customFilterDropDown.checked = false
@@ -174,25 +176,34 @@ Rectangle {
                     DropDownMenuButton {
                         id: datasetDropDown
                         Layout.fillHeight: true
-                        Layout.preferredWidth: 200
+                        Layout.preferredWidth: 180
                         text: "按数据集: "
                         filterType: GlobalFilter.FilterType.Dataset
                         globalFilter: header.globalFilter
                         model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.datasetFilterItems : null
                     }
                     DropDownMenuButton {
-                        id: tagDropDown
+                        id: imageTagDropDown
                         Layout.fillHeight: true
-                        Layout.preferredWidth: 200
-                        text: "按Tag: "
-                        filterType: GlobalFilter.FilterType.Tag
+                        Layout.preferredWidth: 180
+                        text: "按图像Tag: "
+                        filterType: GlobalFilter.FilterType.ImageTag
                         globalFilter: header.globalFilter
-                        model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.tagFilterItems : null
+                        model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.imageTagFilterItems : null
+                    }
+                    DropDownMenuButton {
+                        id: labelTagDropDown
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: 180
+                        text: "按标注Tag: "
+                        filterType: GlobalFilter.FilterType.LabelTag
+                        globalFilter: header.globalFilter
+                        model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.labelTagFilterItems : null
                     }
                     DropDownMenuButton {
                         id: labelClassImageDropDown
                         Layout.fillHeight: true
-                        Layout.preferredWidth: 200
+                        Layout.preferredWidth: 180
                         text: "按标签类别: "
                         filterType: GlobalFilter.FilterType.ImageLabelClass
                         globalFilter: header.globalFilter
@@ -202,7 +213,7 @@ Rectangle {
                     DropDownMenuButton {
                         id: customFilterDropDown
                         Layout.fillHeight: true
-                        Layout.preferredWidth: 200
+                        Layout.preferredWidth: 180
                         text: "自定义过滤"
                         filterType: GlobalFilter.FilterType.Custom
                         globalFilter: header.globalFilter
@@ -213,7 +224,7 @@ Rectangle {
                     QuiTextField {
                         id: fileNameFilterField
                         Layout.fillHeight: true
-                        Layout.preferredWidth: 180
+                        Layout.preferredWidth: 160
                         placeholderText: "按文件名过滤"
                         enabled: globalFilter !== null
                         selectByMouse: true
@@ -234,7 +245,8 @@ Rectangle {
         function onCurrentProjectChanged() {
             // Reset dropdown UI state
             datasetDropDown.checked = false
-            tagDropDown.checked = false
+            imageTagDropDown.checked = false
+            labelTagDropDown.checked = false
             labelClassImageDropDown.checked = false
             customFilterDropDown.checked = false
             header.syncFileNameFilterField()

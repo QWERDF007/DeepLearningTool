@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -62,6 +62,7 @@ Rectangle {
                 Layout.rightMargin: 5
                 text: root.info ? root.info.selectedCount + "/" + root.info.totalCount : "0/0"
                 
+                
             }
         }
 
@@ -84,7 +85,7 @@ Rectangle {
         }
 
         InfoTextItem {
-            title:  "图像Tag"
+            title:  "标注Tag"
             text: root.info ? root.info.tagText : ""
             onClicked: {
                 copyboard.text = text
@@ -123,10 +124,10 @@ Rectangle {
                 }
             }
         }
+
         // 填充剩余空间
         Item {
             Layout.fillHeight: true
         }
     }
-
 }

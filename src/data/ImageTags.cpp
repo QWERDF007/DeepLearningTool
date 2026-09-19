@@ -152,6 +152,16 @@ QVariant ImageTagsListModel::data(const QModelIndex &index, const int role) cons
         return getCurrentImageTagStats(index);
     case SelectedLabelsStatsRole:
         return getSelectedLabelsTagStats(index);
+    case HasImagesRole:
+    {
+        const Tag *tag = getTag(getTagClassId(index));
+        return tag != nullptr && !tag->imageIds().empty();
+    }
+    case HasLabelsRole:
+    {
+        const Tag *tag = getTag(getTagClassId(index));
+        return tag != nullptr && !tag->labelIds().empty();
+    }
     default:
         return {};
     }
@@ -166,6 +176,8 @@ QHash<int, QByteArray> ImageTagsListModel::roleNames() const
         {SelectedImagesStatsRole, "selected_images_stats"},
         {  CurrentImageStatsRole,   "current_image_stats"},
         {SelectedLabelsStatsRole, "selected_labels_stats"},
+        {          HasImagesRole,            "has_images"},
+        {          HasLabelsRole,            "has_labels"},
     };
 }
 
@@ -375,6 +387,7 @@ void ImageTagsListModel::addRelationsFromMemory(const std::vector<LoadedImageIns
         }
     }
     updateStats();
+    emit tagRelationsChanged();
 }
 
 void ImageTagsListModel::applyTagsToImages()
@@ -473,7 +486,7 @@ void ImageTagsListModel::updateStats()
     }
 
     emit dataChanged(index(0), index(rowCount() - 1),
-                     {SelectedImagesStatsRole, CurrentImageStatsRole, SelectedLabelsStatsRole});
+                     {SelectedImagesStatsRole, CurrentImageStatsRole, SelectedLabelsStatsRole, HasImagesRole, HasLabelsRole});
 }
 
 QString ImageTagsListModel::getTagClassName(const int64_t tag_id) const
@@ -483,6 +496,12 @@ QString ImageTagsListModel::getTagClassName(const int64_t tag_id) const
 }
 
 Tag *ImageTagsListModel::getTag(const int64_t tag_id)
+{
+    const auto found = tags_.find(tag_id);
+    return found == tags_.end() ? nullptr : &found->second;
+}
+
+const Tag *ImageTagsListModel::getTag(const int64_t tag_id) const
 {
     const auto found = tags_.find(tag_id);
     return found == tags_.end() ? nullptr : &found->second;
@@ -566,6 +585,7 @@ bool ImageTagsListModel::setTags(const std::vector<int64_t> &target_ids, const i
     }
 
     updateStats();
+    emit tagRelationsChanged();
     return true;
 }
 
@@ -639,6 +659,7 @@ void ImageTagsListModel::removeTagsFromMemory(const std::vector<int64_t> &target
         }
     }
     updateStats();
+    emit tagRelationsChanged();
 }
 
 std::vector<int64_t> ImageTagsListModel::getUntaggedIds(const std::vector<int64_t> &target_ids,

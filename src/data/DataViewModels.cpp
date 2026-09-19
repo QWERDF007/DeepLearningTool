@@ -688,6 +688,7 @@ void SelectedLabelsInfoModel::refresh()
         return;
     }
 
+    int64_t           first_label_id   = -1;
     int64_t           first_image_id   = -1;
     int64_t           first_dataset_id = -1;
     std::set<int64_t> first_tag_ids;
@@ -707,12 +708,15 @@ void SelectedLabelsInfoModel::refresh()
         {
             const QModelIndex model_index  = label_instances_->index(row, 0);
             const QModelIndex source_index = label_instances_->mapToSource(model_index);
+            const int64_t     label_id = source->data(source_index, LabelInstancesListModel::LabelIdRole).toLongLong();
             const int64_t     image_id = source->data(source_index, LabelInstancesListModel::ImageIdRole).toLongLong();
             const int64_t class_id = source->data(source_index, LabelInstancesListModel::LabelClassIdRole).toLongLong();
-            const int64_t dataset_id         = data_manager_->imageSource()->getImageDatasetId(image_id);
-            const std::set<int64_t> &tag_ids = data_manager_->imageSource()->getImageTagIds(image_id);
+            const int64_t dataset_id         = data_manager_->imageSource() != nullptr ? data_manager_->imageSource()->getImageDatasetId(image_id) : -1;
+            const LabelInstance *label = data_manager_->labelSource() != nullptr ? data_manager_->labelSource()->getLabelInstance(label_id) : nullptr;
+            const std::set<int64_t> tag_ids  = label != nullptr ? label->tagIds() : std::set<int64_t>{};
             if (!initialized)
             {
+                first_label_id    = label_id;
                 first_image_id    = image_id;
                 first_dataset_id  = dataset_id;
                 first_tag_ids     = tag_ids;
@@ -732,7 +736,7 @@ void SelectedLabelsInfoModel::refresh()
     image_text_ = multiple_images ? QString("不同图像") : data_manager_->getImageName(first_image_id);
     dataset_text_
         = multiple_datasets ? QString("不同数据集") : data_manager_->getImageDatasetName(first_image_id);
-    tag_text_ = multiple_tags ? QString("不同Tag") : data_manager_->getImageTagName(first_image_id);
+    tag_text_ = multiple_tags ? QString("不同Tag") : data_manager_->getLabelTagName(first_label_id);
     if (multiple_classes_)
     {
         current_class_id_ = -1;

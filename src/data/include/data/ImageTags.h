@@ -150,9 +150,15 @@ public:
         SelectedImagesStatsRole,
         CurrentImageStatsRole,
         SelectedLabelsStatsRole,
+        HasImagesRole,
+        HasLabelsRole,
     };
     Q_ENUM(Role)
 
+signals:
+    void tagRelationsChanged();
+
+public:
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
@@ -211,8 +217,9 @@ private:
     bool initTagClasses();
     bool initTagRelations();
 
-    Tag *getTag(int64_t tag_id);
-    int  rowForTag(int64_t tag_id) const;
+    Tag       *getTag(int64_t tag_id);
+    const Tag *getTag(int64_t tag_id) const;
+    int        rowForTag(int64_t tag_id) const;
 
     bool setTags(const std::vector<int64_t> &target_ids, int64_t tag_id, TagTarget target, bool toggle);
     bool removeTags(const std::vector<int64_t> &target_ids, TagTarget target);

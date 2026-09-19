@@ -214,8 +214,14 @@ void DatasetFilterItemsModel::populateFromDatasets(QAbstractItemModel *datasets_
 // TagFilterItemsModel 实现
 // ============================================================================
 
-TagFilterItemsModel::TagFilterItemsModel(QObject *parent)
+TagFilterItemsModel::TagFilterItemsModel(Target target, QObject *parent)
     : FilterItemsModel(parent)
+    , target_(target)
+{
+}
+
+TagFilterItemsModel::TagFilterItemsModel(QObject *parent)
+    : TagFilterItemsModel(Target::Image, parent)
 {
 }
 
@@ -237,12 +243,20 @@ void TagFilterItemsModel::populateFromTags(QAbstractItemModel *tags_model)
         }
     }
 
+    const int target_role = target_ == Target::Image ? ImageTagsListModel::HasImagesRole
+                                                     : ImageTagsListModel::HasLabelsRole;
+
     std::vector<FilterItem> items;
     const int row_count = tags_model->rowCount();
     items.reserve(static_cast<size_t>(row_count));
     for (int i = 0; i < row_count; ++i)
     {
         QModelIndex idx = tags_model->index(i, 0);
+
+        if (!tags_model->data(idx, target_role).toBool())
+        {
+            continue;
+        }
 
         // 获取标签ID和名称
         QVariant id_variant   = tags_model->data(idx, ImageTagsListModel::TagIdRole);

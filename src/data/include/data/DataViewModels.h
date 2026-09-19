@@ -3,6 +3,7 @@
 #include "Images.h"
 #include "Labels.h"
 #include "SelectionSupport.h"
+#include "dltool/data/Export.h"
 
 #include <QSortFilterProxyModel>
 #include <QtQml>
@@ -18,7 +19,7 @@ class DataManager;
  * 原始图像模型只保存全部图像；本模型负责筛选、排序和视图选择状态，
  * 因此不再需要在原始模型中维护 filtered_image_ids_。
  */
-class ImageInstancesViewModel final : public QSortFilterProxyModel
+class DATA_API ImageInstancesViewModel final : public QSortFilterProxyModel
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(ImageInstancesModel)
@@ -77,6 +78,9 @@ public:
     void beginBulkUpdate();
     void endBulkUpdate();
 
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    QHash<int, QByteArray> roleNames() const override;
+
 signals:
     void currentImageChanged();
     void lastSelectedIndexChanged();
@@ -85,8 +89,6 @@ signals:
 protected:
     bool     filterAcceptsRow(int source_row, const QModelIndex &source_parent) const override;
     bool     lessThan(const QModelIndex &left, const QModelIndex &right) const override;
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
-    QHash<int, QByteArray> roleNames() const override;
 
 private:
     void rememberSelection();
@@ -112,7 +114,7 @@ private:
  *
  * 原始标注模型只保存全部标注；筛选和选择状态由该代理模型维护。
  */
-class LabelInstancesViewModel final : public QSortFilterProxyModel
+class DATA_API LabelInstancesViewModel final : public QSortFilterProxyModel
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(LabelInstancesModel)
@@ -151,13 +153,14 @@ public:
     void beginBulkUpdate();
     void endBulkUpdate();
 
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    QHash<int, QByteArray> roleNames() const override;
+
 signals:
     void lastIndexChanged();
 
 protected:
     bool     filterAcceptsRow(int source_row, const QModelIndex &source_parent) const override;
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
-    QHash<int, QByteArray> roleNames() const override;
 
 private:
     void rememberSelection();
@@ -178,7 +181,7 @@ private:
  *
  * 负责在 C++ 中汇总选择范围、图像、数据集、Tag 和类别信息，QML 仅绑定展示属性。
  */
-class SelectedLabelsInfoModel final : public QObject
+class DATA_API SelectedLabelsInfoModel final : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(SelectedLabelsInfoModel)
@@ -208,12 +211,12 @@ public:
 
     Q_INVOKABLE void clearSelection();
     Q_INVOKABLE void changeSelectedLabelsClass(qint64 label_class_id);
+    void refresh();
 
 signals:
     void infoChanged();
 
 private:
-    void refresh();
 
     DataManager             *data_manager_{nullptr};
     LabelInstancesViewModel *label_instances_{nullptr};

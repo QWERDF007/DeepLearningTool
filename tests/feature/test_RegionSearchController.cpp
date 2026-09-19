@@ -269,16 +269,16 @@ private slots:
         QCOMPARE(controller.reusedCount(), 0);
         QCOMPARE(controller.skippedCount(), 2); // hit1 self_skipped + hit3 duplicate_skipped
 
-        // Verify "区域检索生成" tag was created and applied
+        // Verify no tag was created or applied for region search
         const int64_t tag_id = fixture.data_manager->findTagClassId(QString("区域检索生成"));
-        QVERIFY(tag_id >= 0);
+        QCOMPARE(tag_id, -1);
 
         const auto filter_results = fixture.data_manager->globalFilter()->regionSearchResultIds();
         QCOMPARE(filter_results.size(), size_t{2});
         for (const int64_t lid : filter_results)
         {
             const auto tags = fixture.data_manager->labelTagIds(lid);
-            QVERIFY(tags.count(tag_id) > 0);
+            QVERIFY(tags.empty());
         }
 
         // Test Reuse on subsequent search
