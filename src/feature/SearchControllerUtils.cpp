@@ -11,6 +11,7 @@
 #include <inferrt/model/ModelRuntime.hpp>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace dltool::feature {
 namespace {
@@ -90,9 +91,10 @@ void applyBaseConfig(Config &config, const ImageSearchBaseSettings &settings)
     config.norm               = static_cast<irt::features::ImageSearchFeatureNorm>(settings.norm);
     config.faiss_backend      = parsed_faiss_backend;
     config.index_storage      = parsed_index_storage;
-    config.model_batch_size   = static_cast<size_t>(settings.model_batch_size);
-    config.model_runtime      = irt::model::ModelRuntime::parse(settings.model_runtime.toStdString());
-    config.model_precision    = static_cast<irt::model::ModelPrecision>(settings.model_precision);
+    config.model_batch_size = static_cast<size_t>(settings.model_batch_size);
+    if (!settings.model_runtime.trimmed().isEmpty())
+        config.model_runtime = irt::model::ModelRuntime::parse(settings.model_runtime.toStdString());
+    config.model_precision = static_cast<irt::model::ModelPrecision>(settings.model_precision);
 }
 
 /**
@@ -225,13 +227,10 @@ RoiClusterSettings readRoiClusterSettingsImpl(const dltool::settings::GlobalSett
               .toInt();
     result.base.model_batch_size = valueForField(settings, generated_field::RoiCluster::ModelBatchSize, 1).toInt();
 
-    result.use_pca       = valueForField(settings, generated_field::RoiCluster::UsePca, false).toBool();
-    result.pca_dim       = valueForField(settings, generated_field::RoiCluster::PcaDim, 0).toInt();
-    result.pooled_height = valueForField(settings, generated_field::RoiCluster::PooledHeight, 7).toInt();
-    result.pooled_width  = valueForField(settings, generated_field::RoiCluster::PooledWidth, 7).toInt();
-    result.sampling_ratio = valueForField(settings, generated_field::RoiCluster::SamplingRatio, -1).toInt();
-    result.aligned        = valueForField(settings, generated_field::RoiCluster::Aligned, false).toBool();
-    result.include_noise  = valueForField(settings, generated_field::RoiCluster::IncludeNoise, false).toBool();
+    result.mode          = settingString(settings, generated_field::RoiCluster::Mode, QStringLiteral("crop_masked_mean"));
+    result.crop_margin   = static_cast<float>(valueForField(settings, generated_field::RoiCluster::CropMargin, 0.05).toDouble());
+    result.patch_size    = valueForField(settings, generated_field::RoiCluster::PatchSize, 16).toInt();
+    result.include_noise = valueForField(settings, generated_field::RoiCluster::IncludeNoise, false).toBool();
 
     result.min_cluster_size
         = valueForField(settings, generated_field::RoiCluster::MinClusterSize, 5).toLongLong();
@@ -395,12 +394,9 @@ void applyImageClusterConfig(irt::features::ImageClusterConfig &config, const Im
 void applyRoiClusterConfig(irt::features::RoiClusterConfig &config, const RoiClusterSettings &settings)
 {
     applyBaseConfig(config, settings.base);
-    config.use_pca       = settings.use_pca;
-    config.pca_dim       = settings.pca_dim;
-    config.pooled_height = settings.pooled_height;
-    config.pooled_width  = settings.pooled_width;
-    config.sampling_ratio = settings.sampling_ratio;
-    config.aligned        = settings.aligned;
+    config.mode        = parseRoiFeatureMode(settings.mode);
+    config.crop_margin = settings.crop_margin;
+    config.patch_size  = std::max(1, settings.patch_size);
     config.hdbscan.min_cluster_size          = settings.min_cluster_size;
     config.hdbscan.min_samples               = settings.min_samples;
     config.hdbscan.cluster_selection_epsilon = settings.cluster_selection_epsilon;
@@ -775,6 +771,94 @@ bool roiFromLabelData(const QVariantMap &data, irt::features::RoiSearchBox &box)
     box.x2 = static_cast<float>(x2);
     box.y2 = static_cast<float>(y2);
     return true;
+}
+
+irt::features::RoiFeatureMode parseRoiFeatureMode(const QString &mode_str)
+{
+    if (mode_str.compare(QStringLiteral("legacy_roialign"), Qt::CaseInsensitive) == 0)
+        return irt::features::RoiFeatureMode::LegacyRoiAlign;
+    return irt::features::RoiFeatureMode::CropMaskedMean;
+}
+
+bool roiItemFromLabelData(int64_t roi_id, const std::filesystem::path &image_path, const QVariantMap &data,
+                          irt::features::RoiFeatureItem &item)
+{
+    item.roi_id     = roi_id;
+    item.image_path = image_path;
+    item.polygon.clear();
+
+    const auto pts_val = data.value(QStringLiteral("points"));
+    if (pts_val.isValid() && pts_val.canConvert<QVariantList>())
+    {
+        const QVariantList pts_list = pts_val.toList();
+        if (pts_list.size() >= 3)
+        {
+            float min_x = std::numeric_limits<float>::infinity();
+            float min_y = std::numeric_limits<float>::infinity();
+            float max_x = -std::numeric_limits<float>::infinity();
+            float max_y = -std::numeric_limits<float>::infinity();
+
+            std::vector<irt::features::RoiFeaturePoint> poly;
+            poly.reserve(pts_list.size());
+
+            for (const auto &p_var : pts_list)
+            {
+                double px = 0.0, py = 0.0;
+                bool   ok = false;
+                if (p_var.userType() == QMetaType::QVariantMap
+                    || (p_var.canConvert<QVariantMap>() && p_var.userType() != QMetaType::QVariantList))
+                {
+                    const QVariantMap m = p_var.toMap();
+                    bool ok_x = false, ok_y = false;
+                    px = m.value(QStringLiteral("x")).toDouble(&ok_x);
+                    py = m.value(QStringLiteral("y")).toDouble(&ok_y);
+                    ok = ok_x && ok_y;
+                }
+                if (!ok && (p_var.userType() == QMetaType::QVariantList || p_var.canConvert<QVariantList>()))
+                {
+                    const QVariantList pair = p_var.toList();
+                    if (pair.size() >= 2)
+                    {
+                        bool ok_x = false, ok_y = false;
+                        px = pair[0].toDouble(&ok_x);
+                        py = pair[1].toDouble(&ok_y);
+                        ok = ok_x && ok_y;
+                    }
+                }
+
+                if (ok && std::isfinite(px) && std::isfinite(py))
+                {
+                    const float fx = static_cast<float>(px);
+                    const float fy = static_cast<float>(py);
+                    min_x = std::min(min_x, fx);
+                    min_y = std::min(min_y, fy);
+                    max_x = std::max(max_x, fx);
+                    max_y = std::max(max_y, fy);
+                    poly.push_back({fx, fy});
+                }
+            }
+
+            if (poly.size() >= 3 && std::isfinite(min_x) && std::isfinite(min_y)
+                && (max_x - min_x) > 1.0f && (max_y - min_y) > 1.0f)
+            {
+                item.polygon = std::move(poly);
+                item.roi.x1  = min_x;
+                item.roi.y1  = min_y;
+                item.roi.x2  = max_x;
+                item.roi.y2  = max_y;
+                return true;
+            }
+        }
+    }
+
+    irt::features::RoiSearchBox box;
+    if (roiFromLabelData(data, box))
+    {
+        item.roi = box;
+        return true;
+    }
+
+    return false;
 }
 
 /**

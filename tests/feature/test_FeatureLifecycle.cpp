@@ -4,9 +4,11 @@
 #include "feature/ImageClusterDataProvider.h"
 #include "feature/ImageSearchController.h"
 #include "feature/RoiClusterController.h"
+#include "feature/RoiSearchController.h"
 #include "feature/RegionSearchController.h"
 #include "feature/SearchControllerBase.h"
 #include "feature/SmartAnnotationController.h"
+#include "SearchControllerUtils.h"
 #include "core/CoreDef.h"
 #include "data/DataManager.h"
 #include "data/DataOperationWorkflow.h"
@@ -1497,6 +1499,136 @@ private slots:
         QCOMPARE(db_ds_ids.size(), 3);
 
         controller.shutdown();
+    }
+
+    void roiFeatureModeParsing()
+    {
+        using dltool::feature::parseRoiFeatureMode;
+        using irt::features::RoiFeatureMode;
+
+        QCOMPARE(parseRoiFeatureMode(QStringLiteral("crop_masked_mean")), RoiFeatureMode::CropMaskedMean);
+        QCOMPARE(parseRoiFeatureMode(QStringLiteral("Crop_Masked_Mean")), RoiFeatureMode::CropMaskedMean);
+        QCOMPARE(parseRoiFeatureMode(QStringLiteral("legacy_roialign")), RoiFeatureMode::LegacyRoiAlign);
+        QCOMPARE(parseRoiFeatureMode(QStringLiteral("Legacy_RoiAlign")), RoiFeatureMode::LegacyRoiAlign);
+        QCOMPARE(parseRoiFeatureMode(QStringLiteral("unknown_mode")), RoiFeatureMode::CropMaskedMean);
+        QCOMPARE(parseRoiFeatureMode(QStringLiteral("")), RoiFeatureMode::CropMaskedMean);
+    }
+
+    void roiItemFromLabelDataHandlesPolygonsAndRectangles()
+    {
+        using dltool::feature::roiItemFromLabelData;
+        const std::filesystem::path img_path("test/image.jpg");
+
+        // 1. Rectangle label data
+        {
+            QVariantMap rect_data;
+            rect_data[QStringLiteral("x")]      = 10.0;
+            rect_data[QStringLiteral("y")]      = 20.0;
+            rect_data[QStringLiteral("width")]  = 100.0;
+            rect_data[QStringLiteral("height")] = 80.0;
+
+            irt::features::RoiFeatureItem item;
+            QVERIFY(roiItemFromLabelData(42, img_path, rect_data, item));
+            QCOMPARE(item.roi_id, 42);
+            QCOMPARE(item.image_path, img_path);
+            QVERIFY(item.polygon.empty());
+            QCOMPARE(item.roi.x1, 10.0f);
+            QCOMPARE(item.roi.y1, 20.0f);
+            QCOMPARE(item.roi.x2, 110.0f);
+            QCOMPARE(item.roi.y2, 100.0f);
+        }
+
+        // 2. Polygon label data with map items (x, y)
+        {
+            QVariantList pts;
+            QVariantMap  p1, p2, p3, p4;
+            p1[QStringLiteral("x")] = 15.0; p1[QStringLiteral("y")] = 25.0;
+            p2[QStringLiteral("x")] = 75.0; p2[QStringLiteral("y")] = 25.0;
+            p3[QStringLiteral("x")] = 90.0; p3[QStringLiteral("y")] = 85.0;
+            p4[QStringLiteral("x")] = 20.0; p4[QStringLiteral("y")] = 80.0;
+            pts << p1 << p2 << p3 << p4;
+
+            QVariantMap poly_data;
+            poly_data[QStringLiteral("points")] = pts;
+
+            irt::features::RoiFeatureItem item;
+            QVERIFY(roiItemFromLabelData(101, img_path, poly_data, item));
+            QCOMPARE(item.roi_id, 101);
+            QCOMPARE(item.image_path, img_path);
+            QCOMPARE(static_cast<int>(item.polygon.size()), 4);
+            QCOMPARE(item.polygon[0].x, 15.0f);
+            QCOMPARE(item.polygon[0].y, 25.0f);
+            // Derived bbox
+            QCOMPARE(item.roi.x1, 15.0f);
+            QCOMPARE(item.roi.y1, 25.0f);
+            QCOMPARE(item.roi.x2, 90.0f);
+            QCOMPARE(item.roi.y2, 85.0f);
+        }
+
+        // 3. Polygon label data with list items [x, y]
+        {
+            QVariantList pts;
+            pts.append(QVariant(QVariantList{10.0, 10.0}));
+            pts.append(QVariant(QVariantList{50.0, 10.0}));
+            pts.append(QVariant(QVariantList{30.0, 60.0}));
+
+            QVariantMap poly_data;
+            poly_data[QStringLiteral("points")] = pts;
+
+            irt::features::RoiFeatureItem item;
+            QVERIFY(roiItemFromLabelData(202, img_path, poly_data, item));
+            QCOMPARE(item.roi_id, 202);
+            QCOMPARE(static_cast<int>(item.polygon.size()), 3);
+            QCOMPARE(item.roi.x1, 10.0f);
+            QCOMPARE(item.roi.y1, 10.0f);
+            QCOMPARE(item.roi.x2, 50.0f);
+            QCOMPARE(item.roi.y2, 60.0f);
+        }
+
+        // 4. Invalid data: < 3 points and invalid bbox
+        {
+            QVariantList pts;
+            pts.append(QVariant(QVariantList{10.0, 10.0}));
+            pts.append(QVariant(QVariantList{50.0, 10.0}));
+            QVariantMap bad_data;
+            bad_data[QStringLiteral("points")] = pts;
+
+            irt::features::RoiFeatureItem item;
+            QVERIFY(!roiItemFromLabelData(303, img_path, bad_data, item));
+        }
+    }
+
+    void roiClusterSettingsParsingAndConfig()
+    {
+        dltool::feature::RoiClusterSettings settings;
+        settings.base.model_name   = QStringLiteral("dinov3_vits16");
+        settings.base.feature_name = QStringLiteral("x_norm_patchtokens");
+        settings.mode              = QStringLiteral("crop_masked_mean");
+        settings.crop_margin       = 0.08f;
+        settings.patch_size        = 16;
+        settings.min_cluster_size  = 3;
+
+        irt::features::RoiClusterConfig config;
+        dltool::feature::applyRoiClusterConfig(config, settings);
+
+        QCOMPARE(config.model_name, std::string("dinov3_vits16"));
+        QCOMPARE(config.feature_name, std::string("x_norm_patchtokens"));
+        QCOMPARE(config.mode, irt::features::RoiFeatureMode::CropMaskedMean);
+        QCOMPARE(config.crop_margin, 0.08f);
+        QCOMPARE(config.patch_size, 16);
+        QCOMPARE(config.hdbscan.min_cluster_size, 3);
+    }
+
+    void roiSearchControllerConfigAndLifecycle()
+    {
+        dltool::feature::RoiSearchController controller(nullptr, nullptr);
+
+        controller.shutdown();
+        controller.shutdown();
+        QVERIFY(!controller.isRunning());
+        QCOMPARE(controller.validationError(), QStringLiteral("标注搜索控制器正在关闭"));
+        QVERIFY(!controller.search({1}, {}));
+        QCOMPARE(controller.lastError(), QStringLiteral("标注搜索控制器正在关闭"));
     }
 };
 

@@ -67,13 +67,10 @@ struct RoiClusterSettings
 {
     ImageSearchBaseSettings base;
 
-    bool use_pca{false};
-    int  pca_dim{0};
-    int  pooled_height{7};
-    int  pooled_width{7};
-    int  sampling_ratio{-1};
-    bool aligned{false};
-    bool include_noise{false};
+    QString mode{"crop_masked_mean"};
+    float   crop_margin{0.05f};
+    int     patch_size{16};
+    bool    include_noise{false};
 
     int64_t min_cluster_size{5};
     int64_t min_samples{0};
@@ -118,7 +115,7 @@ std::map<int64_t, std::set<int64_t>> parseDatasetClassScope(const QVariantList &
  * @param accessor 设置访问键
  * @return 搜索基础配置
  */
-ImageSearchBaseSettings readImageSearchBaseSettings(
+FEATURE_API ImageSearchBaseSettings readImageSearchBaseSettings(
     const dltool::settings::GlobalSettings *settings,
     dltool::settings::generated::AccessorKey accessor);
 
@@ -127,38 +124,38 @@ ImageSearchBaseSettings readImageSearchBaseSettings(
  * @param settings 全局设置实例
  * @return 图像聚类配置
  */
-ImageClusterSettings readImageClusterSettings(const dltool::settings::GlobalSettings *settings);
+FEATURE_API ImageClusterSettings readImageClusterSettings(const dltool::settings::GlobalSettings *settings);
 
 /**
  * @brief 从全局设置中读取标注聚类配置
  */
-RoiClusterSettings readRoiClusterSettings(const dltool::settings::GlobalSettings *settings);
+FEATURE_API RoiClusterSettings readRoiClusterSettings(const dltool::settings::GlobalSettings *settings);
 
 /**
  * @brief 将基础设置应用到 ImageSearchConfig
  * @param config 目标配置
  * @param settings 基础设置
  */
-void applyImageSearchBaseConfig(irt::features::ImageSearchConfig &config, const ImageSearchBaseSettings &settings);
+FEATURE_API void applyImageSearchBaseConfig(irt::features::ImageSearchConfig &config, const ImageSearchBaseSettings &settings);
 
 /**
  * @brief 将基础设置应用到 RoiSearchConfig
  * @param config 目标配置
  * @param settings 基础设置
  */
-void applyImageSearchBaseConfig(irt::features::RoiSearchConfig &config, const ImageSearchBaseSettings &settings);
+FEATURE_API void applyImageSearchBaseConfig(irt::features::RoiSearchConfig &config, const ImageSearchBaseSettings &settings);
 
 /**
  * @brief 将图像聚类设置应用到 ImageClusterConfig
  */
-void applyImageClusterConfig(irt::features::ImageClusterConfig &config,
-                             const ImageClusterSettings &settings);
+FEATURE_API void applyImageClusterConfig(irt::features::ImageClusterConfig &config,
+                                         const ImageClusterSettings &settings);
 
 /**
  * @brief 将标注聚类设置应用到 RoiClusterConfig
  */
-void applyRoiClusterConfig(irt::features::RoiClusterConfig &config,
-                           const RoiClusterSettings &settings);
+FEATURE_API void applyRoiClusterConfig(irt::features::RoiClusterConfig &config,
+                                       const RoiClusterSettings &settings);
 
 /**
  * @brief 检查搜索功能是否在设置中启用
@@ -166,8 +163,8 @@ void applyRoiClusterConfig(irt::features::RoiClusterConfig &config,
  * @param accessor 设置访问键
  * @return 已启用返回 true
  */
-bool searchSettingsEnabled(const dltool::settings::GlobalSettings *settings,
-                           dltool::settings::generated::AccessorKey accessor);
+FEATURE_API bool searchSettingsEnabled(const dltool::settings::GlobalSettings *settings,
+                                       dltool::settings::generated::AccessorKey accessor);
 
 /**
  * @brief 确定项目的索引存储目录
@@ -208,7 +205,12 @@ FEATURE_API QString formatSearchProgressMessage(const irt::features::DinoSearchP
 
 FEATURE_API void addProgressMessage(int level, const QString &message, const QString &task_id = QString());
 
+FEATURE_API irt::features::RoiFeatureMode parseRoiFeatureMode(const QString &mode_str);
+
 FEATURE_API bool roiFromLabelData(const QVariantMap &data, irt::features::RoiSearchBox &box);
+
+FEATURE_API bool roiItemFromLabelData(int64_t roi_id, const std::filesystem::path &image_path,
+                                      const QVariantMap &data, irt::features::RoiFeatureItem &item);
 
 FEATURE_API std::vector<int64_t> sortedSearchResultIds(const std::map<int64_t, float> &result_scores);
 

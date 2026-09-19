@@ -64,6 +64,8 @@ dlt_add_test_executable(dltool_feature_lifecycle_tests
         dltool_common
         dltool_ui
     INCLUDE_DIRECTORIES
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/feature
         ${CMAKE_SOURCE_DIR}/src/feature/include
         ${CMAKE_SOURCE_DIR}/src/model/include
         ${CMAKE_SOURCE_DIR}/src/data/include

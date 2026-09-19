@@ -12,9 +12,11 @@
 #include <algorithm>
 #include <map>
 #include <set>
+#include <unordered_set>
 
 using dltool::settings::settingBool;
 using dltool::settings::settingInt;
+using dltool::settings::settingString;
 
 namespace dltool::feature {
 
@@ -126,15 +128,14 @@ void RoiSearchController::buildSearchRequest(SearchRequest &req) const
     applyImageSearchBaseConfig(req.image_config, base_settings);
     applyImageSearchBaseConfig(req.roi_config, base_settings);
 
-    req.roi_config.pooled_height = std::clamp(settingInt(settings, generated_field::RoiSearch::PooledHeight, 7), 1, 64);
-    req.roi_config.pooled_width  = std::clamp(settingInt(settings, generated_field::RoiSearch::PooledWidth, 7), 1, 64);
-    req.roi_config.sampling_ratio
-        = std::clamp(settingInt(settings, generated_field::RoiSearch::SamplingRatio, -1), -1, 32);
-    // InferRT::RoiSearch always executes ROIAlign; aligned selects its coordinate semantics.
-    req.roi_config.aligned = settingBool(settings, generated_field::RoiSearch::Aligned, false);
-    req.roi_config.use_pca = settingBool(settings, generated_field::RoiSearch::UsePca, false);
-    req.roi_config.pca_dim
-        = req.roi_config.use_pca ? std::clamp(settingInt(settings, generated_field::RoiSearch::PcaDim, 0), 1, 8192) : 0;
+    req.roi_config.exact_search = settingBool(settings, generated_field::RoiSearch::ExactSearch, true);
+
+    const QString mode_str = settingString(settings, generated_field::RoiSearch::Mode, QStringLiteral("crop_masked_mean"));
+    req.roi_config.mode    = parseRoiFeatureMode(mode_str);
+
+    req.roi_config.crop_margin = static_cast<float>(
+        settings != nullptr ? settings->valueForField(generated_field::RoiSearch::CropMargin, 0.05).toDouble() : 0.05);
+    req.roi_config.patch_size = std::max(1, settingInt(settings, generated_field::RoiSearch::PatchSize, 16));
 }
 
 QString RoiSearchController::computeIndexPath(const SearchRequest &request) const
@@ -165,11 +166,12 @@ void RoiSearchController::collectGallery(SearchRequest &request, const SearchSco
         if (!QFileInfo::exists(path))
             continue;
 
-        irt::features::RoiSearchBox roi;
-        if (!roiFromLabelData(data_provider_->labelData(label_id), roi))
+        irt::features::RoiSearchItem item;
+        if (!roiItemFromLabelData(label_id, toFsPath(QFileInfo(path).absoluteFilePath()),
+                                  data_provider_->labelData(label_id), item))
             continue;
 
-        request.gallery_rois.push_back({label_id, toFsPath(QFileInfo(path).absoluteFilePath()), roi});
+        request.gallery_rois.push_back(std::move(item));
     }
 }
 
@@ -185,11 +187,12 @@ void RoiSearchController::collectQuery(SearchRequest &request, const std::vector
         if (!QFileInfo::exists(path))
             continue;
 
-        irt::features::RoiSearchBox roi;
-        if (!roiFromLabelData(data_provider_->labelData(label_id), roi))
+        irt::features::RoiSearchItem item;
+        if (!roiItemFromLabelData(label_id, toFsPath(QFileInfo(path).absoluteFilePath()),
+                                  data_provider_->labelData(label_id), item))
             continue;
 
-        request.query_rois.push_back({label_id, toFsPath(QFileInfo(path).absoluteFilePath()), roi});
+        request.query_rois.push_back(std::move(item));
     }
 }
 
@@ -222,10 +225,33 @@ void RoiSearchController::executeRoiSearch(const SearchRequest &request, SearchR
             return;
         }
 
+        const auto stats = search.featureWorkStats();
+        if (stats.available)
+        {
+            addProgressMessage(spdlog::level::info,
+                               QString("特征工作统计: 解码图像 %1 张, 提取视图 %2 个, 前向批次 %3 次")
+                                   .arg(stats.decoded_images)
+                                   .arg(stats.encoded_views)
+                                   .arg(stats.forward_batches));
+        }
+
+        const auto gallery_ids_vec = search.galleryIds();
+        const std::unordered_set<int64_t> gallery_id_set(gallery_ids_vec.begin(), gallery_ids_vec.end());
+
         std::map<int64_t, float> result_scores;
         for (const auto &query_item : request.query_rois)
         {
-            for (const auto &result : search.search(query_item.image_path, query_item.roi, request.top_k))
+            std::vector<irt::features::RoiSearchResult> search_results;
+            if (gallery_id_set.find(query_item.roi_id) != gallery_id_set.end())
+            {
+                search_results = search.searchByRoiId(query_item.roi_id, request.top_k);
+            }
+            else
+            {
+                search_results = search.search(query_item, request.top_k);
+            }
+
+            for (const auto &result : search_results)
             {
                 const int64_t label_id = result.roi_id;
                 auto          it       = result_scores.find(label_id);
@@ -241,14 +267,7 @@ void RoiSearchController::executeRoiSearch(const SearchRequest &request, SearchR
     catch (const std::exception &e)
     {
         response.success = false;
-        QString msg      = QString(e.what());
-        if (msg.contains(QStringLiteral("RoiSearch feature tensor must be NCHW"))
-            || msg.contains(QStringLiteral("RoiSearch requires NCHW feature tensor"))
-            || msg.contains(QStringLiteral("RoiSearch requires NCHW feature map")))
-        {
-            msg = QString("标注搜索需要空间特征图，请在配置中选择当前模型对应的 NCHW 特征层并使用匹配的权重文件。");
-        }
-        response.error = msg;
+        response.error   = QString::fromUtf8(e.what());
     }
     catch (...)
     {

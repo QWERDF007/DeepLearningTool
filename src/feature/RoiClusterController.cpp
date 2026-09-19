@@ -334,8 +334,12 @@ QString RoiClusterController::requestValidationError(const Request &request) con
     const QFileInfo weights_info(request.weights_file);
     if (request.weights_file.trimmed().isEmpty() || !weights_info.isFile())
         return QString("模型权重文件不存在: %1").arg(request.weights_file);
-    if (request.config.pooled_height <= 0 || request.config.pooled_width <= 0)
+    if (request.config.mode == irt::features::RoiFeatureMode::LegacyRoiAlign
+        && (request.config.pooled_height <= 0 || request.config.pooled_width <= 0))
         return QString("ROI 输出尺寸必须大于 0");
+    if (request.config.mode == irt::features::RoiFeatureMode::CropMaskedMean
+        && request.config.patch_size <= 0)
+        return QString("Patch 尺寸必须大于 0");
     if (request.config.hdbscan.min_cluster_size < 2)
         return QString("最小簇大小必须至少为 2");
     return {};
@@ -367,11 +371,12 @@ void RoiClusterController::collectClusterItems(Request &request,
         if (!image_info.isFile())
             continue;
 
-        irt::features::RoiClusterBox roi;
-        if (!roiFromLabelData(data_provider_->labelData(label_id), roi))
+        irt::features::RoiClusterItem item;
+        if (!roiItemFromLabelData(label_id, toFsPath(image_info.absoluteFilePath()),
+                                  data_provider_->labelData(label_id), item))
             continue;
 
-        request.items.push_back({label_id, toFsPath(image_info.absoluteFilePath()), roi});
+        request.items.push_back(std::move(item));
     }
 }
 
