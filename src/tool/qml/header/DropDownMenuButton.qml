@@ -9,6 +9,7 @@ import quickui
 QuiButton {
     id: control
     clip: true
+    implicitWidth: Math.max(container.implicitWidth + 16, 210)
 
     opacity: enabled ? 1.0 : 0.3
 
@@ -136,6 +137,7 @@ QuiButton {
     contentItem: RowLayout {
         id: container
         anchors.centerIn: parent
+        width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
 
         QuiTextIconButton {
             id: dropDownBtn
@@ -258,8 +260,11 @@ QuiButton {
             color: control.checked ? QuiColor.FontPrimary : control.palette.brightText
             horizontalAlignment: Text.AlignLeft
             verticalAlignment: Text.AlignVCenter
-            fontSizeMode: Text.Fit
+            Layout.fillWidth: true
             Layout.rightMargin: 5
+            fontSizeMode: Text.Fit
+            minimumPixelSize: 11
+            elide: Text.ElideRight
         }
     }
 
@@ -528,29 +533,30 @@ QuiButton {
     }
 
     function computeDisplayText() {
+        let baseText = text ? text.trim() : ""
         if (!control.checked) {
-            return text + " (未启用)"
+            return baseText + " (未启用)"
         }
 
         if (!control.showItemList) {
             let countText = control.resultCount >= 0 ? " " + control.resultCount : ""
-            return text + countText + (control.allDeselected ? " 全不选" : " 全选")
+            return baseText + countText + (control.allDeselected ? " 全不选" : " 全选")
         }
 
         if (!model) {
-            return text + " (未加载)"
+            return baseText + " (未加载)"
         }
 
         let checkedCount = control.getCheckedCount()
         let totalCount = control.getEnabledCount()
 
         if (totalCount === 0) {
-            return text + (control.allDeselected ? " 全不选" : " 全选")
+            return baseText + (control.allDeselected ? " 全不选" : " 全选")
         } else if (checkedCount === 0) {
-            return text + " 全不选"
+            return baseText + " 全不选"
         } else if (checkedCount === totalCount) {
-            return text + " 全选"
+            return baseText + " 全选"
         }
-        return text + " " + checkedCount + "/" + totalCount
+        return baseText + " " + checkedCount + "/" + totalCount
     }
 }

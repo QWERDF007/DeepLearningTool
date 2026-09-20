@@ -176,8 +176,8 @@ Rectangle {
                     DropDownMenuButton {
                         id: datasetDropDown
                         Layout.fillHeight: true
-                        Layout.preferredWidth: 180
-                        text: "按数据集: "
+                        Layout.preferredWidth: 210
+                        text: "按数据集:"
                         filterType: GlobalFilter.FilterType.Dataset
                         globalFilter: header.globalFilter
                         model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.datasetFilterItems : null
@@ -185,8 +185,8 @@ Rectangle {
                     DropDownMenuButton {
                         id: imageTagDropDown
                         Layout.fillHeight: true
-                        Layout.preferredWidth: 180
-                        text: "按图像Tag: "
+                        Layout.preferredWidth: 210
+                        text: "按图像Tag:"
                         filterType: GlobalFilter.FilterType.ImageTag
                         globalFilter: header.globalFilter
                         model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.imageTagFilterItems : null
@@ -194,8 +194,8 @@ Rectangle {
                     DropDownMenuButton {
                         id: labelTagDropDown
                         Layout.fillHeight: true
-                        Layout.preferredWidth: 180
-                        text: "按标注Tag: "
+                        Layout.preferredWidth: 210
+                        text: "按标注Tag:"
                         filterType: GlobalFilter.FilterType.LabelTag
                         globalFilter: header.globalFilter
                         model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.labelTagFilterItems : null
@@ -203,8 +203,8 @@ Rectangle {
                     DropDownMenuButton {
                         id: labelClassImageDropDown
                         Layout.fillHeight: true
-                        Layout.preferredWidth: 180
-                        text: "按标签类别: "
+                        Layout.preferredWidth: 210
+                        text: "按标签类别:"
                         filterType: GlobalFilter.FilterType.ImageLabelClass
                         globalFilter: header.globalFilter
                         model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.labelClassFilterItems : null
@@ -213,7 +213,7 @@ Rectangle {
                     DropDownMenuButton {
                         id: customFilterDropDown
                         Layout.fillHeight: true
-                        Layout.preferredWidth: 180
+                        Layout.preferredWidth: 210
                         text: "自定义过滤"
                         filterType: GlobalFilter.FilterType.Custom
                         globalFilter: header.globalFilter
