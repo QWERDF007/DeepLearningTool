@@ -80,8 +80,8 @@ QML 页面 / 对话框
       │    -> 结果候选去重并作为标注实例回写 DataManager
       ├─ ImageSearchController / RoiSearchController: FAISS 向量检索
       │    -> 将搜索结果写回 DataManager.GlobalFilter 应用视图过滤
-      ├─ ImageClusterController / RoiClusterController: HDBSCAN 特征聚类
-      │    -> 委托 ClusterWritebackService 将聚类分配写回数据集
+      ├─ ImageClusterController: HDBSCAN 特征聚类 -> 委托 ClusterWritebackService 将聚类图像写回数据集
+      ├─ RoiClusterController: HDBSCAN 标注 ROI 聚类 (支持按类别或全局) -> 委托 DataManager 将聚类 Tag 写回标注实例
       ├─ SmartAnnotationController: SAM 交互式智能标注与 B 样条亚像素轮廓后处理
       └─ FewShotLearningController: FS-SAM2 训练/推理任务链编排
 ```
@@ -112,7 +112,7 @@ test.txt + task.db + project .dlpro + pred/*.tiff
   -> QML 评估面板、图表、混淆矩阵和实例列表
 ```
 
-评估引擎在后台读取文件并构造结果，ViewModel 负责 Qt Model、过滤、选择和展示。推理参数与评估参数的语义边界以 [`GRILL_ME_EVALUATION_PARAMETER_SPLIT.md`](GRILL_ME_EVALUATION_PARAMETER_SPLIT.md) 为准，异常检测可视化边界以 [`GRILL_ME_ANOMALY_SEGMENTATION_HEATMAP.md`](GRILL_ME_ANOMALY_SEGMENTATION_HEATMAP.md) 为准。
+评估引擎在后台读取文件并构造结果，ViewModel 负责 Qt Model、过滤、选择和展示。推理参数与评估参数的语义边界及异常检测可视化边界以 [`src/model/README.md`](../src/model/README.md)、[`ModelEvaluationOptions.h`](../src/model/include/model/ModelEvaluationOptions.h) 及对应评估 ViewModel 实现为准。
 
 ## QML 边界
 
@@ -128,6 +128,6 @@ QML 模块通过 Qt 的 QML 类型注册暴露对象。应用级入口包括 `Pr
 - 取消必须沿任务控制器和取消令牌传递，完成、失败和停止后的迟到事件不能重新打开终态任务。
 - 需要跨线程更新 UI 服务时，复用现有服务 API 或 `Qt::QueuedConnection`。
 
-项目关闭顺序由 [`Project::shutdown()`](../src/project/Projects.cpp) 统一组织，各领域控制器负责自己的执行者与外部进程。关闭入口、完成回调和共享线程池的收敛要求及待补边界见 [架构改进方案](../final_plan.md)，具体步骤与验收见 [实施规格](REFACTOR_SPEC.md)；统一关闭入口的存在不代表所有关闭场景已验证。
+项目关闭顺序由 [`Project::shutdown()`](../src/project/Projects.cpp) 统一组织，各领域控制器负责自己的执行者与外部进程。关闭入口、完成回调和共享线程池的收敛要求及待补边界见 [架构改进方案](../final_plan.md)；统一关闭入口的存在不代表所有关闭场景已验证。
 
 这些规则的具体实现位于 `src/model/ModelTaskController.*`、`src/model/ModelTaskPreparation.*`、`src/model/ExternalModelTaskRunner.*` 和对应评估引擎文件。

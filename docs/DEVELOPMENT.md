@@ -69,6 +69,7 @@ Python 任务协议、参数和任务目录由 `src/model/` 与 `3rdparty/EasyTr
 ## 日志和故障定位
 
 - 应用日志通过模块 `Logger` 注册到 spdlog，QML 日志经 `UILogger` 展示。
+- 数据持久化与工作区关键变更操作（如 Tag 变更、图像流转与标注删除）在成功时由 spdlog 记录审计日志。
 - 任务日志由模型存储服务放在训练目录或测试任务目录。
 - Python 任务的 stdout/stderr 由 `ExternalModelTaskRunner` 写入任务日志。
 - 测试失败时优先保留 CTest 的 `--output-on-failure` 输出、任务日志和生成目录，不要直接运行测试可执行文件绕过 CTest 的运行环境设置。

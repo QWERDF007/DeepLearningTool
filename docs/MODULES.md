@@ -45,3 +45,4 @@
 - 应用入口：[`src/tool/main.cpp`](../src/tool/main.cpp)
 - 全局配置：[`config/settings/`](../config/settings/)
 - 模型配置：[`config/models/`](../config/models/)
+- 预设配置：[`config/profiles/`](../config/profiles/)

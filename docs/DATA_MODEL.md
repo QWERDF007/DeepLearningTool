@@ -88,7 +88,7 @@ prediction     image_id 到预测数据的映射
 - 评估参数只作用于已有预测结果；已有预测时可以重新评估，不重复推理。
 - 任务运行期间参数编辑由 QML 禁用；任务停止、完成或失败后恢复。
 
-完整语义以 [参数拆分访谈记录](GRILL_ME_EVALUATION_PARAMETER_SPLIT.md) 和 [异常检测可视化访谈记录](GRILL_ME_ANOMALY_SEGMENTATION_HEATMAP.md) 为准。
+完整实现与生命周期约定见 [`src/model/README.md`](../src/model/README.md) 及 [`src/model/include/model/ModelEvaluationOptions.h`](../src/model/include/model/ModelEvaluationOptions.h)。
 
 ## 特征索引与检索产物
 
@@ -116,6 +116,11 @@ region_search/
 
 - 以图搜图和标注 ROI 搜索分别在项目目录下的 `image_search/` 和 `roi_search/` 保存 FAISS 向量索引文件（`.faiss` / `.roi.faiss`）。
 - 索引文件名由模型名称与特征层名称派生，特征层配置变化时会自动使用新文件名或触发重建。
+
+### 特征聚类产物与 Tag 映射
+
+- **图像聚类**：由 `ImageClusterController` 调用 HDBSCAN，聚类结果通过 `ClusterWritebackService` 复制或移动至按聚类簇新划分的数据集中。
+- **标注 ROI 聚类**：由 [`RoiClusterController`](../src/feature/include/feature/RoiClusterController.h) 执行，配置见 [`config/settings/RoiClusterSettings.yaml`](../config/settings/RoiClusterSettings.yaml)。支持按类别独立聚类（`RoiClusterScope::ByClass`）或全局聚类（`RoiClusterScope::Global`）；聚类完成后通过 `DataManager` 映射为标注 Tag（命名规范：按类别为 `%1-%2` / `%1-noise`，全局为 `roi-cluster-%1` / `roi-cluster-noise`）写回数据库，不产生新物理文件。
 
 ## 数据导出边界
 
