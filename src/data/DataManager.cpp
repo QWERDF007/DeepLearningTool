@@ -1714,6 +1714,7 @@ void DataManager::refreshAnomalyImageClassesFromPolygons(const std::vector<int64
         {
             image_info_->updateLabelInfo();
         }
+        spdlog::info("从标注多边形刷新 {} 张图像的异常类别成功", images_to_update.size());
     }
 }
 

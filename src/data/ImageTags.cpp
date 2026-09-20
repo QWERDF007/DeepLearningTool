@@ -205,6 +205,7 @@ bool ImageTagsListModel::addTagClass(const QString &name, const QString &shortcu
     beginInsertRows(QModelIndex(), row, row);
     tags_.emplace(tag_id, Tag(tag_id, name, shortcut));
     endInsertRows();
+    spdlog::info("添加 Tag [{}] 成功", name.toUtf8().constData());
     return true;
 }
 
@@ -261,6 +262,9 @@ bool ImageTagsListModel::updateTagClass(const int64_t tag_id, const QString &nam
         return true;
     }
 
+    const QString old_name     = tag->name();
+    const QString old_shortcut = tag->shortcut();
+
     QString err_msg;
     if (!database_->updateTagClass(tag_id, name, tagExtraData(shortcut), err_msg))
     {
@@ -274,6 +278,17 @@ bool ImageTagsListModel::updateTagClass(const int64_t tag_id, const QString &nam
     if (row >= 0)
     {
         emit dataChanged(index(row), index(row), {NameRole, ShortcutRole});
+    }
+    if (old_name != name)
+    {
+        spdlog::info("更新 Tag [{}] -> [{}] 成功", old_name.toUtf8().constData(), name.toUtf8().constData());
+    }
+    else
+    {
+        spdlog::info("更新 Tag [{}] 快捷键 [{}] -> [{}] 成功",
+                     name.toUtf8().constData(),
+                     old_shortcut.toUtf8().constData(),
+                     shortcut.toUtf8().constData());
     }
     return true;
 }
@@ -295,6 +310,8 @@ bool ImageTagsListModel::deleteTagClass(const int64_t tag_id)
     {
         return false;
     }
+
+    const QString tag_name = found->second.name();
 
     QString err_msg;
     if (!database_->deleteTagClass(tag_id, err_msg))
@@ -323,6 +340,7 @@ bool ImageTagsListModel::deleteTagClass(const int64_t tag_id)
     tags_.erase(found);
     endRemoveRows();
     updateStats();
+    spdlog::info("删除 Tag [{}] 成功", tag_name.toUtf8().constData());
     return true;
 }
 
@@ -586,6 +604,11 @@ bool ImageTagsListModel::setTags(const std::vector<int64_t> &target_ids, const i
 
     updateStats();
     emit tagRelationsChanged();
+    spdlog::info("{} {} 个{}的 Tag [{}] 成功",
+                 adding ? "添加" : "移除",
+                 updated_ids.size(),
+                 target == TagTarget::Image ? "图像" : "标注",
+                 tag->name().toUtf8().constData());
     return true;
 }
 
@@ -616,6 +639,9 @@ bool ImageTagsListModel::removeTags(const std::vector<int64_t> &target_ids, cons
     }
 
     removeTagsFromMemory(target_ids, target);
+    spdlog::info("移除 {} 个{}的所有 Tag 成功",
+                 target_ids.size(),
+                 target == TagTarget::Image ? "图像" : "标注");
     return true;
 }
 

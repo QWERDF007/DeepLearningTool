@@ -541,7 +541,7 @@ void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids
     }
     if (database_ == nullptr)
     {
-        spdlog::error("添加标注失败: 数据库未初始化");
+        spdlog::error("删除标注失败: 数据库未初始化");
         return;
     }
     QString err_msg;

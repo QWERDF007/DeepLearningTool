@@ -877,6 +877,7 @@ bool ImageInstancesListModel::setImageLabelClassIds(const std::vector<int64_t> &
         return false;
     }
     setImageLabelClassIdsFromMemory(valid_image_ids, valid_label_class_ids);
+    spdlog::info("更新 {} 张图像类别成功", valid_image_ids.size());
     return true;
 }
 
