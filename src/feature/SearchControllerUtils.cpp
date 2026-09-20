@@ -227,6 +227,9 @@ RoiClusterSettings readRoiClusterSettingsImpl(const dltool::settings::GlobalSett
               .toInt();
     result.base.model_batch_size = valueForField(settings, generated_field::RoiCluster::ModelBatchSize, 1).toInt();
 
+    result.cluster_scope = static_cast<RoiClusterScope>(
+        valueForField(settings, generated_field::RoiCluster::ClusterScope, 0).toInt());
+
     result.mode          = settingString(settings, generated_field::RoiCluster::Mode, QStringLiteral("crop_masked_mean"));
     result.crop_margin   = static_cast<float>(valueForField(settings, generated_field::RoiCluster::CropMargin, 0.05).toDouble());
     result.patch_size    = valueForField(settings, generated_field::RoiCluster::PatchSize, 16).toInt();

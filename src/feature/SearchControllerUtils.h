@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dltool/feature/Export.h"
+#include "feature/RoiClusterController.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsKeys.h"
 
@@ -62,15 +63,19 @@ struct ImageClusterSettings
     bool    allow_single_cluster{false};
 };
 
+/// 标注聚类范围
+using RoiClusterScope = RoiClusterController::RoiClusterScope;
+
 /// 标注聚类设置
 struct RoiClusterSettings
 {
     ImageSearchBaseSettings base;
 
-    QString mode{"crop_masked_mean"};
-    float   crop_margin{0.05f};
-    int     patch_size{16};
-    bool    include_noise{false};
+    RoiClusterScope cluster_scope{RoiClusterScope::ByClass};
+    QString         mode{"crop_masked_mean"};
+    float           crop_margin{0.05f};
+    int             patch_size{16};
+    bool            include_noise{false};
 
     int64_t min_cluster_size{5};
     int64_t min_samples{0};

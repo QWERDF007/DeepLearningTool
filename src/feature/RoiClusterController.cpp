@@ -67,7 +67,9 @@ QString roiClusterProgressMessage(const irt::features::RoiClusterProgress &progr
 
 QString clusterTagName(const QString &class_name, const int64_t cluster_id)
 {
-    return QStringLiteral("%1_%2").arg(class_name).arg(QString::number(cluster_id));
+    if (cluster_id < 0)
+        return QStringLiteral("%1-noise").arg(class_name);
+    return QStringLiteral("%1-%2").arg(class_name).arg(QString::number(cluster_id));
 }
 
 } // namespace
@@ -288,6 +290,7 @@ bool RoiClusterController::cluster(const QVariantList &dataset_class_scope)
         {
             Response response;
             response.include_noise = request.include_noise;
+            response.cluster_scope = request.cluster_scope;
             response.dataset_info  = request.dataset_info;
             response.class_info    = request.class_info;
             executor(request, response, progress);
@@ -312,6 +315,7 @@ void RoiClusterController::buildRequest(Request &request) const
                                   ? QString()
                                   : QFileInfo(settings.base.weights_file).absoluteFilePath();
     request.include_noise   = settings.include_noise;
+    request.cluster_scope   = settings.cluster_scope;
     applyRoiClusterConfig(request.config, settings);
 }
 
@@ -386,6 +390,7 @@ void RoiClusterController::collectClusterItems(Request &request,
             class_ids.insert(class_id);
 
         request.items.push_back(std::move(item));
+        request.item_class_ids.push_back(class_id);
     }
 
     QStringList dataset_names;
@@ -443,23 +448,95 @@ void RoiClusterController::executeCluster(const Request &request, Response &resp
         if (request.cancellationRequested())
             return;
 
+        const QString scope_name = (request.cluster_scope == RoiClusterScope::ByClass)
+                                       ? QStringLiteral("按类别聚类")
+                                       : QStringLiteral("全局聚类");
         addProgressMessage(spdlog::level::info,
-                           QString("正在抽取标注 ROI 特征并聚类: %1 个标注").arg(request.items.size()));
+                           QString("正在抽取标注 ROI 特征并聚类 (%1): %2 个标注")
+                               .arg(scope_name)
+                               .arg(request.items.size()));
 
         irt::features::RoiCluster cluster(request.config);
-        const auto result = cluster.cluster(toFsPath(request.weights_file), request.items,
-                                            progress);
 
-        if (request.cancellationRequested())
+        if (request.cluster_scope == RoiClusterScope::Global)
         {
-            response.error = QStringLiteral("标注聚类已取消");
-            return;
+            const auto result = cluster.cluster(toFsPath(request.weights_file), request.items,
+                                                progress);
+
+            if (request.cancellationRequested())
+            {
+                response.error = QStringLiteral("标注聚类已取消");
+                return;
+            }
+
+            response.assignments   = result.assignments;
+            response.feature_dim   = result.feature_dim;
+            response.cluster_count = result.cluster_count;
+            response.noise_count   = result.noise_count;
+        }
+        else
+        {
+            // Group items by class_id
+            std::map<int64_t, std::vector<irt::features::RoiClusterItem>> items_by_class;
+            for (size_t i = 0; i < request.items.size(); ++i)
+            {
+                items_by_class[request.item_class_ids[i]].push_back(request.items[i]);
+            }
+
+            size_t       processed_items_total = 0;
+            const size_t total_items           = request.items.size();
+
+            for (const auto &[class_id, class_items] : items_by_class)
+            {
+                if (request.cancellationRequested())
+                {
+                    response.error = QStringLiteral("标注聚类已取消");
+                    return;
+                }
+
+                if (class_items.size() < 2)
+                {
+                    for (const auto &item : class_items)
+                    {
+                        response.assignments.push_back(
+                            irt::features::RoiClusterAssignment{item.roi_id, -1, 0.0});
+                        ++response.noise_count;
+                    }
+                    processed_items_total += class_items.size();
+                    continue;
+                }
+
+                auto class_progress = [progress, base_processed = processed_items_total, total_items](
+                                          const irt::features::RoiClusterProgress &p)
+                {
+                    if (!progress)
+                        return;
+                    irt::features::RoiClusterProgress overall_p = p;
+                    overall_p.processed_count                   = base_processed + p.processed_count;
+                    overall_p.total_count                       = total_items;
+                    progress(overall_p);
+                };
+
+                const auto result = cluster.cluster(toFsPath(request.weights_file), class_items,
+                                                    class_progress);
+
+                if (request.cancellationRequested())
+                {
+                    response.error = QStringLiteral("标注聚类已取消");
+                    return;
+                }
+
+                response.assignments.insert(response.assignments.end(),
+                                            result.assignments.begin(),
+                                            result.assignments.end());
+                response.cluster_count += result.cluster_count;
+                response.noise_count   += result.noise_count;
+                response.feature_dim    = result.feature_dim;
+
+                processed_items_total += class_items.size();
+            }
         }
 
-        response.assignments = result.assignments;
-        response.feature_dim = result.feature_dim;
-        response.cluster_count = result.cluster_count;
-        response.noise_count = result.noise_count;
         response.success = true;
         response.summary = QString("标注聚类完成: %1 个标注, %2 个簇, 噪声 %3 个")
                                .arg(response.assignments.size())
@@ -544,12 +621,17 @@ void RoiClusterController::startProgress(const Request &request)
     setRunning(true);
     current_cluster_task_id_ = QStringLiteral("roi_cluster_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
     ui::ProgressManager::getInstance()->startTask(QString("标注聚类"), current_cluster_task_id_);
-    const QString progress_msg = QString("开始标注聚类: %1 个标注, %2, %3")
+    const QString scope_name = (request.cluster_scope == RoiClusterScope::ByClass)
+                                   ? QStringLiteral("按类别聚类")
+                                   : QStringLiteral("全局聚类");
+    const QString progress_msg = QString("开始标注聚类 (%1): %2 个标注, %3, %4")
+                                     .arg(scope_name)
                                      .arg(request.items.size())
                                      .arg(request.dataset_info)
                                      .arg(request.class_info);
     addProgressMessage(spdlog::level::info, progress_msg);
-    spdlog::info("开始标注聚类: {} 个标注, {}, {}, 模型: {}, 特征: {}, 最小簇大小: {}",
+    spdlog::info("开始标注聚类 ({}): {} 个标注, {}, {}, 模型: {}, 特征: {}, 最小簇大小: {}",
+                 scope_name.toUtf8().constData(),
                  request.items.size(),
                  request.dataset_info.toUtf8().constData(),
                  request.class_info.toUtf8().constData(),
@@ -608,16 +690,21 @@ void RoiClusterController::finishCluster(const Response &response)
         return;
     }
 
+    const QString scope_name = (response.cluster_scope == RoiClusterScope::ByClass)
+                                   ? QStringLiteral("按类别聚类")
+                                   : QStringLiteral("全局聚类");
     result_count_ = static_cast<int>(std::min(assigned_count, static_cast<size_t>(std::numeric_limits<int>::max())));
-    last_summary_ = QString("%1，已设置 %2 个 Tag，覆盖 %3 个标注")
+    last_summary_ = QString("%1 (%2)，已设置 %3 个 Tag，覆盖 %4 个标注")
                         .arg(response.summary)
+                        .arg(scope_name)
                         .arg(static_cast<qlonglong>(tag_count))
                         .arg(static_cast<qlonglong>(assigned_count));
     if (skipped_noise_count > 0)
         last_summary_ += QString("，跳过噪声 %1 个").arg(static_cast<qlonglong>(skipped_noise_count));
 
     setLastError(QString());
-    spdlog::info("标注聚类完成: {}, {}, {}, 总耗时: {}",
+    spdlog::info("标注聚类完成 ({}): {}, {}, {}, 总耗时: {}",
+                 scope_name.toUtf8().constData(),
                  last_summary_.toUtf8().constData(),
                  response.dataset_info.toUtf8().constData(),
                  response.class_info.toUtf8().constData(),

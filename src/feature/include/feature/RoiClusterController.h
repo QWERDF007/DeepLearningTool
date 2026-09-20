@@ -41,6 +41,13 @@ class FEATURE_API RoiClusterController : public QObject
     Q_PROPERTY(QString lastSummary READ lastSummary NOTIFY resultsChanged FINAL)
 
 public:
+    enum class RoiClusterScope
+    {
+        ByClass = 0, ///< 按类别分别聚类
+        Global  = 1, ///< 全局聚类
+    };
+    Q_ENUM(RoiClusterScope)
+
     explicit RoiClusterController(RoiClusterDataProvider *data_provider,
                                   dltool::data::DataManager *data_manager,
                                   QObject *parent = nullptr);
@@ -73,9 +80,11 @@ private:
     {
         QString weights_file;
         bool    include_noise{false};
+        RoiClusterScope cluster_scope{RoiClusterScope::ByClass};
 
         irt::features::RoiClusterConfig config;
         std::vector<irt::features::RoiClusterItem> items;
+        std::vector<int64_t> item_class_ids;
 
         std::chrono::steady_clock::time_point started_at;
         std::shared_ptr<std::atomic_bool> cancellation_token;
@@ -97,6 +106,7 @@ private:
         qint64  elapsed_ms{0};
 
         bool include_noise{false};
+        RoiClusterScope cluster_scope{RoiClusterScope::ByClass};
         int  feature_dim{0};
         int64_t cluster_count{0};
         int64_t noise_count{0};

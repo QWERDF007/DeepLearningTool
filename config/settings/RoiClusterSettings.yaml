@@ -15,6 +15,18 @@ RoiClusterSettings:
         value_type: bool
         display_type: checkbox
 
+      - name_en: cluster_scope
+        name_cn: 聚类范围
+        description: 用于配置标注聚类是按类别分别聚类还是全局聚类。
+        property_name: clusterScope
+        value: 0
+        value_type: int
+        display_type: combo
+        options: [按类别聚类, 全局聚类]
+        options_values:
+          按类别聚类: 0
+          全局聚类: 1
+
     模型:
       - name_en: model
         name_cn: 模型
