@@ -136,14 +136,13 @@ QuiButton {
 
     contentItem: RowLayout {
         id: container
-        anchors.centerIn: parent
-        width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+        spacing: 6
 
         QuiTextIconButton {
             id: dropDownBtn
             iconSource: QuiFontIcon.ChevronDown
             Layout.leftMargin: 5
-            Layout.alignment: Qt.AlignLeft
+            Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
             normalColor: Qt.lighter(control.normalColor, 1.2)
             pressedColor: Qt.lighter(control.pressedColor, 1.2)
             hoverColor: Qt.lighter(control.hoverColor, 1.2)
@@ -261,6 +260,7 @@ QuiButton {
             horizontalAlignment: Text.AlignLeft
             verticalAlignment: Text.AlignVCenter
             Layout.fillWidth: true
+            Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
             Layout.rightMargin: 5
             fontSizeMode: Text.Fit
             minimumPixelSize: 11
