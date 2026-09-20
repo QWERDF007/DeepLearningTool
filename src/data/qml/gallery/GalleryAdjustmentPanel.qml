@@ -6,10 +6,17 @@ import dltool.ui
 import dltool.settings
 import quickui
 
+import "../component"
 import "../label"
 
-Rectangle {
+SidebarPanelBase {
     id: control
+    title: "图库显示："
+    leftMargin: 8
+    rightMargin: 8
+    topMargin: 8
+    bottomMargin: 8
+    spacing: 12
 
     property real imageCellScale: 1.0
     property real imageCellScaleFrom: 0.5
@@ -24,18 +31,9 @@ Rectangle {
     property real imageContrastTo: 1.0
     property real imageContrastStepSize: 0.1
 
-    color: QuiColor.Primary
-
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 8
         spacing: 12
-
-        QuiText {
-            text: "图库显示："
-            font: QuiFont.Subtitle
-            Layout.fillWidth: true
-        }
 
         ImageAdjustmentRow {
             Layout.fillWidth: true

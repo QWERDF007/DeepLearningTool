@@ -6,12 +6,13 @@ import QtQml.Models
 import dltool.ui
 import dltool.data
 import quickui
+import "../component"
 
-Rectangle {
+SidebarPanelBase {
     id: fileListView
-    color: QuiColor.Primary
-    clip: true
-    
+    title: "文件列表:"
+    headerRightMargin: 10
+
     property DataManager dataManager
     property ImageInstancesModel model: dataManager ? dataManager.imageInstances : null
     property ItemSelectionModel selection: model ? model.selection : null
@@ -19,6 +20,12 @@ Rectangle {
     property int current: selection ? selection.currentIndex.row : -1
     property string contextFileName: ""
     property string contextFilePath: ""
+
+    headerRightItem: QuiText {
+        anchors.verticalCenter: parent.verticalCenter
+        text: fileListView.current >= 0 ? (fileListView.current + 1) + " / " + fileListView.total : ""
+        font: QuiFont.Subtitle
+    }
 
     QuiMenu {
         id: fileContextMenu
@@ -115,67 +122,42 @@ Rectangle {
             }
         }
     }
-    
-    ColumnLayout {
+
+    ListView {
+        id: listView
         anchors.fill: parent
-        anchors.leftMargin: 5
-        anchors.rightMargin: 0
-        anchors.topMargin: 5
-        anchors.bottomMargin: 5
-        
-        RowLayout {
-            Layout.fillWidth: true
-            QuiText {
-                text: "文件列表:"
-                font: QuiFont.Subtitle
-            }
-            Item {
-                Layout.fillWidth: true
-            }
-            QuiText {
-                Layout.rightMargin: 10
-                text: current >= 0 ? (current + 1) + " / " + total : ""
-                font: QuiFont.Subtitle
+        clip: true
+        spacing: 2
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: QuiScrollBar {}
+        model: fileListView.model
+
+        delegate: FileListDelegate {
+            width: listView.width - 8
+            height: 24
+            filePath: model.path ? model.path : ""
+            selected: model.selected ? model.selected : false
+            hasLabels: model.hasLabels ? model.hasLabels : false
+            onClicked: fileListView.switchToImage(index)
+            onRightClicked: {
+                fileListView.switchToImage(index)
+                fileListView.contextFileName = model.name ? model.name : ""
+                fileListView.contextFilePath = model.path ? model.path : ""
+                fileContextMenu.popup()
             }
         }
-        
-        ListView {
-            id: listView
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            spacing: 2
-            boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: QuiScrollBar {}
-            model: fileListView.model
-            
-            delegate: FileListDelegate {
-                width: listView.width - 8
-                height: 24
-                filePath: model.path ? model.path : ""
-                selected: model.selected ? model.selected : false
-                hasLabels: model.hasLabels ? model.hasLabels : false
-                onClicked: fileListView.switchToImage(index)
-                onRightClicked: {
-                    fileListView.switchToImage(index)
-                    fileListView.contextFileName = model.name ? model.name : ""
-                    fileListView.contextFilePath = model.path ? model.path : ""
-                    fileContextMenu.popup()
-                }
-            }
-            
-            // 当前项改变时自动滚动
-            Connections {
-                target: fileListView.selection
-                function onCurrentChanged(current, previous) {
-                    if (current.valid) {
-                        listView.positionViewAtIndex(current.row, ListView.Contain)
-                    }
+
+        // 当前项改变时自动滚动
+        Connections {
+            target: fileListView.selection
+            function onCurrentChanged(current, previous) {
+                if (current.valid) {
+                    listView.positionViewAtIndex(current.row, ListView.Contain)
                 }
             }
         }
     }
-    
+
     function switchToImage(index) {
         if (selection && fileListView.model) {
             let newIndex = fileListView.model.index(index, 0)

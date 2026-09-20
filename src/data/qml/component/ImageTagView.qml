@@ -6,9 +6,12 @@ import dltool.ui
 import dltool.data
 import quickui
 
-Rectangle {
+SidebarPanelBase {
     id: imageTagView
-    color: QuiColor.Primary
+    title: "Tag:"
+    actionText: "添加Tag"
+    onActionClicked: createTagDialog.openForCreate()
+
     property DataManager dataManager
     property ImageInstancesModel imageInstances: dataManager ? dataManager.imageInstances : null
     property ImageLabelsListModel imageLabelsList: dataManager ? dataManager.imageLabelsList : null
@@ -35,7 +38,7 @@ Rectangle {
     property string contextTagName: ""
     property string contextTagShortcut: ""
     property int editingTagId: -1
-    readonly property bool shortcutEditorOpen: renameTagDialog.visible || tagHeader.editorOpen
+    readonly property bool shortcutEditorOpen: renameTagDialog.visible || createTagDialog.visible
 
     Connections {
         target: imageTagView.imageLabelsList ? imageTagView.imageLabelsList.selection : null
@@ -89,6 +92,16 @@ Rectangle {
     }
 
     ImageTagFormDialog {
+        id: createTagDialog
+        dataManager: imageTagView.dataManager
+        onSubmitted: function(tagId, tagName, shortcut) {
+            if (imageTagView.dataManager) {
+                imageTagView.dataManager.addTagClass(tagName, shortcut)
+            }
+        }
+    }
+
+    ImageTagFormDialog {
         id: renameTagDialog
         dataManager: imageTagView.dataManager
         onSubmitted: function(tagId, tagName, shortcut) {
@@ -99,41 +112,32 @@ Rectangle {
         }
     }
 
-    ColumnLayout {
+    GridView {
+        id: view
         anchors.fill: parent
-        anchors.margins: 5
-        ImageTagHeader {
-            id: tagHeader
-            Layout.fillWidth: true
-            height: 32
-            dataManager: imageTagView.dataManager
-        }
-
-        GridView {
-            id: view
-            Layout.fillHeight: true
-            Layout.fillWidth: true
-            cellWidth: imageTagView.cellWidth + imageTagView.spacing
-            cellHeight: imageTagView.cellHeight + imageTagView.spacing
-            model: imageTags
-            delegate: ImageTagDelegate {
-                width: imageTagView.cellWidth
-                height: imageTagView.cellHeight
-                tagId: model.tag_id
-                tagName: model.name
-                tagShortcut: model.shortcut || ""
-                tagStats: imageTagView.multiSelect ? model.selected_images_stats
-                                                    : (imageTagView.hasSelectedLabels
-                                                       ? model.selected_labels_stats : model.current_image_stats)
-                onClicked: {
-                    imageTagView.toggleTag(Number(model.tag_id))
-                }
-                onContextMenuRequested: function(tagId, tagName, tagShortcut) {
-                    imageTagView.contextTagId = tagId
-                    imageTagView.contextTagName = tagName
-                    imageTagView.contextTagShortcut = tagShortcut
-                    tagContextMenu.popup()
-                }
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: QuiScrollBar {}
+        cellWidth: imageTagView.cellWidth + imageTagView.spacing
+        cellHeight: imageTagView.cellHeight + imageTagView.spacing
+        model: imageTags
+        delegate: ImageTagDelegate {
+            width: imageTagView.cellWidth
+            height: imageTagView.cellHeight
+            tagId: model.tag_id
+            tagName: model.name
+            tagShortcut: model.shortcut || ""
+            tagStats: imageTagView.multiSelect ? model.selected_images_stats
+                                                : (imageTagView.hasSelectedLabels
+                                                   ? model.selected_labels_stats : model.current_image_stats)
+            onClicked: {
+                imageTagView.toggleTag(Number(model.tag_id))
+            }
+            onContextMenuRequested: function(tagId, tagName, tagShortcut) {
+                imageTagView.contextTagId = tagId
+                imageTagView.contextTagName = tagName
+                imageTagView.contextTagShortcut = tagShortcut
+                tagContextMenu.popup()
             }
         }
     }
@@ -162,5 +166,4 @@ Rectangle {
         const tagId = Number(dataManager.shortcutManager.findTagId(event.text))
         return tagId >= 0 ? toggleTag(tagId) : false
     }
-
 }

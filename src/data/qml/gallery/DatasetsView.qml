@@ -8,11 +8,14 @@ import dltool.feature
 import quickui
 import "../component"
 
-Rectangle {
+SidebarPanelBase {
     id: datasetsView
     width: 200
     height: 200
-    color: QuiColor.Primary
+    title: "数据集:"
+    actionText: "添加数据集"
+    onActionClicked: createDatasetDialog.openForm()
+
     property DataManager dataManager
     property FeatureManager featureManager
     property DatasetsModel datasets: dataManager ? dataManager.datasets : null
@@ -152,6 +155,25 @@ Rectangle {
     onDataManagerChanged: syncDatasetFilterState()
 
     Component.onCompleted: syncDatasetFilterState()
+
+    DataNameFormDialog {
+        id: createDatasetDialog
+        title: "创建数据集"
+        fieldLabel: "数据集名称"
+        placeholderText: "输入数据集名称"
+        emptyError: "请输入数据集名称"
+        nameValidator: function(datasetName) {
+            if (!datasetsView.dataManager) {
+                return "数据集管理器不可用"
+            }
+            return datasetsView.dataManager.isValidDatasetName(datasetName, -1)
+        }
+        onSubmitted: function(datasetName) {
+            if (datasetsView.dataManager) {
+                datasetsView.dataManager.addDataset(datasetName)
+            }
+        }
+    }
 
     QuiContentDialog {
         id: deleteConfirmDialog
@@ -335,124 +357,109 @@ Rectangle {
         }
     }
 
-    ColumnLayout {
+    ListView {
+        id: view
         anchors.fill: parent
-        anchors.leftMargin: 5
-        anchors.rightMargin: 0
-        anchors.topMargin: 5
-        anchors.bottomMargin: 5
-        
-        DatasetHeader {
-            Layout.fillWidth: true
+        clip: true
+        focus: true
+        boundsBehavior: Flickable.StopAtBounds
+        keyNavigationEnabled: false
+        model: datasets
+        property int hoveredIndex: -1
+        ScrollBar.vertical: QuiScrollBar {}
+        delegate: DatasetDelegate {
             height: 32
-            dataManager: datasetsView.dataManager
+            width: view.width - 8
+            name: model.name
+            stats: model.stats
+            dataset_id: model.dataset_id
+            progress: model.progress
+            row: index
+            selected: model.selected ? model.selected : false
+            hovered: view.hoveredIndex === index
+            filterActive: isDatasetFiltered(model.dataset_id)
+            onClicked: function(row, button, modifiers) {
+                handleDatasetClicked(row, button, modifiers)
+            }
+            onFilterClicked: function(datasetId) {
+                toggleDatasetFilter(datasetId)
+            }
         }
 
-        ListView {
-            id: view
-            clip: true
-            focus: true
-            Layout.fillHeight: true
-            Layout.fillWidth: true
-            boundsBehavior: Flickable.StopAtBounds
-            keyNavigationEnabled: false
-            model: datasets
-            property int hoveredIndex: -1
-            ScrollBar.vertical: QuiScrollBar {}
-            delegate: DatasetDelegate {
-                height: 32
-                width: view.width - 8
-                name: model.name
-                stats: model.stats
-                dataset_id: model.dataset_id
-                progress: model.progress
-                row: index
-                selected: model.selected ? model.selected : false
-                hovered: view.hoveredIndex === index
-                filterActive: isDatasetFiltered(model.dataset_id)
-                onClicked: function(row, button, modifiers) {
-                    handleDatasetClicked(row, button, modifiers)
-                }
-                onFilterClicked: function(datasetId) {
-                    toggleDatasetFilter(datasetId)
-                }
+        MouseArea {
+            id: hoverTracker
+            anchors.fill: parent
+            acceptedButtons: Qt.NoButton
+            hoverEnabled: true
+            z: 10
+
+            function updateHoveredIndex(mouseX, mouseY) {
+                let row = view.indexAt(mouseX + view.contentX, mouseY + view.contentY)
+                view.hoveredIndex = row >= 0 ? row : -1
             }
 
-            MouseArea {
-                id: hoverTracker
-                anchors.fill: parent
-                acceptedButtons: Qt.NoButton
-                hoverEnabled: true
-                z: 10
+            onPositionChanged: function(mouse) {
+                updateHoveredIndex(mouse.x, mouse.y)
+            }
+            onEntered: updateHoveredIndex(mouseX, mouseY)
+            onExited: view.hoveredIndex = -1
 
-                function updateHoveredIndex(mouseX, mouseY) {
-                    let row = view.indexAt(mouseX + view.contentX, mouseY + view.contentY)
-                    view.hoveredIndex = row >= 0 ? row : -1
-                }
-
-                onPositionChanged: function(mouse) {
-                    updateHoveredIndex(mouse.x, mouse.y)
-                }
-                onEntered: updateHoveredIndex(mouseX, mouseY)
-                onExited: view.hoveredIndex = -1
-
-                Connections {
-                    target: view
-                    function onContentYChanged() {
-                        if (hoverTracker.containsMouse) {
-                            hoverTracker.updateHoveredIndex(hoverTracker.mouseX, hoverTracker.mouseY)
-                        }
+            Connections {
+                target: view
+                function onContentYChanged() {
+                    if (hoverTracker.containsMouse) {
+                        hoverTracker.updateHoveredIndex(hoverTracker.mouseX, hoverTracker.mouseY)
                     }
                 }
             }
+        }
 
-            Keys.enabled: view.visible
-            Keys.onPressed: function(event) {
-                if (!datasets || !selection) {
-                    return
-                }
-
-                if (event.key === Qt.Key_Escape) {
-                    selection.clear()
-                    curItem = null
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Delete && selection.hasSelection) {
-                    deleteConfirmDialog.open()
-                    event.accepted = true
-                } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
-                    datasets.selectAll()
-                    event.accepted = true
-                } else {
-                    updateSelectionByKeyboard(event)
-                }
+        Keys.enabled: view.visible
+        Keys.onPressed: function(event) {
+            if (!datasets || !selection) {
+                return
             }
 
-            function updateSelectionByKeyboard(event) {
-                if (!datasets || !selection || view.count <= 0) {
-                    return
-                }
-
-                let curIndex = selection.currentIndex.row
-                let newIndex = curIndex < 0 ? 0 : curIndex
-                if (event.key === Qt.Key_Up) {
-                    newIndex = Math.max(0, newIndex - 1)
-                } else if (event.key === Qt.Key_Down) {
-                    newIndex = Math.min(view.count - 1, newIndex + 1)
-                } else if (event.key === Qt.Key_Home) {
-                    newIndex = 0
-                } else if (event.key === Qt.Key_End) {
-                    newIndex = view.count - 1
-                } else {
-                    return
-                }
-
-                let modelIndex = datasets.index(newIndex, 0)
-                selection.select(modelIndex, ItemSelectionModel.ClearAndSelect)
-                selection.setCurrentIndex(modelIndex, ItemSelectionModel.Select)
-                datasets.lastIndex = newIndex
-                view.positionViewAtIndex(newIndex, ListView.Contain)
+            if (event.key === Qt.Key_Escape) {
+                selection.clear()
+                curItem = null
                 event.accepted = true
+            } else if (event.key === Qt.Key_Delete && selection.hasSelection) {
+                deleteConfirmDialog.open()
+                event.accepted = true
+            } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
+                datasets.selectAll()
+                event.accepted = true
+            } else {
+                updateSelectionByKeyboard(event)
             }
+        }
+
+        function updateSelectionByKeyboard(event) {
+            if (!datasets || !selection || view.count <= 0) {
+                return
+            }
+
+            let curIndex = selection.currentIndex.row
+            let newIndex = curIndex < 0 ? 0 : curIndex
+            if (event.key === Qt.Key_Up) {
+                newIndex = Math.max(0, newIndex - 1)
+            } else if (event.key === Qt.Key_Down) {
+                newIndex = Math.min(view.count - 1, newIndex + 1)
+            } else if (event.key === Qt.Key_Home) {
+                newIndex = 0
+            } else if (event.key === Qt.Key_End) {
+                newIndex = view.count - 1
+            } else {
+                return
+            }
+
+            let modelIndex = datasets.index(newIndex, 0)
+            selection.select(modelIndex, ItemSelectionModel.ClearAndSelect)
+            selection.setCurrentIndex(modelIndex, ItemSelectionModel.Select)
+            datasets.lastIndex = newIndex
+            view.positionViewAtIndex(newIndex, ListView.Contain)
+            event.accepted = true
         }
     }
 }

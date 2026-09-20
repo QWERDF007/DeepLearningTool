@@ -5,10 +5,11 @@ import QtQuick.Layouts
 import dltool.ui
 import dltool.data
 import quickui
+import "../component"
 
-Rectangle {
+SidebarPanelBase {
     id: control
-    color: QuiColor.Primary
+    title: "编辑实例："
 
     // 公共属性
     property DataManager dataManager
@@ -124,52 +125,36 @@ Rectangle {
         _updating = false
     }
 
-    ColumnLayout {
+    // 内容区域（可滚动）
+    Flickable {
         anchors.fill: parent
-        anchors.leftMargin: 5
-        anchors.rightMargin: 0
-        anchors.topMargin: 5
-        anchors.bottomMargin: 5
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        contentHeight: contentLoader.height
 
-        // 标题（固定不滚动）
-        QuiText {
-            text: "编辑实例："
-            font: QuiFont.Subtitle
-            Layout.fillWidth: true
-        }
+        ScrollBar.vertical: QuiScrollBar {}
 
-        // 内容区域（可滚动）
-        Flickable {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            contentHeight: contentLoader.height
-
-            ScrollBar.vertical: QuiScrollBar {}
-
-            Loader {
-                id: contentLoader
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.rightMargin: 8
-                height: {
-                    if (!control.hasSelection) {
-                        return 60
-                    } else if (control.multiSelection) {
-                        return 60
-                    } else {
-                        return item ? item.implicitHeight : 220
-                    }
+        Loader {
+            id: contentLoader
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.rightMargin: 8
+            height: {
+                if (!control.hasSelection) {
+                    return 60
+                } else if (control.multiSelection) {
+                    return 60
+                } else {
+                    return item ? item.implicitHeight : 220
                 }
-                sourceComponent: {
-                    if (!control.hasSelection) {
-                        return emptyStateComponent
-                    } else if (control.multiSelection) {
-                        return multiSelectStateComponent
-                    } else {
-                        return editorComponent
-                    }
+            }
+            sourceComponent: {
+                if (!control.hasSelection) {
+                    return emptyStateComponent
+                } else if (control.multiSelection) {
+                    return multiSelectStateComponent
+                } else {
+                    return editorComponent
                 }
             }
         }

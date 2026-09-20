@@ -5,11 +5,18 @@ import QtQuick.Layouts
 import dltool.ui
 import dltool.data
 import quickui
+import "../component"
 
-Rectangle {
+SidebarPanelBase {
     id: imageInstancesSelection
-    color: QuiColor.Primary
-    clip: true
+    title: "选中:"
+    actionText: "清空选择"
+    actionIcon: QuiFontIcon.Clear
+    onActionClicked: {
+        if (selection) {
+            selection.clear()
+        }
+    }
 
     property DataManager dataManager
     property ImageInstancesModel imageInstances: dataManager ? dataManager.imageInstances : null
@@ -30,45 +37,20 @@ Rectangle {
     }
 
     RowLayout {
-        id: title
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.margins: 5
-        QuiText {
-            font: QuiFont.Subtitle
-            text: "选中:"
-            Layout.fillWidth: true
-        }
-        QuiTextIconButton {
-            iconSource: QuiFontIcon.Clear
-            Layout.rightMargin: 5
-            text: "清空选择"
-            onClicked: {
-                if (selection) {
-                    selection.clear()
-                }
-            }
-        }
-    }
-    RowLayout {
-        anchors.margins: 10
-        anchors.top: title.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        // height: 64
+        anchors.fill: parent
+        anchors.rightMargin: 5
+
         QuiText {
             Layout.fillWidth: true
-            text: selected + " / " + total + " 图像"
+            text: imageInstancesSelection.selected + " / " + imageInstancesSelection.total + " 图像"
         }
 
         QuiTextIconButton {
             iconSource: QuiFontIcon.Delete
             text: "删除选中图像"
             onClicked: {
-                    deleteConfirmDialog.open()
+                deleteConfirmDialog.open()
             }
         }
     }
-
 }

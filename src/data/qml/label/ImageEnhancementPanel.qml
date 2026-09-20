@@ -5,10 +5,17 @@ import QtQuick.Layouts
 import dltool.ui
 import dltool.settings
 import quickui
+import "../component"
 
-Rectangle {
+SidebarPanelBase {
     id: control
-    
+    title: "图像增强："
+    leftMargin: 8
+    rightMargin: 8
+    topMargin: 8
+    bottomMargin: 8
+    spacing: 12
+
     // 组件属性
     property real zoomValue: 1.0
     property real zoomFrom: 0.25
@@ -26,26 +33,16 @@ Rectangle {
     property real labelFillOpacityFrom: 0
     property real labelFillOpacityTo: 100
     property real labelFillOpacityStepSize: 1
-    
+
     // 信号定义
     signal fitToWindow()
     signal zoomChanged(real zoom)
-    
-    color: QuiColor.Primary
-    
+
     ColumnLayout {
         id: mainLayout
         anchors.fill: parent
-        anchors.margins: 8
         spacing: 12
-        
-        // 标题
-        QuiText {
-            text: "图像增强："
-            font: QuiFont.Subtitle
-            Layout.fillWidth: true
-        }
-        
+
         // 缩放控制区域
         ImageAdjustmentRow {
             id: zoomControl
@@ -57,16 +54,16 @@ Rectangle {
             stepSize: control.zoomStepSize
             showResetButton: false
             showFitButton: true
-            
+
             onValueAdjusted: function(newValue) {
                 control.zoomChanged(newValue)
             }
-            
+
             onFitClicked: {
                 control.fitToWindow()
             }
         }
-        
+
         // 亮度控制区域
         ImageAdjustmentRow {
             id: brightnessControl
@@ -79,16 +76,16 @@ Rectangle {
             showResetButton: true
             showFitButton: false
             defaultValue: 0.0
-            
+
             onValueAdjusted: function(newValue) {
                 control.setUiField(UiField.Brightness, newValue)
             }
-            
+
             onResetClicked: {
                 control.setUiField(UiField.Brightness, 0.0)
             }
         }
-        
+
         // 对比度控制区域
         ImageAdjustmentRow {
             id: contrastControl
@@ -101,11 +98,11 @@ Rectangle {
             showResetButton: true
             showFitButton: false
             defaultValue: 0.0
-            
+
             onValueAdjusted: function(newValue) {
                 control.setUiField(UiField.Contrast, newValue)
             }
-            
+
             onResetClicked: {
                 control.setUiField(UiField.Contrast, 0.0)
             }
@@ -131,7 +128,7 @@ Rectangle {
                 control.setDataField(DataField.FillOpacity, 30)
             }
         }
-        
+
         // 填充剩余空间
         Item {
             Layout.fillHeight: true

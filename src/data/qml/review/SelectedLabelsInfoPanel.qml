@@ -5,10 +5,14 @@ import QtQuick.Layouts
 import dltool.ui
 import dltool.data
 import quickui
+import "../component"
 
-Rectangle {
+SidebarPanelBase {
     id: root
-    color: QuiColor.Primary
+    title: "所选标注信息:"
+    actionText: "清除选中"
+    actionIcon: QuiFontIcon.Clear
+    onActionClicked: if (root.info) root.info.clearSelection()
 
     // 公共属性
     property DataManager dataManager
@@ -36,13 +40,8 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 5
-
-        SelectedLabelsInfoHeader {
-            Layout.fillWidth: true
-            height: 32
-            onClicked: if (root.info) root.info.clearSelection()
-        }
+        anchors.rightMargin: 5
+        spacing: 5
 
         // 行1: 选中数量统计
         ColumnLayout {
@@ -61,8 +60,6 @@ Rectangle {
                 Layout.leftMargin: 5
                 Layout.rightMargin: 5
                 text: root.info ? root.info.selectedCount + "/" + root.info.totalCount : "0/0"
-                
-                
             }
         }
 

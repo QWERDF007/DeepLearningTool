@@ -5,13 +5,16 @@ import QtQuick.Layouts
 import dltool.data
 import dltool.ui
 import quickui
+import "../component"
 
-Rectangle {
+SidebarPanelBase {
     id: labelClassesView
-    clip: true
     width: 200
     height: 200
-    color: QuiColor.Primary
+    title: "标签类别:"
+    actionText: "添加标签类别"
+    onActionClicked: labelClassesView.openEditorForCreate(null)
+
     focus: true
     activeFocusOnTab: true
 
@@ -160,52 +163,22 @@ Rectangle {
         }
     }
 
-    ColumnLayout {
+    ListView {
+        id: view
         anchors.fill: parent
-        anchors.leftMargin: 5
-        anchors.rightMargin: 0
-        anchors.topMargin: 5
-        anchors.bottomMargin: 5
+        clip: true
+        spacing: 5
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: QuiScrollBar {}
+        model: labelClassesView.viewModel
+        delegate: labelClassesView.rowDelegateComponent
 
-        RowLayout {
-            Layout.fillWidth: true
-            height: 32
-
-            QuiText {
-                text: "标签类别:"
-                font: QuiFont.Subtitle
-            }
-
-            Item {
-                Layout.fillWidth: true
-            }
-
-            QuiTextIconButton {
-                id: addButton
-                iconSource: QuiFontIcon.Add
-                text: "添加标签类别"
-                onClicked: labelClassesView.openEditorForCreate(addButton)
-            }
+        displaced: Transition {
+            NumberAnimation { properties: "x,y"; duration: 200; easing.type: Easing.OutQuad }
         }
 
-        ListView {
-            id: view
-            clip: true
-            spacing: 5
-            boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: QuiScrollBar {}
-            Layout.fillHeight: true
-            Layout.fillWidth: true
-            model: labelClassesView.viewModel
-            delegate: labelClassesView.rowDelegateComponent
-
-            displaced: Transition {
-                NumberAnimation { properties: "x,y"; duration: 200; easing.type: Easing.OutQuad }
-            }
-
-            move: Transition {
-                NumberAnimation { properties: "x,y"; duration: 200; easing.type: Easing.OutQuad }
-            }
+        move: Transition {
+            NumberAnimation { properties: "x,y"; duration: 200; easing.type: Easing.OutQuad }
         }
     }
 

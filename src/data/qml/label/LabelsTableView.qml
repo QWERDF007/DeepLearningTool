@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -7,10 +7,15 @@ import dltool.data
 import dltool.feature
 import dltool.settings
 import quickui
+import "../component"
 
-Rectangle {
+SidebarPanelBase {
     id: control
-    color: QuiColor.Primary
+    title: "标签实例:"
+    headerLeftMargin: 5
+    leftMargin: 0
+    rightMargin: 0
+    headerRightMargin: 5
     width: 200
     height: 200
 
@@ -184,89 +189,70 @@ Rectangle {
         }
     }
 
-
-    ColumnLayout {
+    Item {
         anchors.fill: parent
-        anchors.leftMargin: 0
-        anchors.rightMargin: 0
-        anchors.topMargin: 5
-        anchors.bottomMargin: 5
 
-        // spacing: 5
-        QuiText {
-            Layout.leftMargin: 5
-            Layout.rightMargin: 5
-            text: "标签实例:"
-            font: QuiFont.Subtitle
+        QuiTableView {
+            id: tableView
+            anchors.fill: parent
+            headerHeight: 32
+            rowHeight: control.rowHeight
+            headerColor: QuiColor.Background
+            headerTextColor: "white"
+            columnSpacing: 2
+            fitColumnsToWidth: true
+            minimumColumnWidth: control.minimumColumnWidth
+            columnSource: []
+            dataSource: []
+            rowSelectionEnabled: false
+
+            rowHeightProvider: function(row) {
+                return control.rowHeight
+            }
         }
 
-        Item {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-
-            QuiTableView {
-                id: tableView
-                anchors.fill: parent
-                headerHeight: 32
-                rowHeight: control.rowHeight
-                headerColor: QuiColor.Background
-                headerTextColor: "white"
-                columnSpacing: 2
-                fitColumnsToWidth: true
-                minimumColumnWidth: control.minimumColumnWidth
-                columnSource: []
-                dataSource: []
-                rowSelectionEnabled: false
-
-                rowHeightProvider: function(row) {
-                    return control.rowHeight
+        MouseArea {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.topMargin: tableView.headerHeight
+            anchors.bottom: parent.bottom
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            enabled: control.tableActive
+            z: 20
+            onClicked: function(mouse) {
+                control.forceActiveFocus()
+                if (!control.tableActive || selection === null) {
+                    return
                 }
-
-            }
-
-            MouseArea {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.topMargin: tableView.headerHeight
-                anchors.bottom: parent.bottom
-                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                enabled: control.tableActive
-                z: 20
-                onClicked: function(mouse) {
-                    control.forceActiveFocus()
-                    if (!control.tableActive || selection === null) {
-                        return
-                    }
-                    let pos = mapToItem(tableView.view, mouse.x, mouse.y)
-                    if (pos.x < 0 || pos.y < 0 || pos.x > tableView.view.width || pos.y > tableView.view.height) {
-                        return
-                    }
-                    let row = Math.floor((pos.y + tableView.view.contentY) / control.rowHeight)
-                    if (row < 0) {
-                        return
-                    }
-                    if (row >= imageLabelsTable.rowCount()) {
-                        control.clearSelection()
-                        return
-                    }
-                    let tmpIndex = imageLabelsTable.index(row, 0)
-                    if (imageLabelsTable.lastIndex === -1) {
+                let pos = mapToItem(tableView.view, mouse.x, mouse.y)
+                if (pos.x < 0 || pos.y < 0 || pos.x > tableView.view.width || pos.y > tableView.view.height) {
+                    return
+                }
+                let row = Math.floor((pos.y + tableView.view.contentY) / control.rowHeight)
+                if (row < 0) {
+                    return
+                }
+                if (row >= imageLabelsTable.rowCount()) {
+                    control.clearSelection()
+                    return
+                }
+                let tmpIndex = imageLabelsTable.index(row, 0)
+                if (imageLabelsTable.lastIndex === -1) {
+                    imageLabelsTable.lastIndex = row
+                }
+                if (mouse.button === Qt.LeftButton || (mouse.button === Qt.RightButton && !selection.isSelected(tmpIndex))) {
+                    if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
+                        control.shiftSelect(row, imageLabelsTable.lastIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+                    } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多选
+                        control.select(tmpIndex, ItemSelectionModel.Select | ItemSelectionModel.Rows)
+                    } else { // 单选
+                        control.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
                         imageLabelsTable.lastIndex = row
                     }
-                    if (mouse.button === Qt.LeftButton || (mouse.button === Qt.RightButton && !selection.isSelected(tmpIndex))) {
-                        if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
-                            control.shiftSelect(row, imageLabelsTable.lastIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
-                        } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多选
-                            control.select(tmpIndex, ItemSelectionModel.Select | ItemSelectionModel.Rows)
-                        } else { // 单选
-                            control.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
-                            imageLabelsTable.lastIndex = row
-                        }
-                    }
-                    if (mouse.button === Qt.RightButton) {
-                        tableViewMenu.popup()
-                    }
+                }
+                if (mouse.button === Qt.RightButton) {
+                    tableViewMenu.popup()
                 }
             }
         }
