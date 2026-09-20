@@ -288,6 +288,8 @@ bool RoiClusterController::cluster(const QVariantList &dataset_class_scope)
         {
             Response response;
             response.include_noise = request.include_noise;
+            response.dataset_info  = request.dataset_info;
+            response.class_info    = request.class_info;
             executor(request, response, progress);
 
             response.elapsed_ms = static_cast<qint64>(
@@ -349,6 +351,9 @@ void RoiClusterController::collectClusterItems(Request &request,
                                                const std::map<int64_t, std::set<int64_t>> &scope)
 {
     std::set<int64_t> seen_ids;
+    std::set<int64_t> dataset_ids;
+    std::set<int64_t> class_ids;
+
     for (const int64_t label_id : data_provider_->allLabelIds())
     {
         if (!seen_ids.insert(label_id).second)
@@ -363,8 +368,8 @@ void RoiClusterController::collectClusterItems(Request &request,
         if (scope_it == scope.end())
             continue;
 
-        if (!scope_it->second.empty() && scope_it->second.find(data_provider_->labelClassId(label_id))
-                                             == scope_it->second.end())
+        const int64_t class_id = data_provider_->labelClassId(label_id);
+        if (!scope_it->second.empty() && scope_it->second.find(class_id) == scope_it->second.end())
             continue;
 
         const QFileInfo image_info(data_provider_->imagePath(image_id));
@@ -376,7 +381,57 @@ void RoiClusterController::collectClusterItems(Request &request,
                                   data_provider_->labelData(label_id), item))
             continue;
 
+        dataset_ids.insert(dataset_id);
+        if (class_id >= 0)
+            class_ids.insert(class_id);
+
         request.items.push_back(std::move(item));
+    }
+
+    QStringList dataset_names;
+    for (const int64_t did : dataset_ids)
+    {
+        const QString name = data_provider_->datasetName(did).trimmed();
+        dataset_names.append(name.isEmpty() ? QString::number(did) : name);
+    }
+    dataset_names.sort();
+
+    QStringList class_names;
+    for (const int64_t cid : class_ids)
+    {
+        const QString name = data_provider_->labelClassName(cid).trimmed();
+        class_names.append(name.isEmpty() ? QString::number(cid) : name);
+    }
+    class_names.sort();
+
+    if (dataset_names.isEmpty())
+    {
+        request.dataset_info = QStringLiteral("数据集: [无]");
+    }
+    else if (dataset_names.size() <= 5)
+    {
+        request.dataset_info = QStringLiteral("数据集: [%1]").arg(dataset_names.join(QStringLiteral(", ")));
+    }
+    else
+    {
+        request.dataset_info = QStringLiteral("数据集: [%1 等共 %2 个数据集]")
+                                  .arg(dataset_names.mid(0, 5).join(QStringLiteral(", ")))
+                                  .arg(dataset_names.size());
+    }
+
+    if (class_names.isEmpty())
+    {
+        request.class_info = QStringLiteral("类别: [无]");
+    }
+    else if (class_names.size() <= 5)
+    {
+        request.class_info = QStringLiteral("类别: [%1]").arg(class_names.join(QStringLiteral(", ")));
+    }
+    else
+    {
+        request.class_info = QStringLiteral("类别: [%1 等共 %2 个类别]")
+                                .arg(class_names.mid(0, 5).join(QStringLiteral(", ")))
+                                .arg(class_names.size());
     }
 }
 
@@ -489,8 +544,18 @@ void RoiClusterController::startProgress(const Request &request)
     setRunning(true);
     current_cluster_task_id_ = QStringLiteral("roi_cluster_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
     ui::ProgressManager::getInstance()->startTask(QString("标注聚类"), current_cluster_task_id_);
-    addProgressMessage(spdlog::level::info,
-                       QString("开始标注聚类: %1 个标注").arg(request.items.size()));
+    const QString progress_msg = QString("开始标注聚类: %1 个标注, %2, %3")
+                                     .arg(request.items.size())
+                                     .arg(request.dataset_info)
+                                     .arg(request.class_info);
+    addProgressMessage(spdlog::level::info, progress_msg);
+    spdlog::info("开始标注聚类: {} 个标注, {}, {}, 模型: {}, 特征: {}, 最小簇大小: {}",
+                 request.items.size(),
+                 request.dataset_info.toUtf8().constData(),
+                 request.class_info.toUtf8().constData(),
+                 request.config.model_name,
+                 request.config.feature_name,
+                 request.config.hdbscan.min_cluster_size);
 }
 
 void RoiClusterController::finishProgress(const bool success, const QString &message)
@@ -513,7 +578,10 @@ void RoiClusterController::finishCluster(const Response &response)
         last_summary_.clear();
         emit resultsChanged();
         setLastError(response.error);
-        spdlog::error("标注聚类失败: {}, 耗时 {}", response.error.toUtf8().constData(),
+        spdlog::error("标注聚类失败: {}, {}, {}, 耗时: {}",
+                      response.error.toUtf8().constData(),
+                      response.dataset_info.toUtf8().constData(),
+                      response.class_info.toUtf8().constData(),
                       formatElapsed(response.elapsed_ms).toUtf8().constData());
         finishProgress(false, QString("%1, 耗时 %2").arg(response.error, formatElapsed(response.elapsed_ms)));
         ui::SignalHelper::notifyError(QString("标注聚类失败"), response.error);
@@ -530,7 +598,10 @@ void RoiClusterController::finishCluster(const Response &response)
         last_summary_.clear();
         emit resultsChanged();
         setLastError(err_msg);
-        spdlog::error("标注聚类失败: {}, 耗时 {}", err_msg.toUtf8().constData(),
+        spdlog::error("标注聚类失败: {}, {}, {}, 耗时: {}",
+                      err_msg.toUtf8().constData(),
+                      response.dataset_info.toUtf8().constData(),
+                      response.class_info.toUtf8().constData(),
                       formatElapsed(response.elapsed_ms).toUtf8().constData());
         finishProgress(false, QString("%1, 耗时 %2").arg(err_msg, formatElapsed(response.elapsed_ms)));
         ui::SignalHelper::notifyError(QString("标注聚类失败"), err_msg);
@@ -546,7 +617,10 @@ void RoiClusterController::finishCluster(const Response &response)
         last_summary_ += QString("，跳过噪声 %1 个").arg(static_cast<qlonglong>(skipped_noise_count));
 
     setLastError(QString());
-    spdlog::info("标注聚类完成: {}, 耗时 {}", last_summary_.toUtf8().constData(),
+    spdlog::info("标注聚类完成: {}, {}, {}, 总耗时: {}",
+                 last_summary_.toUtf8().constData(),
+                 response.dataset_info.toUtf8().constData(),
+                 response.class_info.toUtf8().constData(),
                  formatElapsed(response.elapsed_ms).toUtf8().constData());
     finishProgress(true, QString("%1, 耗时 %2").arg(last_summary_, formatElapsed(response.elapsed_ms)));
     ui::SignalHelper::notifySuccess(QString("标注聚类完成"), last_summary_);

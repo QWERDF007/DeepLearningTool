@@ -508,11 +508,13 @@ void SearchControllerBase::startProgress(const SearchRequest &request)
     setRunning(true);
     current_search_task_id_ = QStringLiteral("search_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
     ui::ProgressManager::getInstance()->startTask(searchDisplayName(), current_search_task_id_);
-    addProgressMessage(spdlog::level::info, QString("开始%1: 查询 %2 项, 搜索库 %3 项, TopK=%4")
-                                                .arg(searchDisplayName())
-                                                .arg(queryItemCount(request))
-                                                .arg(galleryItemCount(request))
-                                                .arg(request.top_k));
+    const QString msg = QString("开始%1: 查询 %2 项, 搜索库 %3 项, TopK=%4")
+                            .arg(searchDisplayName())
+                            .arg(queryItemCount(request))
+                            .arg(galleryItemCount(request))
+                            .arg(request.top_k);
+    addProgressMessage(spdlog::level::info, msg);
+    spdlog::info(msg.toUtf8().constData());
 }
 
 void SearchControllerBase::finishProgress(bool success, const QString &message)

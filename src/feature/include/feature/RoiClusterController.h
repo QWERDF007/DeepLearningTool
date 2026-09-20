@@ -80,6 +80,9 @@ private:
         std::chrono::steady_clock::time_point started_at;
         std::shared_ptr<std::atomic_bool> cancellation_token;
 
+        QString dataset_info;
+        QString class_info;
+
         bool cancellationRequested() const noexcept
         {
             return cancellation_token != nullptr && cancellation_token->load(std::memory_order_relaxed);
@@ -99,6 +102,9 @@ private:
         int64_t noise_count{0};
 
         std::vector<irt::features::RoiClusterAssignment> assignments;
+
+        QString dataset_info;
+        QString class_info;
     };
 
     void buildRequest(Request &request) const;

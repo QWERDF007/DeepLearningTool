@@ -523,7 +523,25 @@ void ImageClusterController::startProgress(const ClusterRequest &request)
     setRunning(true);
     current_cluster_task_id_ = QStringLiteral("image_cluster_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
     ui::ProgressManager::getInstance()->startTask(QString("图像聚类"), current_cluster_task_id_);
-    addProgressMessage(spdlog::level::info, QString("开始图像聚类: %1 张图像").arg(request.items.size()));
+
+    QStringList dataset_names;
+    for (const auto &[_, name] : request.frozen_source_dataset_names)
+    {
+        dataset_names.append(name);
+    }
+    dataset_names.sort();
+    const QString dataset_info = dataset_names.isEmpty()
+                                     ? QStringLiteral("数据集: [无]")
+                                     : QStringLiteral("数据集: [%1]").arg(dataset_names.join(QStringLiteral(", ")));
+
+    addProgressMessage(spdlog::level::info,
+                       QString("开始图像聚类: %1 张图像, %2").arg(request.items.size()).arg(dataset_info));
+    spdlog::info("开始图像聚类: {} 张图像, {}, 模型: {}, 特征: {}, 最小簇大小: {}",
+                 request.items.size(),
+                 dataset_info.toUtf8().constData(),
+                 request.config.model_name,
+                 request.config.feature_name,
+                 request.config.hdbscan.min_cluster_size);
 }
 
 void ImageClusterController::finishProgress(bool success, const QString &message)
@@ -542,6 +560,16 @@ void ImageClusterController::finishCluster(const ClusterResponse &response)
     if (response.request_id != current_request_id_.load(std::memory_order_acquire))
         return;
 
+    QStringList dataset_names;
+    for (const auto &[_, name] : response.frozen_source_dataset_names)
+    {
+        dataset_names.append(name);
+    }
+    dataset_names.sort();
+    const QString dataset_info = dataset_names.isEmpty()
+                                     ? QStringLiteral("数据集: [无]")
+                                     : QStringLiteral("数据集: [%1]").arg(dataset_names.join(QStringLiteral(", ")));
+
     if (!response.success)
     {
         setRunning(false);
@@ -549,7 +577,8 @@ void ImageClusterController::finishCluster(const ClusterResponse &response)
         last_summary_.clear();
         emit resultsChanged();
         setLastError(response.error);
-        spdlog::error("图像聚类失败: {}, 耗时 {}", response.error.toUtf8().constData(),
+        spdlog::error("图像聚类失败: {}, {}, 耗时: {}", response.error.toUtf8().constData(),
+                      dataset_info.toUtf8().constData(),
                       formatElapsed(response.elapsed_ms).toUtf8().constData());
         finishProgress(false, QString("%1, 耗时 %2").arg(response.error, formatElapsed(response.elapsed_ms)));
         ui::SignalHelper::notifyError(QString("图像聚类失败"), response.error);
