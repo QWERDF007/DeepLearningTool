@@ -12,9 +12,9 @@ SidebarPanelBase {
     title: "图像增强："
     leftMargin: 8
     rightMargin: 8
-    topMargin: 8
-    bottomMargin: 8
-    spacing: 12
+    topMargin: 5
+    bottomMargin: 5
+    spacing: 5
 
     // 组件属性
     property real zoomValue: 1.0
@@ -41,7 +41,7 @@ SidebarPanelBase {
     ColumnLayout {
         id: mainLayout
         anchors.fill: parent
-        spacing: 12
+        spacing: 5
 
         // 缩放控制区域
         ImageAdjustmentRow {

@@ -14,9 +14,9 @@ SidebarPanelBase {
     title: "图库显示："
     leftMargin: 8
     rightMargin: 8
-    topMargin: 8
-    bottomMargin: 8
-    spacing: 12
+    topMargin: 5
+    bottomMargin: 5
+    spacing: 5
 
     property real imageCellScale: 1.0
     property real imageCellScaleFrom: 0.5
@@ -33,7 +33,7 @@ SidebarPanelBase {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 12
+        spacing: 5
 
         ImageAdjustmentRow {
             Layout.fillWidth: true
