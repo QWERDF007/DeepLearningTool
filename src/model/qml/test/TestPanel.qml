@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import dltool.ui
@@ -19,12 +19,13 @@ Item {
     property ITestParams testParams: testTaskManager ? testTaskManager.currentTestParams
                                                        : (selectedModel && selectedModel.config ? selectedModel.config.testParams : null)
     property bool modelBusy: testTaskManager ? testTaskManager.currentModelBusy : false
+    readonly property bool hasModel: !!selectedModel && currentModelUuid.length > 0
 
     // Evaluation is lazy: it starts only when this page is visible, a model is
     // selected and the evaluation section is expanded.  Results stay cached in
     // memory; parameter changes and manual refresh re-evaluate.
     function requestLazyEvaluation() {
-        if (!testPanel.visible || testPanel.currentModelUuid.length === 0 || !evaluationExpander.expand)
+        if (!testPanel.visible || !testPanel.hasModel || !evaluationExpander.expand)
             return
         var evaluation = testPanel.testTaskManager ? testPanel.testTaskManager.currentEvaluation : null
         if (evaluation)
@@ -34,9 +35,20 @@ Item {
     onVisibleChanged: requestLazyEvaluation()
     onCurrentModelUuidChanged: requestLazyEvaluation()
 
+    QuiText {
+        anchors.centerIn: parent
+        width: Math.max(parent.width - 32, 0)
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.Wrap
+        color: QuiColor.FontDark
+        text: qsTr("请选择模型后设置测试任务")
+        visible: !testPanel.hasModel
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 5
+        visible: testPanel.hasModel
 
         TestTaskPanel {
             Layout.fillWidth: true
