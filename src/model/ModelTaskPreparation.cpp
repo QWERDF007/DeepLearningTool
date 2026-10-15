@@ -474,18 +474,35 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
         QStringLiteral("anomaly_values"),
         QStringLiteral("ignore_values"),
     };
-    for (const QString &field : mask_value_fields)
+    bool has_mask_fields = false;
+    for (const QString &split : {QStringLiteral("train"), QStringLiteral("validation"), QStringLiteral("test")})
     {
-        QStringList collected;
-        for (const QString &split : {QStringLiteral("train"), QStringLiteral("validation"), QStringLiteral("test")})
+        const QVariantMap split_map = datasets.value(split).toMap();
+        for (const QString &field : mask_value_fields)
         {
-            const QString value = datasets.value(split).toMap().value(field).toString();
-            for (const QString &part : value.split(QChar(','), Qt::SkipEmptyParts))
-                if (!collected.contains(part))
-                    collected.push_back(part);
+            if (split_map.contains(field))
+            {
+                has_mask_fields = true;
+                break;
+            }
         }
-        if (!collected.isEmpty())
+        if (has_mask_fields)
+            break;
+    }
+    if (has_mask_fields)
+    {
+        for (const QString &field : mask_value_fields)
+        {
+            QStringList collected;
+            for (const QString &split : {QStringLiteral("train"), QStringLiteral("validation"), QStringLiteral("test")})
+            {
+                const QString value = datasets.value(split).toMap().value(field).toString();
+                for (const QString &part : value.split(QChar(','), Qt::SkipEmptyParts))
+                    if (!collected.contains(part))
+                        collected.push_back(part);
+            }
             process_spec.arguments << QStringLiteral("--") + field << collected.join(QChar(','));
+        }
     }
     process_spec.arguments << QStringLiteral("--dltool_task_host") << request.task_server_host
                            << QStringLiteral("--dltool_task_port") << QString::number(request.task_server_port)

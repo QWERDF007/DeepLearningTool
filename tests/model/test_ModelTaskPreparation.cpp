@@ -310,6 +310,21 @@ private slots:
         QVERIFY(spec.arguments.contains(QStringLiteral("--test_file_list")));
         QVERIFY(QFileInfo::exists(storage.testTaskFileListPath(QStringLiteral("few-shot"), QStringLiteral("fs_sam2"))));
 
+        const FrameworkDefinition dinomaly
+            = frameworkFor(QStringLiteral("dinomaly2"), temp.path(), train_script, test_script, box_script);
+        ModelTaskRequest dinomaly_request = baseRequest(dinomaly, QStringLiteral("dinomaly-model"));
+        dinomaly_request.task_type = ModelTaskType::Train;
+        dinomaly_request.scope_uuid = QStringLiteral("dinomaly-scope");
+        dinomaly_request.model_config.task_directory = QStringLiteral("dinomaly-1");
+        dinomaly_request.selections.train.dataset_ids.insert(7);
+        spec = {};
+        QVERIFY2(prepareModelTask(static_cast<int>(evaluation::Method::Detection), temp.path(), dinomaly_request, &source, spec,
+                                   &error),
+                 qPrintable(error));
+        QVERIFY(hasArgumentPair(spec.arguments, QStringLiteral("--good_values"), QStringLiteral("")));
+        QVERIFY(hasArgumentPair(spec.arguments, QStringLiteral("--anomaly_values"), QStringLiteral("10")));
+        QVERIFY(hasArgumentPair(spec.arguments, QStringLiteral("--ignore_values"), QStringLiteral("")));
+
         settings->setFieldValue(dltool::settings::generated::field::Software::PythonEnvPath, old_python);
         settings->setAutoSaveEnabled(old_auto_save);
     }
