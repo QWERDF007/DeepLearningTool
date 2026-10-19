@@ -36,6 +36,7 @@ inline int runAllCppTests(int argc, char **argv)
                     continue;
                 QByteArray       method_name = method.name();
                 if (method_name == "initTestCase" || method_name == "cleanupTestCase"
+                    || method_name == "init" || method_name == "cleanup"
                     || method_name.startsWith("_q_"))
                     continue;
                 QObject *single_test = factory();

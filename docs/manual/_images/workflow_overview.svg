@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 180" width="100%" height="auto">
+  <defs>
+    <linearGradient id="boxGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#009688" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#009688" stop-opacity="0.04"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#009688"/>
+    </marker>
+    <style>
+      .step-box { fill: url(#boxGrad); stroke: #009688; stroke-width: 1.5; rx: 8px; }
+      .step-num { font-family: "Microsoft YaHei", -apple-system, sans-serif; font-size: 13px; font-weight: bold; fill: #009688; }
+      .step-title { font-family: "Microsoft YaHei", -apple-system, sans-serif; font-size: 15px; font-weight: 600; fill: #1f2937; }
+      .step-desc { font-family: "Microsoft YaHei", -apple-system, sans-serif; font-size: 12px; fill: #4b5563; }
+      .conn-line { stroke: #009688; stroke-width: 1.8; fill: none; marker-end: url(#arrow); }
+      @media (prefers-color-scheme: dark) {
+        .step-title { fill: #f3f4f6; }
+        .step-desc { fill: #9ca3af; }
+      }
+    </style>
+  </defs>
+
+  <!-- Step 1: 项目 -->
+  <g transform="translate(10, 20)">
+    <rect class="step-box" width="115" height="135"/>
+    <text class="step-num" x="12" y="30">01</text>
+    <text class="step-title" x="12" y="55">项目管理</text>
+    <text class="step-desc" x="12" y="82">创建/打开项目</text>
+    <text class="step-desc" x="12" y="104">确定任务类型</text>
+  </g>
+  <path class="conn-line" d="M 125 87 L 142 87"/>
+
+  <!-- Step 2: 图库 -->
+  <g transform="translate(142, 20)">
+    <rect class="step-box" width="115" height="135"/>
+    <text class="step-num" x="12" y="30">02</text>
+    <text class="step-title" x="12" y="55">图库管理</text>
+    <text class="step-desc" x="12" y="82">导入样本图像</text>
+    <text class="step-desc" x="12" y="104">管理图像集</text>
+  </g>
+  <path class="conn-line" d="M 257 87 L 274 87"/>
+
+  <!-- Step 3: 标注 -->
+  <g transform="translate(274, 20)">
+    <rect class="step-box" width="115" height="135"/>
+    <text class="step-num" x="12" y="30">03</text>
+    <text class="step-title" x="12" y="55">数据标注</text>
+    <text class="step-desc" x="12" y="82">添加目标标签</text>
+    <text class="step-desc" x="12" y="104">绘制标注区域</text>
+  </g>
+  <path class="conn-line" d="M 389 87 L 406 87"/>
+
+  <!-- Step 4: 检查 -->
+  <g transform="translate(406, 20)">
+    <rect class="step-box" width="115" height="135"/>
+    <text class="step-num" x="12" y="30">04</text>
+    <text class="step-title" x="12" y="55">标注检查</text>
+    <text class="step-desc" x="12" y="82">质量审查过滤</text>
+    <text class="step-desc" x="12" y="104">修正争议标签</text>
+  </g>
+  <path class="conn-line" d="M 521 87 L 538 87"/>
+
+  <!-- Step 5: 训练 -->
+  <g transform="translate(538, 20)">
+    <rect class="step-box" width="115" height="135"/>
+    <text class="step-num" x="12" y="30">05</text>
+    <text class="step-title" x="12" y="55">模型训练</text>
+    <text class="step-desc" x="12" y="82">配置超参数</text>
+    <text class="step-desc" x="12" y="104">监控训练收敛</text>
+  </g>
+  <path class="conn-line" d="M 653 87 L 670 87"/>
+
+  <!-- Step 6: 评估 -->
+  <g transform="translate(670, 20)">
+    <rect class="step-box" width="115" height="135"/>
+    <text class="step-num" x="12" y="30">06</text>
+    <text class="step-title" x="12" y="55">模型评估</text>
+    <text class="step-desc" x="12" y="82">验证集指标</text>
+    <text class="step-desc" x="12" y="104">混淆矩阵分析</text>
+  </g>
+  <path class="conn-line" d="M 785 87 L 802 87"/>
+
+  <!-- Step 7: 导出 -->
+  <g transform="translate(802, 20)">
+    <rect class="step-box" width="108" height="135"/>
+    <text class="step-num" x="12" y="30">07</text>
+    <text class="step-title" x="12" y="55">模型导出</text>
+    <text class="step-desc" x="12" y="82">生成部署文件</text>
+    <text class="step-desc" x="12" y="104">落地生产推理</text>
+  </g>
+</svg>

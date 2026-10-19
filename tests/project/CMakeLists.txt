@@ -40,6 +40,7 @@ set(_project_path_updates
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Qml>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Gui>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    "PATH=path_list_prepend:${OpenCV_BIN_DIR}"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:quickui>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_ui>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_common>"

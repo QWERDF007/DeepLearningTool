@@ -3,6 +3,8 @@
 #include "data/DataFormat.h"
 #include "data/DataIO.h"
 #include "data/DataManager.h"
+#include "data/DataViewModels.h"
+#include "data/LabelClasses.h"
 #include "database/DataBase.h"
 #include "ui/ProgressManager.h"
 
@@ -504,6 +506,83 @@ private slots:
         QCOMPARE(class_counts.value(QStringLiteral("MT_Crack")), 6);
         QVERIFY(QDir(PersistentProjectFixture::imageRoot()).exists());
         QVERIFY(QDir(PersistentProjectFixture::maskRoot()).exists());
+    }
+
+    void reclassifiesLabelsInInspectionAndPersists()
+    {
+        int64_t target_label_id = -1;
+        int crack_class_id = -1;
+        int blowhole_class_id = -1;
+
+        // 第一会话：在检查视图中修改标注类别并确认内存模型更新
+        {
+            PersistentProjectFixture fixture;
+            QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+            auto *data_mgr = fixture.dataManager();
+            QVERIFY(data_mgr != nullptr);
+
+            auto *label_instances = data_mgr->labelInstances();
+            auto *info_model = data_mgr->selectedLabelsInfo();
+            auto *label_classes = data_mgr->labelClasses();
+            QVERIFY(label_instances != nullptr);
+            QVERIFY(info_model != nullptr);
+            QVERIFY(label_classes != nullptr);
+
+            crack_class_id = label_classes->getLabelClassId(QStringLiteral("MT_Crack"));
+            blowhole_class_id = label_classes->getLabelClassId(QStringLiteral("MT_Blowhole"));
+            QVERIFY(crack_class_id >= 0);
+            QVERIFY(blowhole_class_id >= 0);
+
+            int target_row = -1;
+            for (int r = 0; r < label_instances->rowCount(); ++r)
+            {
+                if (label_instances->data(label_instances->index(r, 0), dltool::data::LabelInstancesViewModel::LabelClassIdRole).toLongLong() == crack_class_id)
+                {
+                    target_row = r;
+                    target_label_id = label_instances->data(label_instances->index(r, 0), dltool::data::LabelInstancesViewModel::LabelIdRole).toLongLong();
+                    break;
+                }
+            }
+            QVERIFY(target_row >= 0);
+            QVERIFY(target_label_id > 0);
+
+            label_instances->selection()->select(label_instances->index(target_row, 0),
+                                                 QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+            info_model->refresh();
+            QVERIFY(info_model->hasSelection());
+            QCOMPARE(info_model->selectedCount(), 1);
+            QCOMPARE(info_model->currentClassId(), static_cast<qint64>(crack_class_id));
+
+            info_model->changeSelectedLabelsClass(blowhole_class_id);
+            info_model->refresh();
+            QCOMPARE(info_model->currentClassId(), static_cast<qint64>(blowhole_class_id));
+            QCOMPARE(label_instances->data(label_instances->index(target_row, 0), dltool::data::LabelInstancesViewModel::LabelClassIdRole).toLongLong(), static_cast<qint64>(blowhole_class_id));
+        }
+        // fixture 已析构并触发 closeProject()，原项目会话已完全结束
+
+        // 第二会话：重新从磁盘打开项目，验证数据落盘并在新会话中正确反序列化
+        {
+            PersistentProjectFixture reopened;
+            QVERIFY2(reopened.isValid(), qPrintable(reopened.error()));
+            auto *reopened_instances = reopened.dataManager()->labelInstances();
+            QVERIFY(reopened_instances != nullptr);
+
+            int reopened_row = -1;
+            for (int r = 0; r < reopened_instances->rowCount(); ++r)
+            {
+                if (reopened_instances->data(reopened_instances->index(r, 0), dltool::data::LabelInstancesViewModel::LabelIdRole).toLongLong() == target_label_id)
+                {
+                    reopened_row = r;
+                    break;
+                }
+            }
+            QVERIFY(reopened_row >= 0);
+            QCOMPARE(reopened_instances->data(reopened_instances->index(reopened_row, 0), dltool::data::LabelInstancesViewModel::LabelClassIdRole).toLongLong(), static_cast<qint64>(blowhole_class_id));
+
+            // 复原类别以维护测试夹具一致性
+            reopened.dataManager()->updateLabelsClass({target_label_id}, {crack_class_id});
+        }
     }
 };
 

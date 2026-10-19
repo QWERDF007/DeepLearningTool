@@ -12,6 +12,8 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.parse
+from html.parser import HTMLParser
 from pathlib import Path
 
 if str(Path(__file__).resolve().parent) not in sys.path:
@@ -73,6 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--build", action="store_true", help="Build the configured CMake tree before packaging.")
     parser.add_argument("--parallel", type=int, default=4, help="Build parallelism when --build is enabled (default: 4).")
     parser.add_argument("--skip-verify", action="store_true", help="Skip post-package runtime layout verification.")
+    parser.add_argument("--skip-docs", action="store_true", help="Skip packaging and verifying offline documentation.")
     return parser.parse_args()
 
 
@@ -281,13 +284,51 @@ def copy_easytrain_python_runtime(install_dir: Path) -> None:
     print(f"copy {source} -> {target}")
 
 
+from build_docs import (
+    DOC_DIR_NAME,
+    DOC_ENTRY_FILE,
+    DOC_INDEX_JS,
+    DOC_REL_PATH,
+    DOC_SEARCH_FILE,
+    build_docs,
+    extract_css_references,
+    is_inside_directory,
+    parse_srcset_urls,
+    scan_css_content,
+    verify_documentation_integrity,
+)
+
+
+def build_documentation(build_dir: Path, repo_root: Path = REPO_ROOT) -> Path:
+    """以全新干净输出构建离线手册，直接复用 tools/build_docs.py。"""
+    source_dir = repo_root / "docs" / "manual"
+    output_dir = build_dir / "bin" / DOC_DIR_NAME
+    return build_docs(source_dir=source_dir, output_dir=output_dir)
+
+
+def copy_documentation(build_dir: Path, install_dir: Path) -> None:
+    """复制离线用户手册到发布包根目录。"""
+
+    source = build_dir / "bin" / DOC_DIR_NAME
+    if not source.is_dir() or not (source / DOC_ENTRY_FILE).is_file():
+        raise RuntimeError(
+            f"documentation directory was not found or incomplete: {source}. "
+            "Ensure dltool_docs target was built before packaging."
+        )
+    target = install_dir / DOC_DIR_NAME
+    if target.exists():
+        shutil.rmtree(target)
+    shutil.copytree(source, target, ignore=shutil.ignore_patterns(".doctrees", ".buildinfo"))
+    print(f"copy {source} -> {target}")
+
+
 def copy_yaml_dependencies(
     build_dir: Path,
     install_dir: Path,
     dependency_file: Path,
     config: str,
     allow_missing: bool = False,
-) -> None:
+) -> list[str]:
     """按 YAML 清单复制第三方运行库。"""
 
     # 第三方运行库统一由 dependencies.yaml 声明，release 打包会跳过 config: debug 的条目。
@@ -338,6 +379,7 @@ def copy_yaml_dependencies(
         if not allow_missing:
             raise RuntimeError(message)
         warn(message)
+    return missing_dependencies
 
 
 def version_key(path: Path) -> tuple[int, ...]:
@@ -534,6 +576,7 @@ def write_windows_marker(
     version: str,
     skip_dependencies: bool,
     include_qml_module_dir: bool,
+    state: str = "complete",
 ) -> None:
     """写入 Windows 发布包 marker 文件。"""
 
@@ -542,6 +585,7 @@ def write_windows_marker(
         build_dir,
         version,
         (
+            f"state={state}",
             f"architecture={architecture}",
             f"skip_dependencies={int(skip_dependencies)}",
             f"include_qml_module_dir={int(include_qml_module_dir)}",
@@ -775,6 +819,7 @@ def verify_package(
     build_dir: Path,
     require_qt_runtime: bool,
     expected_version: str | None = None,
+    require_docs: bool = False,
 ) -> None:
     """校验发布包包含可启动应用所需的文件且不含构建目录链接。"""
 
@@ -823,6 +868,9 @@ def verify_package(
         problems.append("package contains release-paired debug DLLs: " + ", ".join(debug_files))
     if invalid_version:
         problems.append(f"marker version does not match {expected_version}")
+    if require_docs:
+        doc_problems = verify_documentation_integrity(install_dir / DOC_DIR_NAME)
+        problems.extend(doc_problems)
     if problems:
         raise RuntimeError("package verification failed: " + "; ".join(problems))
 
@@ -854,18 +902,44 @@ def main() -> int:
     copy_settings_config(install_dir)
     copy_model_configs(install_dir)
     copy_easytrain_python_runtime(install_dir)
+    if args.skip_docs:
+        print("skip documentation")
+    else:
+        build_documentation(build_dir)
+        copy_documentation(build_dir, install_dir)
 
+    manifest_missing = False
+    missing_deps: list[str] = []
     # 外部运行库先按 YAML 复制，再由平台相关逻辑补 Qt、MSVC 或 ELF 依赖。
     if args.skip_dependencies:
         print("skip dependencies")
     elif dependency_file.is_file():
-        copy_yaml_dependencies(build_dir, install_dir, dependency_file, args.config, args.allow_missing_dependencies)
+        missing_deps = copy_yaml_dependencies(build_dir, install_dir, dependency_file, args.config, args.allow_missing_dependencies)
     else:
         message = f"dependency manifest was not found: {dependency_file}"
+        manifest_missing = True
         if args.allow_missing_dependencies:
             warn(message)
         else:
             raise RuntimeError(message)
+
+    skipped = []
+    if args.skip_docs:
+        skipped.append("--skip-docs")
+    if args.skip_dependencies:
+        skipped.append("--skip-dependencies")
+    if args.skip_windeployqt:
+        skipped.append("--skip-windeployqt")
+    if args.skip_system_libs:
+        skipped.append("--skip-system-libs")
+    if args.skip_verify:
+        skipped.append("--skip-verify")
+    if manifest_missing:
+        skipped.append("missing-manifest")
+    if missing_deps:
+        skipped.append(f"missing-dependencies({len(missing_deps)})")
+
+    is_complete_release = len(skipped) == 0
 
     if platform_key() == "windows":
         arch = target_architecture(build_dir)
@@ -876,11 +950,35 @@ def main() -> int:
             copy_windows_sdk_dependencies(install_dir, arch)
         invoke_windeployqt(build_dir, install_dir, packaged_exe, args.windeployqt, args.skip_windeployqt)
         cleanup_release_debug_artifacts(install_dir)
-        write_windows_marker(install_dir, build_dir, arch, version, args.skip_dependencies, args.include_qml_module_dir)
+        # 门禁校验前先保留 incomplete 标记，校验抛出异常时绝不遗留 state=complete
+        write_windows_marker(
+            install_dir,
+            build_dir,
+            arch,
+            version,
+            args.skip_dependencies,
+            args.include_qml_module_dir,
+            state="incomplete",
+        )
         if not args.skip_verify:
-            verify_package(install_dir, build_dir, not args.skip_windeployqt, version)
-        print(f"\npackage complete: {install_dir}")
-        print(f"double-click to run: {packaged_exe}")
+            verify_package(install_dir, build_dir, not args.skip_windeployqt, version, not args.skip_docs)
+        if is_complete_release:
+            # 仅在所有门禁与校验均成功通过后，才正式提交 complete 状态
+            write_windows_marker(
+                install_dir,
+                build_dir,
+                arch,
+                version,
+                args.skip_dependencies,
+                args.include_qml_module_dir,
+                state="complete",
+            )
+            print(f"\npackage complete: {install_dir}")
+            print(f"double-click to run: {packaged_exe}")
+        else:
+            print(f"\n[WARNING] Incomplete package created: {install_dir} (NOT an official release package)")
+            print(f"[WARNING] Skipped components: {', '.join(skipped)}")
+            print(f"double-click to run: {packaged_exe}")
     else:
         if not args.skip_windeployqt:
             copy_unix_qt_runtime(build_dir, install_dir, args.qt_root)
@@ -888,11 +986,19 @@ def main() -> int:
         patch_rpath_if_possible(install_dir)
         write_unix_launcher(install_dir)
         write_qt_conf(install_dir)
-        write_package_marker(install_dir, build_dir, version)
+        # 门禁校验前先保留 incomplete 标记
+        write_package_marker(install_dir, build_dir, version, ("state=incomplete",))
         if not args.skip_verify:
-            verify_package(install_dir, build_dir, not args.skip_windeployqt, version)
-        print(f"\npackage complete: {install_dir}")
-        print(f"run on Linux/macOS: {install_dir / f'run_{PROJECT_NAME}.sh'}")
+            verify_package(install_dir, build_dir, not args.skip_windeployqt, version, not args.skip_docs)
+        if is_complete_release:
+            # 仅在所有门禁与校验均成功通过后，才正式提交 complete 状态
+            write_package_marker(install_dir, build_dir, version, ("state=complete",))
+            print(f"\npackage complete: {install_dir}")
+            print(f"run on Linux/macOS: {install_dir / f'run_{PROJECT_NAME}.sh'}")
+        else:
+            print(f"\n[WARNING] Incomplete package created: {install_dir} (NOT an official release package)")
+            print(f"[WARNING] Skipped components: {', '.join(skipped)}")
+            print(f"run on Linux/macOS: {install_dir / f'run_{PROJECT_NAME}.sh'}")
     return 0
 
 

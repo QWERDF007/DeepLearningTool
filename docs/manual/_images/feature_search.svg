@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 160" width="100%" height="auto">
+  <defs>
+    <linearGradient id="featGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#009688" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#009688" stop-opacity="0.03"/>
+    </linearGradient>
+    <marker id="featArrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#009688"/>
+    </marker>
+    <style>
+      .box { fill: url(#featGrad); stroke: #009688; stroke-width: 1.5; rx: 8px; }
+      .title { font-family: "Microsoft YaHei", -apple-system, sans-serif; font-size: 15px; font-weight: bold; fill: #1f2937; }
+      .desc { font-family: "Microsoft YaHei", -apple-system, sans-serif; font-size: 12px; fill: #4b5563; }
+      .line { stroke: #009688; stroke-width: 1.8; fill: none; marker-end: url(#featArrow); }
+      @media (prefers-color-scheme: dark) {
+        .title { fill: #f3f4f6; }
+        .desc { fill: #9ca3af; }
+      }
+    </style>
+  </defs>
+
+  <g transform="translate(15, 20)">
+    <rect class="box" width="180" height="120"/>
+    <text class="title" x="16" y="38">1. 特征自动提取</text>
+    <text class="desc" x="16" y="66">后台异步深度表征提取</text>
+    <text class="desc" x="16" y="88">全图全局向量嵌入</text>
+    <text class="desc" x="16" y="108">ROI 缺陷局部细粒度特征</text>
+  </g>
+  <path class="line" d="M 195 80 L 225 80"/>
+
+  <g transform="translate(225, 20)">
+    <rect class="box" width="180" height="120"/>
+    <text class="title" x="16" y="38">2. 以图搜图 / 区域搜图</text>
+    <text class="desc" x="16" y="66">FAISS 毫秒级近邻检索</text>
+    <text class="desc" x="16" y="88">框选任意异常区域</text>
+    <text class="desc" x="16" y="108">快速找回相似历史工件</text>
+  </g>
+  <path class="line" d="M 405 80 L 435 80"/>
+
+  <g transform="translate(435, 20)">
+    <rect class="box" width="180" height="120"/>
+    <text class="title" x="16" y="38">3. 特征聚类与辅助归纳</text>
+    <text class="desc" x="16" y="66">无监督自动分簇聚合</text>
+    <text class="desc" x="16" y="88">相似缺陷自动成组</text>
+    <text class="desc" x="16" y="108">快速制定并校验分类体系</text>
+  </g>
+  <path class="line" d="M 615 80 L 645 80"/>
+
+  <g transform="translate(645, 20)">
+    <rect class="box" width="190" height="120"/>
+    <text class="title" x="16" y="38">4. 少样本迁移学习</text>
+    <text class="desc" x="16" y="66">少量标样快速匹配定位</text>
+    <text class="desc" x="16" y="88">自适应特征加权度量</text>
+    <text class="desc" x="16" y="108">大幅缩短产线换线周期</text>
+  </g>
+</svg>

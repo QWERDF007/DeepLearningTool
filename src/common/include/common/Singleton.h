@@ -74,5 +74,7 @@ public:                                                              \
     {                                                                \
         Q_UNUSED(qmlEngine)                                          \
         Q_UNUSED(jsEngine)                                           \
-        return getInstance();                                        \
+        Class *inst = getInstance();                                 \
+        QQmlEngine::setObjectOwnership(inst, QQmlEngine::CppOwnership); \
+        return inst;                                                 \
     }

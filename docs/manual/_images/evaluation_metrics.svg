@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 160" width="100%" height="auto">
+  <defs>
+    <linearGradient id="evalGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#009688" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#009688" stop-opacity="0.03"/>
+    </linearGradient>
+    <marker id="evalArrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#009688"/>
+    </marker>
+    <style>
+      .box { fill: url(#evalGrad); stroke: #009688; stroke-width: 1.5; rx: 8px; }
+      .title { font-family: "Microsoft YaHei", -apple-system, sans-serif; font-size: 15px; font-weight: bold; fill: #1f2937; }
+      .desc { font-family: "Microsoft YaHei", -apple-system, sans-serif; font-size: 12px; fill: #4b5563; }
+      .line { stroke: #009688; stroke-width: 1.8; fill: none; marker-end: url(#evalArrow); }
+      @media (prefers-color-scheme: dark) {
+        .title { fill: #f3f4f6; }
+        .desc { fill: #9ca3af; }
+      }
+    </style>
+  </defs>
+
+  <g transform="translate(15, 20)">
+    <rect class="box" width="180" height="120"/>
+    <text class="title" x="16" y="38">1. 选定测试任务</text>
+    <text class="desc" x="16" y="66">关联目标训练权重</text>
+    <text class="desc" x="16" y="88">选择验证集或独立测试集</text>
+    <text class="desc" x="16" y="108">配置置信度与 IOU 阈值</text>
+  </g>
+  <path class="line" d="M 195 80 L 225 80"/>
+
+  <g transform="translate(225, 20)">
+    <rect class="box" width="180" height="120"/>
+    <text class="title" x="16" y="38">2. 混淆矩阵分析</text>
+    <text class="desc" x="16" y="66">TP / FP / FN / TN 矩阵</text>
+    <text class="desc" x="16" y="88">直观排查漏检与误报</text>
+    <text class="desc" x="16" y="108">类别间混淆交互诊断</text>
+  </g>
+  <path class="line" d="M 405 80 L 435 80"/>
+
+  <g transform="translate(435, 20)">
+    <rect class="box" width="180" height="120"/>
+    <text class="title" x="16" y="38">3. 宏观性能指标</text>
+    <text class="desc" x="16" y="66">Precision 查准率</text>
+    <text class="desc" x="16" y="88">Recall 召回率 / F1-Score</text>
+    <text class="desc" x="16" y="108">mAP / AUROC 异常得分</text>
+  </g>
+  <path class="line" d="M 615 80 L 645 80"/>
+
+  <g transform="translate(645, 20)">
+    <rect class="box" width="190" height="120"/>
+    <text class="title" x="16" y="38">4. 样本级明细与热力图</text>
+    <text class="desc" x="16" y="66">单图推理结果可视化叠加</text>
+    <text class="desc" x="16" y="88">异常区域热力图聚焦</text>
+    <text class="desc" x="16" y="108">真值与预测值对比校验</text>
+  </g>
+</svg>

@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 160" width="100%" height="auto">
+  <defs>
+    <linearGradient id="annoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#009688" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#009688" stop-opacity="0.03"/>
+    </linearGradient>
+    <marker id="annoArrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#009688"/>
+    </marker>
+    <style>
+      .box { fill: url(#annoGrad); stroke: #009688; stroke-width: 1.5; rx: 8px; }
+      .title { font-family: "Microsoft YaHei", -apple-system, sans-serif; font-size: 15px; font-weight: bold; fill: #1f2937; }
+      .desc { font-family: "Microsoft YaHei", -apple-system, sans-serif; font-size: 12px; fill: #4b5563; }
+      .line { stroke: #009688; stroke-width: 1.8; fill: none; marker-end: url(#annoArrow); }
+      @media (prefers-color-scheme: dark) {
+        .title { fill: #f3f4f6; }
+        .desc { fill: #9ca3af; }
+      }
+    </style>
+  </defs>
+
+  <g transform="translate(15, 20)">
+    <rect class="box" width="180" height="120"/>
+    <text class="title" x="16" y="38">1. 选择类别与工具</text>
+    <text class="desc" x="16" y="66">定义缺陷类别及专属色</text>
+    <text class="desc" x="16" y="88">左侧绘制工具 (F1~F5)</text>
+    <text class="desc" x="16" y="108">顶部实例操作工具栏</text>
+  </g>
+  <path class="line" d="M 195 80 L 225 80"/>
+
+  <g transform="translate(225, 20)">
+    <rect class="box" width="180" height="120"/>
+    <text class="title" x="16" y="38">2. 绘制定界图元</text>
+    <text class="desc" x="16" y="66">鼠标单击添加多边形顶点</text>
+    <text class="desc" x="16" y="88">双击或首尾相接自动闭合</text>
+    <text class="desc" x="16" y="108">智能点选即时生成掩膜</text>
+  </g>
+  <path class="line" d="M 405 80 L 435 80"/>
+
+  <g transform="translate(435, 20)">
+    <rect class="box" width="180" height="120"/>
+    <text class="title" x="16" y="38">3. 精细微调图元</text>
+    <text class="desc" x="16" y="66">拖拽顶点修改形状轮廓</text>
+    <text class="desc" x="16" y="88">在线段插入控制点</text>
+    <text class="desc" x="16" y="108">快捷移动或删除特定顶点</text>
+  </g>
+  <path class="line" d="M 615 80 L 645 80"/>
+
+  <g transform="translate(645, 20)">
+    <rect class="box" width="190" height="120"/>
+    <text class="title" x="16" y="38">4. 实例表格与持久化</text>
+    <text class="desc" x="16" y="66">实例列表即时同步高亮</text>
+    <text class="desc" x="16" y="88">隐藏 / 显示指定标注图层</text>
+    <text class="desc" x="16" y="108">SQLite 事务自动安全落盘</text>
+  </g>
+</svg>

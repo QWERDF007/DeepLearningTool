@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 160" width="100%" height="auto">
+  <defs>
+    <linearGradient id="projGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#009688" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#009688" stop-opacity="0.03"/>
+    </linearGradient>
+    <marker id="projArrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#009688"/>
+    </marker>
+    <style>
+      .box { fill: url(#projGrad); stroke: #009688; stroke-width: 1.5; rx: 8px; }
+      .title { font-family: "Microsoft YaHei", -apple-system, sans-serif; font-size: 15px; font-weight: bold; fill: #1f2937; }
+      .desc { font-family: "Microsoft YaHei", -apple-system, sans-serif; font-size: 12px; fill: #4b5563; }
+      .line { stroke: #009688; stroke-width: 1.8; fill: none; marker-end: url(#projArrow); }
+      @media (prefers-color-scheme: dark) {
+        .title { fill: #f3f4f6; }
+        .desc { fill: #9ca3af; }
+      }
+    </style>
+  </defs>
+
+  <g transform="translate(15, 20)">
+    <rect class="box" width="180" height="120"/>
+    <text class="title" x="16" y="38">1. 创建 / 打开项目</text>
+    <text class="desc" x="16" y="66">设定项目名与存储路径</text>
+    <text class="desc" x="16" y="88">选择深度学习视觉方法</text>
+    <text class="desc" x="16" y="108">生成 .dlpro 工程文件</text>
+  </g>
+  <path class="line" d="M 195 80 L 225 80"/>
+
+  <g transform="translate(225, 20)">
+    <rect class="box" width="180" height="120"/>
+    <text class="title" x="16" y="38">2. 初始化持久化存储</text>
+    <text class="desc" x="16" y="66">内置 SQLite 事务管理</text>
+    <text class="desc" x="16" y="88">设定样本图片基准路径</text>
+    <text class="desc" x="16" y="108">建立元数据索引结构</text>
+  </g>
+  <path class="line" d="M 405 80 L 435 80"/>
+
+  <g transform="translate(435, 20)">
+    <rect class="box" width="180" height="120"/>
+    <text class="title" x="16" y="38">3. 最近项目快速访问</text>
+    <text class="desc" x="16" y="66">记录最后修改时间 mtime</text>
+    <text class="desc" x="16" y="88">双击历史条目直接切换</text>
+    <text class="desc" x="16" y="108">自动验证路径有效性</text>
+  </g>
+  <path class="line" d="M 615 80 L 645 80"/>
+
+  <g transform="translate(645, 20)">
+    <rect class="box" width="190" height="120"/>
+    <text class="title" x="16" y="38">4. 项目激活与工作流</text>
+    <text class="desc" x="16" y="66">解锁图库、标注与模型</text>
+    <text class="desc" x="16" y="88">加载历史数据集与标注</text>
+    <text class="desc" x="16" y="108">关闭时安全释放执行器</text>
+  </g>
+</svg>

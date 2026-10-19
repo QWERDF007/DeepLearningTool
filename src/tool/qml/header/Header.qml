@@ -8,6 +8,7 @@ import dltool.project
 import dltool.data
 import dltool.feature
 import dltool.settings
+import dltool.tool
 import quickui
 
 Rectangle {
@@ -120,8 +121,30 @@ Rectangle {
                 RowLayout {
                     anchors.verticalCenter: parent.verticalCenter
                     QuiTextIconButton {
+                        id: helpButton
+                        objectName: "helpButton"
                         iconSource: QuiFontIcon.Help
                         text: "帮助"
+                        focusPolicy: Qt.StrongFocus
+                        onClicked: helpMenu.open()
+
+                        QuiMenu {
+                            id: helpMenu
+                            objectName: "helpMenu"
+                            y: helpButton.height + 4
+                            focus: true
+                            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent | Popup.CloseOnPressOutside
+                            onClosed: helpButton.forceActiveFocus()
+
+                            QuiMenuItem {
+                                objectName: "helpDocMenuItem"
+                                text: "文档"
+                                iconSource: QuiFontIcon.Document
+                                onTriggered: {
+                                    HelpController.openDocumentation()
+                                }
+                            }
+                        }
                     }
                     QuiTextIconButton {
                         iconSource: QuiFontIcon.Settings
