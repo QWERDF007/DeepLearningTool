@@ -45,54 +45,26 @@ SidebarPanelBase {
             onTriggered: fileListView.copyText(fileListView.contextFilePath)
         }
 
-        QuiMenu {
+        DatasetSubMenu {
             id: copyToDatasetMenu
             title: "复制到"
-            width: 200
-
-            Instantiator {
-                model: fileListView.dataManager ? fileListView.dataManager.datasets : null
-                delegate: QuiMenuItem {
-                    text: model.name
-                    iconSource: QuiFontIcon.Folder
-                    enabled: fileListView.dataManager && fileListView.selection && fileListView.selection.hasSelection
-                    onClicked: {
-                        if (fileListView.dataManager && fileListView.model) {
-                            fileListView.dataManager.copyToDataset(fileListView.model.getSelectedImagesId(), model.dataset_id)
-                        }
-                    }
-                }
-                onObjectAdded: function(index, object) {
-                    copyToDatasetMenu.insertItem(index, object)
-                }
-                onObjectRemoved: function(index, object) {
-                    copyToDatasetMenu.removeItem(object)
+            dataManager: fileListView.dataManager
+            itemEnabled: fileListView.dataManager && fileListView.selection && fileListView.selection.hasSelection
+            onDatasetTriggered: function(datasetId) {
+                if (fileListView.dataManager && fileListView.model) {
+                    fileListView.dataManager.copyToDataset(fileListView.model.getSelectedImagesId(), datasetId)
                 }
             }
         }
 
-        QuiMenu {
+        DatasetSubMenu {
             id: moveToDatasetMenu
             title: "移动到"
-            width: 200
-
-            Instantiator {
-                model: fileListView.dataManager ? fileListView.dataManager.datasets : null
-                delegate: QuiMenuItem {
-                    text: model.name
-                    iconSource: QuiFontIcon.Folder
-                    enabled: fileListView.dataManager && fileListView.selection && fileListView.selection.hasSelection
-                    onClicked: {
-                        if (fileListView.dataManager && fileListView.model) {
-                            fileListView.dataManager.moveToDataset(fileListView.model.getSelectedImagesId(), model.dataset_id)
-                        }
-                    }
-                }
-                onObjectAdded: function(index, object) {
-                    moveToDatasetMenu.insertItem(index, object)
-                }
-                onObjectRemoved: function(index, object) {
-                    moveToDatasetMenu.removeItem(object)
+            dataManager: fileListView.dataManager
+            itemEnabled: fileListView.dataManager && fileListView.selection && fileListView.selection.hasSelection
+            onDatasetTriggered: function(datasetId) {
+                if (fileListView.dataManager && fileListView.model) {
+                    fileListView.dataManager.moveToDataset(fileListView.model.getSelectedImagesId(), datasetId)
                 }
             }
         }

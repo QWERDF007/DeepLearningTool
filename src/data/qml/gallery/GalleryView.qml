@@ -8,6 +8,7 @@ import dltool.data
 import dltool.feature
 import dltool.settings
 import quickui
+import "../component"
 
 Item {
     id: instancesView
@@ -88,53 +89,25 @@ Item {
                 }
             }
         }
-        QuiMenu {
+        DatasetSubMenu {
             id: copyToDatasetMenu
             title: "复制到"
-            width: 200
-
-            Instantiator {
-                model: dataManager ? dataManager.datasets : null
-                delegate: QuiMenuItem {
-                    text: model.name
-                    iconSource: QuiFontIcon.Folder
-                    enabled: dataManager && selection && selection.hasSelection
-                    onClicked: {
-                        if (dataManager && imageInstances) {
-                            dataManager.copyToDataset(imageInstances.getSelectedImagesId(), model.dataset_id)
-                        }
-                    }
-                }
-                onObjectAdded: function(index, object) {
-                    copyToDatasetMenu.insertItem(index, object)
-                }
-                onObjectRemoved: function(index, object) {
-                    copyToDatasetMenu.removeItem(object)
+            dataManager: instancesView.dataManager
+            itemEnabled: dataManager && selection && selection.hasSelection
+            onDatasetTriggered: function(datasetId) {
+                if (dataManager && imageInstances) {
+                    dataManager.copyToDataset(imageInstances.getSelectedImagesId(), datasetId)
                 }
             }
         }
-        QuiMenu {
+        DatasetSubMenu {
             id: moveToDatasetMenu
             title: "移动到"
-            width: 200
-
-            Instantiator {
-                model: dataManager ? dataManager.datasets : null
-                delegate: QuiMenuItem {
-                    text: model.name
-                    iconSource: QuiFontIcon.Folder
-                    enabled: dataManager && selection && selection.hasSelection
-                    onClicked: {
-                        if (dataManager && imageInstances) {
-                            dataManager.moveToDataset(imageInstances.getSelectedImagesId(), model.dataset_id)
-                        }
-                    }
-                }
-                onObjectAdded: function(index, object) {
-                    moveToDatasetMenu.insertItem(index, object)
-                }
-                onObjectRemoved: function(index, object) {
-                    moveToDatasetMenu.removeItem(object)
+            dataManager: instancesView.dataManager
+            itemEnabled: dataManager && selection && selection.hasSelection
+            onDatasetTriggered: function(datasetId) {
+                if (dataManager && imageInstances) {
+                    dataManager.moveToDataset(imageInstances.getSelectedImagesId(), datasetId)
                 }
             }
         }

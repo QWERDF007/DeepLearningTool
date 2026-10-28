@@ -104,53 +104,25 @@ Rectangle {
                      && !roiCluster.running && roiClusterEnabled && roiCluster.enabled
             onClicked: startRoiClusterForSelectedLabels()
         }
-        QuiMenu {
+        DatasetSubMenu {
             id: copyToDatasetMenu
             title: "复制到"
-            width: 200
-
-            Instantiator {
-                model: dataManager ? dataManager.datasets : null
-                delegate: QuiMenuItem {
-                    text: model.name
-                    iconSource: QuiFontIcon.Folder
-                    enabled: dataManager && labelInstances && selection && selection.hasSelection
-                    onClicked: {
-                        if (dataManager && labelInstances) {
-                            dataManager.copyToDataset(labelInstances.getSelectedImageIds(), model.dataset_id)
-                        }
-                    }
-                }
-                onObjectAdded: function(index, object) {
-                    copyToDatasetMenu.insertItem(index, object)
-                }
-                onObjectRemoved: function(index, object) {
-                    copyToDatasetMenu.removeItem(object)
+            dataManager: root.dataManager
+            itemEnabled: dataManager && labelInstances && selection && selection.hasSelection
+            onDatasetTriggered: function(datasetId) {
+                if (dataManager && labelInstances) {
+                    dataManager.copyToDataset(labelInstances.getSelectedImageIds(), datasetId)
                 }
             }
         }
-        QuiMenu {
+        DatasetSubMenu {
             id: moveToDatasetMenu
             title: "移动到"
-            width: 200
-
-            Instantiator {
-                model: dataManager ? dataManager.datasets : null
-                delegate: QuiMenuItem {
-                    text: model.name
-                    iconSource: QuiFontIcon.Folder
-                    enabled: dataManager && labelInstances && selection && selection.hasSelection
-                    onClicked: {
-                        if (dataManager && labelInstances) {
-                            dataManager.moveToDataset(labelInstances.getSelectedImageIds(), model.dataset_id)
-                        }
-                    }
-                }
-                onObjectAdded: function(index, object) {
-                    moveToDatasetMenu.insertItem(index, object)
-                }
-                onObjectRemoved: function(index, object) {
-                    moveToDatasetMenu.removeItem(object)
+            dataManager: root.dataManager
+            itemEnabled: dataManager && labelInstances && selection && selection.hasSelection
+            onDatasetTriggered: function(datasetId) {
+                if (dataManager && labelInstances) {
+                    dataManager.moveToDataset(labelInstances.getSelectedImageIds(), datasetId)
                 }
             }
         }

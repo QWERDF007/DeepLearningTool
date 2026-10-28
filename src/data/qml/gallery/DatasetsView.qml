@@ -241,29 +241,15 @@ SidebarPanelBase {
                 }
             }
         }
-        QuiMenu {
+        DatasetSubMenu {
             id: copyToDatasetMenu
             title: "复制到"
-            width: 200
-
-            Instantiator {
-                model: dataManager ? dataManager.datasets : null
-                delegate: QuiMenuItem {
-                    text: model.name
-                    iconSource: QuiFontIcon.Folder
-                    enabled: dataManager && selection && selection.hasSelection
-                    onClicked: {
-                        if (dataManager && datasets) {
-                            dataManager.copyToDataset(dataManager.imageIdsForDatasets(selectedDatasetIds()),
-                                                      model.dataset_id)
-                        }
-                    }
-                }
-                onObjectAdded: function(index, object) {
-                    copyToDatasetMenu.insertItem(index, object)
-                }
-                onObjectRemoved: function(index, object) {
-                    copyToDatasetMenu.removeItem(object)
+            dataManager: datasetsView.dataManager
+            itemEnabled: dataManager && selection && selection.hasSelection
+            onDatasetTriggered: function(datasetId) {
+                if (dataManager && datasets) {
+                    dataManager.copyToDataset(dataManager.imageIdsForDatasets(selectedDatasetIds()),
+                                              datasetId)
                 }
             }
         }

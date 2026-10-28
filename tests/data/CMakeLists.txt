@@ -1,4 +1,4 @@
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Test Quick Qml)
 
 dlt_glob_sources(_data_test_sources
     RECURSE
@@ -10,6 +10,9 @@ set(_data_test_link_libraries
     Qt6::Core
     Qt6::Gui
     Qt6::Test
+    Qt6::Quick
+    Qt6::Qml
+    quickui
     dltool_data
     dltool_database
     dltool_settings
@@ -33,6 +36,8 @@ set(_data_test_include_directories
 # CTest 按声明顺序执行 path_list_prepend；将当前模块目录放在列表末尾，
 # 确保最终 PATH 优先加载构建树 DLL，而不是 build/bin 中的旧部署副本。
 set(_data_test_environment_modification
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Quick>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Qml>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Gui>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:quickui>"
@@ -44,6 +49,8 @@ set(_data_test_environment_modification
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_database>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_data>"
     "DLT_RUNTIME_ROOT=set:${CMAKE_BINARY_DIR}/bin"
+    "QML2_IMPORT_PATH=path_list_prepend:${CMAKE_BINARY_DIR}"
+    "QML2_IMPORT_PATH=path_list_prepend:${CMAKE_BINARY_DIR}/qml"
 )
 
 foreach(_data_test_source IN LISTS _data_test_sources)
@@ -53,9 +60,13 @@ foreach(_data_test_source IN LISTS _data_test_sources)
     string(TOLOWER "${_data_test_suffix}" _data_test_suffix)
 
     dlt_add_test_executable("dltool_data_${_data_test_suffix}_tests"
+        QT_EXECUTABLE
         SOURCES "${_data_test_source}"
         LINK_LIBRARIES ${_data_test_link_libraries}
         INCLUDE_DIRECTORIES ${_data_test_include_directories}
+        COMPILE_DEFINITIONS
+            DLT_BUILD_DIR="${CMAKE_BINARY_DIR}"
+            DLT_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
         LABELS "ordinary;data"
         ENVIRONMENT_MODIFICATION ${_data_test_environment_modification}
     )
